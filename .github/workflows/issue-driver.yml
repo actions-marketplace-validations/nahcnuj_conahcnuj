@@ -56,9 +56,10 @@ jobs:
     # stay skipped and the loop cannot recurse. The weekly findings issue is
     # bot-authored too but labelled, and that label is the one exception that
     # lets the self-improvement loop start the driver by itself. A job-level
-    # `if` cannot read the `secrets` context, so the check keys off the label,
-    # not a secret. Missing secrets are not pre-checked either: the run fails
-    # loudly and the driver files its own bug report (no silent skip).
+    # `if` cannot read the `secrets` context (and APP_SLUG is not needed here),
+    # so the check keys off the label, not a secret. Missing secrets are not
+    # pre-checked either: the run fails loudly and the driver files its own bug
+    # report (no silent skip).
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (
