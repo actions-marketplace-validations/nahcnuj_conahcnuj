@@ -82,8 +82,8 @@ async function main() {
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
   assert.strictEqual(
     sysOutput.system.length,
-    1,
-    "commit rules were not injected into the system prompt"
+    2,
+    "commit rules and GitHub-auth rules were not injected into the system prompt"
   )
   const rules = sysOutput.system[0]
   assert(!/[\r\n]/.test(rules), "commit rules must be a single line")
@@ -96,9 +96,17 @@ async function main() {
     rules.includes("Do not edit or modify files under `gh-app/`"),
     `rules must forbid editing gh-app/: ${rules}`
   )
+  // The GitHub-auth rule tells the agent GH_TOKEN is already set (issue #210),
+  // so it stops re-issuing a token itself.
+  const githubRules = sysOutput.system[1]
+  assert(!/[\r\n]/.test(githubRules), "GitHub-auth rules must be a single line")
+  assert(
+    githubRules.includes("`GH_TOKEN`") && githubRules.includes("Do not export"),
+    `rules must state GH_TOKEN is pre-set and must not be exported: ${githubRules}`
+  )
   // Injecting twice must stay idempotent (the rules are pushed once).
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
-  assert.strictEqual(sysOutput.system.length, 1, "commit rules injected more than once")
+  assert.strictEqual(sysOutput.system.length, 2, "system rules injected more than once")
 
   // OpenCode reports the effort variant on the user message and the model id
   // on chat.params. The shell that runs `git vc` must see one trailer value.

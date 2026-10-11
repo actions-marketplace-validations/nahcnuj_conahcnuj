@@ -30,6 +30,16 @@ unsigned コミットを塞ぐプラグインです。ファイルは `plugins/g
 | `commit.gpgsign` | `false` |
 | `alias.vc` | `!"<BASH_EXE>" "<gh-app>/api-commit.sh"`（[git vc](#git-vc)） |
 
+### `experimental.chat.system.transform` - システムプロンプトへの規則注入
+
+全セッションのシステムプロンプトへ 1 行ずつの規則を追加します（重複しません）。
+
+- **`git vc` 規則**: コミットは `git vc` で行い、`git commit` を使わない。
+  `gh-app/api-commit.sh` を直接実行せず、`gh-app/` 配下を編集しない。
+- **GitHub 認証規則**: `GH_TOKEN` は各シェルへ注入済みなので `gh` をそのまま
+  使えばよい。エージェントが `GH_TOKEN` を自分で export したり
+  `gh-app/get-token.sh` を実行してトークンを取り直したりしない。
+
 ### `tool.execute.before` - `git commit` のブロック
 
 bash ツールが `git commit`（`git.exe commit`、`-C <dir> commit` も含む）を呼ぼうと
