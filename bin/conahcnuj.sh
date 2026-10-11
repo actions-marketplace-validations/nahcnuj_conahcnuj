@@ -238,11 +238,19 @@ repo_detect() {
   printf '%s' "${url}" | sed -E 's#.*github\.com[:/]##; s#\.git$##'
 }
 
-check_timeout() {
+# True when the overall time budget is exhausted. Split out from check_timeout
+# so drive() can word the exhaustion differently once the PR is with the
+# reviewer: running out of time while waiting for a human is not a driver
+# failure, so that run ends cleanly instead of filing a bug report.
+time_budget_exhausted() {
   local now elapsed
   now="$(date +%s)"
   elapsed=$((now - START_TIME))
-  if [[ ${elapsed} -ge ${MAX_DURATION} ]]; then
+  [[ ${elapsed} -ge ${MAX_DURATION} ]]
+}
+
+check_timeout() {
+  if time_budget_exhausted; then
     echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
     exit 1
   fi
@@ -1119,8 +1127,9 @@ log_review_handoff() {
 # --- review fingerprint -----------------------------------------------------
 
 # Main state machine. Handles both the fresh-issue path and the resume path.
-# Never auto-merges, and never waits for an approval: it exits once the review
-# request is on the PR ("ready to merge" when the PR is already APPROVED).
+# Never auto-merges, but does take the PR to the owner's approval: it asks for
+# review, then keeps polling for the verdict (addressing new feedback, waiting
+# otherwise) and exits once the PR is approved.
 drive() {
   local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" initial_draft="${9:-false}"
   local last_sig=""
@@ -1130,9 +1139,25 @@ drive() {
   # from resume_pr (its isDraft field); a fresh one is set right after
   # ensure_pr creates it.
   local pr_draft="${initial_draft}"
+  # Whether this run has already handed the PR to the owner by asking for a
+  # review, and is now only waiting for the verdict. Once true the driver never
+  # asks again until new review feedback makes it work a fresh round: the job is
+  # to take the PR to the owner's approval, not to stop at the request.
+  local handed_off="false"
 
   while true; do
-    check_timeout
+    # The budget expired. Once the PR is with the reviewer, that is simply a
+    # human who has not answered yet, so end cleanly (the pull_request_review
+    # trigger starts the next run and the merge workflow chains off the
+    # approval); before the hand-off it is a real failure worth a bug report.
+    if time_budget_exhausted; then
+      if [[ "${handed_off}" == "true" ]]; then
+        echo "PR #${pr}: the time budget is exhausted while waiting for the reviewer's decision; the PR is complete and waits for a human." >&2
+        exit 0
+      fi
+      echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
+      exit 1
+    fi
 
     # Commit leftovers from a previously interrupted run. Only possible while
     # the interrupted run's agent had already written its .commit-msg: the
@@ -1243,10 +1268,11 @@ drive() {
     # feedback sits untouched (#219). The round runs even while checks are still
     # PENDING: any commit it makes restarts CI, which is re-verified below.
     #
-    # Asking for review is what a run hands over to a human, so the review
-    # request (not an approval) is the last thing the driver produces. The
-    # approval, and the merge owner-approved-auto-merge chains off it, are the
-    # reviewer's part to give: the driver reports and exits instead of polling.
+    # The run's job is the owner's approval, not the review request: asking for
+    # review hands the PR to a human, but the driver then keeps polling for the
+    # verdict instead of stopping. An approval ends the run (the merge workflow
+    # chains off it); new feedback loops back into this phase to be addressed;
+    # while nothing changes it waits, below, without re-asking.
     local rv decision payload raw summary sig actionable
     rv="$(gh_api_fetch_reviews "${owner}" "${repo}" "${pr}")"
     decision="$(printf '%s' "${rv}" | cut -d'|' -f1)"
@@ -1268,6 +1294,10 @@ drive() {
 
     if [[ "${actionable}" == "true" && -n "${sig}" && "${sig}" != "${last_sig}" ]]; then
       last_sig="${sig}"
+      # A fresh round invalidates the previous hand-off: the owner has to be
+      # asked again once this round's work passes the constraints, and until
+      # then the driver must keep driving rather than wait.
+      handed_off="false"
       echo "New review feedback detected; addressing it." >&2
       # The coding agent answers the reviewer in the thread itself (the reply
       # endpoint and every thread comment id are in the summary), besides any
@@ -1298,7 +1328,22 @@ ${summary}"; then
       fi
       request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
       log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-      exit 0
+      handed_off="true"
+      continue
+    fi
+
+    # --- wait for the reviewer phase ---
+    # The PR is complete and with the owner; the driver has already asked for
+    # review. Do not ask again: poll for the verdict. An approval is handled
+    # just above (it ends the run); new feedback loops back there to be
+    # addressed; while neither happens this keeps waiting, so the run takes the
+    # issue to the owner's approval instead of stopping at the request. A
+    # resumed run that finds the PR already requested and untouched comes here
+    # too, which is what lets it stay with the reviewer across restarts.
+    if [[ "${handed_off}" == "true" ]]; then
+      echo "PR #${pr}: waiting for the reviewer's decision." >&2
+      rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      continue
     fi
 
     # --- constraints phase ---
@@ -1332,10 +1377,12 @@ ${summary}"; then
     fi
 
     echo "PR #${pr}: non-reviewer constraints satisfied." >&2
-    # The constraints pass, so the PR is ready for a human: hand it over.
+    # The constraints pass, so the PR is ready for a human: hand it over. The
+    # run does not end here; the next loop iteration waits for the verdict.
     request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
     log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-    exit 0
+    handed_off="true"
+    continue
   done
 }
 

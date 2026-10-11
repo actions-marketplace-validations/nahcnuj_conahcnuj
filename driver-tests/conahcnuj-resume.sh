@@ -9,12 +9,14 @@
 #   (open review threads + README/AGENTS of the checkout) -> constraints pass
 #   -> CHANGES_REQUESTED feedback detected -> the agent addresses it (and
 #   answers the thread itself) and commits -> owner assigned as reviewer again
-#   -> constraints re-verified -> "review requested" -> exit 0
+#   -> constraints re-verified -> "review requested" -> poll -> approval ->
+#   "ready to merge" -> exit 0
 #
-# A resumed run handles one feedback round and hands the PR back to the
-# reviewer; the approval itself is the human's part. The collected context
-# is what the first prompt carries so the model does not have to look the
-# open threads (or the repository's own docs) up itself.
+# A resumed run handles one feedback round, hands the PR back to the reviewer
+# and then keeps polling until the approval (the approval is the human's part;
+# the merge chains off it). The collected context is what the first prompt
+# carries so the model does not have to look the open threads (or the
+# repository's own docs) up itself.
 #
 # No secrets, no network.
 set -euo pipefail
@@ -44,11 +46,13 @@ git -C "${WORK}" commit -qm init
 #   body -> real issue body), fetch_reviews (collection: one open thread, one
 #   resolved), update_pr (body sync on the reuse path), post_comment (the PR
 #   continuation comment), fetch_reviews (CHANGES_REQUESTED with an open
-#   thread), conditions, request_review. The feedback is read (and addressed)
-#   before the constraints poll: known feedback must not wait on CI (#219); the
-#   constraints are re-verified before the PR is handed back, so the reviewer
-#   is asked only once the fix is green. The feedback round posts no comment of
-#   its own: the agent answers the reviewer in the thread.
+#   thread), conditions, request_review, fetch_reviews (APPROVED -> the run
+#   ends on the approval, not the request). The feedback is read (and
+#   addressed) before the constraints poll: known feedback must not wait on CI
+#   (#219); the constraints are re-verified before the PR is handed back, so
+#   the reviewer is asked only once the fix is green. The feedback round posts
+#   no comment of its own: the agent answers the reviewer in the thread, and
+#   the run keeps polling until the owner approves.
 # The tape and log live OUTSIDE the repo (the driver's test-mode commit
 # path runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
@@ -62,6 +66,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -92,7 +97,11 @@ grep -q "PR #15" "${LOG}" || { echo "FAIL: PR #15 was not processed"; exit 1; }
 grep -q "is a pull request; resuming it in place" "${LOG}" || { echo "FAIL: PR input was not auto-detected"; exit 1; }
 grep -q "Review requested on PR #15 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the driver did not hand the PR back to the owner as reviewer"; exit 1; }
 grep -q "Assigned nahcnuj as reviewer on PR #15" "${LOG}" || { echo "FAIL: review was not re-requested from the owner after the fix"; exit 1; }
-grep -q "Ready to merge" "${LOG}" && { echo "FAIL: the driver waited for an approval that never came"; exit 1; }
+# The run does not stop at the request: it keeps polling and ends on the
+# owner's approval.
+APPROVED_LINE="$(grep -n "Ready to merge" "${LOG}" | head -1 | cut -d: -f1)"
+ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #15" "${LOG}" | head -1 | cut -d: -f1)"
+[[ -n "${APPROVED_LINE}" && "${ASSIGNED_LINE}" -lt "${APPROVED_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" || { echo "FAIL: review feedback was not acted on"; exit 1; }
 # Known feedback must be addressed before the run waits on CI (#219): a PR with
 # open threads (or required conversation resolution) never reaches the

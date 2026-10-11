@@ -80,7 +80,8 @@ git -C "${WORK}" commit -qm init
 #   fetch_issue, get_repo, find_pr_by_head_any (empty), find_pr_by_head (empty),
 #   create_pr repo-id lookup, create_pr (123) as a draft, continuation comment,
 #   body sync PATCH (second loop), ready_for_review (TODO.md gone),
-#   fetch_reviews (nothing to act on), conditions (SUCCESS), request_review.
+#   fetch_reviews (nothing to act on), conditions (SUCCESS), request_review,
+#   fetch_reviews (APPROVED -> the run ends on the approval, not the request).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
 {"number": 10, "title": "TODO.md progress", "body": "# 背景\nTODO.md lifecycle. ", "labels": [], "state": "open"}
@@ -95,6 +96,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -132,6 +134,9 @@ READY_LINE="$(grep -n "TODO.md is gone; marking PR #123 ready for review." "${LO
 ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #123" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${DRAFT_LINE}" && -n "${READY_LINE}" && "${DRAFT_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the draft must be created before it is made ready"; exit 1; }
 [[ -n "${ASSIGNED_LINE}" && "${READY_LINE}" -lt "${ASSIGNED_LINE}" ]] || { echo "FAIL: the review request must come after the PR is made ready"; exit 1; }
+# The run keeps going past the hand-off and ends on the owner's approval.
+APPROVED_LINE="$(grep -n "Ready to merge" "${LOG}" | head -1 | cut -d: -f1)"
+[[ -n "${APPROVED_LINE}" && "${ASSIGNED_LINE}" -lt "${APPROVED_LINE}" ]] || { echo "FAIL: the driver did not wait for the owner's approval"; exit 1; }
 
 # TODO.md is gone from the branch head once the run hands the PR over.
 [[ ! -f "${WORK}/TODO.md" ]] || { echo "FAIL: TODO.md must be deleted from the working tree"; exit 1; }
