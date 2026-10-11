@@ -65,12 +65,14 @@ CI の `Build docs site` ジョブが同じビルドを PR でも検証します
 2. opencode プラグイン `plugins/gh-app-token.ts` が `shell.env` フックで
    `GH_TOKEN` と `GIT_CONFIG_*`（user.name / user.email / credential.helper /
    commit.gpgsign / alias.vc）を注入。
-3. `experimental.chat.system.transform` フックで「コミットは `git vc`」という
-   規則を全セッションのシステムプロンプトへ常時注入し、`tool.execute.before`
-   で `git commit` と `api-commit.sh` の直接実行を検知して `git vc` へ誘導する。
+3. `experimental.chat.system.transform` フックで「コミットは `git vc`」と
+   「GitHub は `GH_TOKEN` で認証済みなので `gh` をそのまま使う（自分で export
+   しない）」という規則を全セッションのシステムプロンプトへ常時注入し、
+   `tool.execute.before` で `git commit` と `api-commit.sh` の直接実行を検知して
+   `git vc` へ誘導する。
 4. `install.ps1` は `opencode/AGENTS.md` を `~/.config/opencode/AGENTS.md` へ
    管理ブロックとしてマージし、リポジトリごとの指示が無い場合でも
-   エージェントが `git vc` を選べるようにする（既存の内容は保持）。
+   エージェントが `git vc` を選び、`gh` をそのまま使えるようにする（既存の内容は保持）。
 
 ## Verified コミットを作る（`git vc`）
 

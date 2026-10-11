@@ -319,6 +319,22 @@ const COMMIT_RULES = [
   "the working tree.",
 ].join(" ")
 
+/**
+ * GitHub-access rules appended to every system prompt alongside COMMIT_RULES.
+ * The shell injection already sets GH_TOKEN, so an agent that knows this uses
+ * `gh` as-is instead of re-issuing a token itself (issue #210: the coding agent
+ * ran `export GH_TOKEN=$(bash gh-app/get-token.sh)` because nothing told it the
+ * token was already there). Stated as a fact about the environment, not a new
+ * task, and kept to one line like COMMIT_RULES.
+ */
+const GITHUB_RULES = [
+  "GitHub access in this environment is already authenticated as this",
+  "repository's GitHub App: every shell has `GH_TOKEN` set, so run `gh ...`",
+  "(or call `https://api.github.com` with that token) directly.",
+  "Do not export `GH_TOKEN` yourself and do not run `gh-app/get-token.sh` to",
+  "obtain one; the token is provided for you and refreshed as needed.",
+].join(" ")
+
 import {
   API_COMMIT_SCRIPT,
   isDirectApiCommitCommand,
@@ -548,10 +564,13 @@ export const GhAppTokenPlugin: Plugin = async () => {
       }
     },
     // Rules up front, so a model in any repository commits with `git vc`
-    // without having to trip the hook below first.
+    // without having to trip the hook below first, and reaches for `gh`
+    // directly without re-issuing `GH_TOKEN` by hand.
     "experimental.chat.system.transform": async (_input, output) => {
-      if (!output.system.includes(COMMIT_RULES)) {
-        output.system.push(COMMIT_RULES)
+      for (const rules of [COMMIT_RULES, GITHUB_RULES]) {
+        if (!output.system.includes(rules)) {
+          output.system.push(rules)
+        }
       }
     },
     "tool.execute.before": async (input, output) => {

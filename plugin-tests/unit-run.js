@@ -660,12 +660,12 @@ test("app.env: CRLF line endings parse like LF", async () => {
 
 // --- system prompt ----------------------------------------------------------
 
-test("system prompt: the git vc rules are appended exactly once and stay one line", async () => {
+test("system prompt: the git vc and GitHub-auth rules are appended once and stay one line", async () => {
   stage()
   const plugin = await freshHooks()
   const output = { system: ["existing rule"] }
   await plugin["experimental.chat.system.transform"]({}, output)
-  assert.strictEqual(output.system.length, 2)
+  assert.strictEqual(output.system.length, 3)
   assert.strictEqual(output.system[0], "existing rule")
   const rules = output.system[1]
   assert.ok(!/[\r\n]/.test(rules), "commit rules must be a single line")
@@ -685,8 +685,17 @@ test("system prompt: the git vc rules are appended exactly once and stay one lin
   )
   // An agent that is told to commit stays told to prefer git vc naturally.
   assert.ok(rules.includes("Prefer `git vc` over `git commit`"), rules)
+  // The GitHub-auth rule exists for issue #210: the agent re-issued a token
+  // (`export GH_TOKEN=$(bash gh-app/get-token.sh)`) because nothing told it the
+  // plugin already injects GH_TOKEN.
+  const githubRules = output.system[2]
+  assert.ok(!/[\r\n]/.test(githubRules), "GitHub-auth rules must be a single line")
+  assert.ok(githubRules.includes("`GH_TOKEN`"), githubRules)
+  assert.ok(githubRules.includes("run `gh ...`"), githubRules)
+  assert.ok(githubRules.includes("Do not export `GH_TOKEN`"), githubRules)
+  assert.ok(githubRules.includes("do not run `gh-app/get-token.sh`"), githubRules)
   await plugin["experimental.chat.system.transform"]({}, output)
-  assert.strictEqual(output.system.length, 2, "commit rules injected more than once")
+  assert.strictEqual(output.system.length, 3, "system rules injected more than once")
 })
 
 // --- model label ------------------------------------------------------------
