@@ -20,7 +20,7 @@ git 操作・GitHub API を **GitHub App の名義**（`<slug>[bot]`）で行う
 - App のインストールトークンを発行し、`gh` CLI / git / opencode 内の作業が
   bot 名義で動く
 - issue 駆動自律開発ドライバ `conahcnuj`（実装 → Verified コミット → PR →
-  owner レビュー依頼まで自動。マージはしない）
+  owner の承認まで自動。マージはしない）
 
 ## 目次
 

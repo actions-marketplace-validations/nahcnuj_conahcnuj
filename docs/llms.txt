@@ -5,7 +5,7 @@
 
 conahcnuj は GitHub App「conahcnuj」のインストールトークンを発行し、git 操作と
 GitHub API を bot 名義（`<slug>[bot]`）で行うためのツール群です。付属のドライバは
-issue を実装・Verified コミット・PR 作成・owner レビュー依頼まで自動で運び、
+issue を実装・Verified コミット・PR 作成・owner の承認まで自動で運び、
 マージはしません。常に最新版のドキュメント（Markdown 原文）をこの配信先で公開しています:
 https://nahcnuj.github.io/conahcnuj/
 
