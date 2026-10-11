@@ -808,8 +808,16 @@ persist_missing_model() {
 # unavailable) says nothing about the provider: only that model is remembered
 # as dead -- in MISSING_MODELS_FILE too, so later runs skip it up front instead
 # of spending a round (and a log full of errors) on it (#209).
+#
+# The base branch (4th arg) is passed only by the review-feedback round, where a
+# model that answers with only a .commit-msg can be complete: the branch already
+# carries the implementation, so the message (and any thread replies) is the
+# whole deliverable, not a stand-in for missing work. Rounds that objectively
+# need a change (a fresh branch, the TODO.md gate, failing constraints) pass no
+# base, so a message-only round there stays no work and still falls through to
+# the other models.
 implement() {
-  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
+  local title="${1}" body="${2}" extra="${3:-}" base_branch="${4:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
   local dead_providers="" failed_rounds=0 env_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   ENVIRONMENT_DOWN="0"
@@ -858,6 +866,21 @@ implement() {
     fi
     if workdir_changed "${workdir}" && [[ "${wrote_message}" == "true" ]]; then
       echo "Model ${model} completed the work." >&2
+      OPENCODE_LAST_MODEL="${model}"
+      return 0
+    fi
+    # In a round where a message can be the whole deliverable (the feedback
+    # round, which passes the base branch), a model can finish with just a
+    # .commit-msg because there is nothing left to change: the branch already
+    # carries the implementation (a resumed PR, or a later round on an
+    # implemented branch). Accept it and let the run move on instead of handing
+    # the finished work to the next model. Skipping such a model has churned
+    # through models and let a weaker one commit junk onto the branch, which is
+    # what issue #273 reported. The .commit-msg is metadata, never committed, so
+    # it is cleaned up here.
+    if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
+      rm -f "${workdir}/.commit-msg"
+      echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
       OPENCODE_LAST_MODEL="${model}"
       return 0
     fi
@@ -1284,7 +1307,7 @@ drive() {
       local reply_help="Address the pull request review feedback. Reply in each unresolved thread below, saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread, and make code changes where the feedback asks for them."
       if ! implement "${title}" "${body}" "${reply_help}
 
-${summary}"; then
+${summary}" "${base}"; then
         echo "No working-tree change was produced for this feedback; keeping whatever thread replies were already made." >&2
       fi
       # A round can fail after leaving a partial change and no .commit-msg (a
