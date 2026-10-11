@@ -53,11 +53,12 @@ git -C "${WORK}" commit -qm init
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue
 #   (stub body -> real issue body), fetch_reviews (collection: nothing open),
 #   update_pr (body sync), continuation comment, fetch_reviews
-#   (CHANGES_REQUESTED -> feedback round), request_review, conditions (own run
+#   (CHANGES_REQUESTED -> feedback round), conditions (own run
 #   SUCCESS + real CI running -> PENDING), conditions (own run CANCELLED +
-#   auto-merge FAILED + real CI SUCCESS -> SUCCESS). Reviews are read before the
-#   constraints poll (#219); the feedback round posts no comment of its own: the
-#   agent answers the reviewer in the thread.
+#   auto-merge FAILED + real CI SUCCESS -> SUCCESS), request_review. Reviews are
+#   read before the constraints poll (#219); the constraints are re-verified
+#   before the PR is handed back to the reviewer. The feedback round posts no
+#   comment of its own: the agent answers the reviewer in the thread.
 # The tape and log live OUTSIDE the repo (the driver's test-mode commit
 # path runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
@@ -69,9 +70,9 @@ cat > "${TAPE}" <<'EOF'
 {}
 {"id":889}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING","contexts":{"nodes":[{"__typename":"CheckRun","name":"Attempt to resolve issue","status":"COMPLETED","conclusion":"SUCCESS","checkSuite":{"workflowRun":{"workflow":{"name":"Issue auto-drive"}}}},{"__typename":"CheckRun","name":"Lint shell scripts (ubuntu-latest)","status":"IN_PROGRESS","conclusion":null,"checkSuite":{"workflowRun":{"workflow":{"name":"CI"}}}}],"pageInfo":{"hasNextPage":false}}}}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[{"__typename":"CheckRun","name":"Attempt to resolve issue","status":"COMPLETED","conclusion":"CANCELLED","checkSuite":{"workflowRun":{"workflow":{"name":"Issue auto-drive"}}}},{"__typename":"CheckRun","name":"enable / enable","status":"COMPLETED","conclusion":"FAILURE","checkSuite":{"workflowRun":{"workflow":{"name":"Owner-approved auto-merge"}}}},{"__typename":"CheckRun","name":"Lint shell scripts (ubuntu-latest)","status":"COMPLETED","conclusion":"SUCCESS","checkSuite":{"workflowRun":{"workflow":{"name":"CI"}}}}],"pageInfo":{"hasNextPage":false}}}}}]}}}}}
+{}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1

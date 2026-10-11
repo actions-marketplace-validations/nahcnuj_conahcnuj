@@ -33,9 +33,9 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape, in call order:
 #   fetch_issue, get_repo, find_pr_by_head_any (empty), find_pr_by_head (empty),
 #   repo id, create_pr (126), continuation comment, fetch_reviews
-#   (REVIEW_REQUIRED, nothing to act on), request_review, conditions
-#   (SUCCESS|MERGEABLE). Reviews are read before the constraints poll (#219);
-#   the fresh PR is handed to the reviewer before the poll (#233).
+#   (REVIEW_REQUIRED, nothing to act on), conditions (SUCCESS|MERGEABLE),
+#   request_review. Reviews are read before the constraints poll (#219); the
+#   fresh PR is handed to the reviewer only after the constraints pass.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
 {"number": 21, "title": "agent answers with a message only", "body": "The change itself is the deliverable", "labels": [], "state": "open"}
@@ -46,8 +46,8 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"createPullRequest":{"pullRequest":{"number":126}}}}
 {"id":776}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
+{}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1

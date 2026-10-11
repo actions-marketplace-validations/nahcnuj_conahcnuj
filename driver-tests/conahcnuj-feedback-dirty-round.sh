@@ -41,7 +41,7 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape, in call order (same shape as the resume fixture):
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue (real body),
 #   fetch_reviews (collection), update_pr, post_comment, fetch_reviews
-#   (CHANGES_REQUESTED with an open thread), request_review, conditions.
+#   (CHANGES_REQUESTED with an open thread), conditions, request_review.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
 {"title":"Fix something","body":"stub","labels":[],"pull_request":{}}
@@ -51,8 +51,8 @@ cat > "${TAPE}" <<'EOF'
 {}
 {"id":889}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
+{}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1

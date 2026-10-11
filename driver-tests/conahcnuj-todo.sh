@@ -80,7 +80,7 @@ git -C "${WORK}" commit -qm init
 #   fetch_issue, get_repo, find_pr_by_head_any (empty), find_pr_by_head (empty),
 #   create_pr repo-id lookup, create_pr (123) as a draft, continuation comment,
 #   body sync PATCH (second loop), ready_for_review (TODO.md gone),
-#   fetch_reviews (nothing to act on), request_review, conditions (SUCCESS).
+#   fetch_reviews (nothing to act on), conditions (SUCCESS), request_review.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
 {"number": 10, "title": "TODO.md progress", "body": "# 背景\nTODO.md lifecycle. ", "labels": [], "state": "open"}
@@ -93,8 +93,8 @@ cat > "${TAPE}" <<'EOF'
 {}
 {}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
+{}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1

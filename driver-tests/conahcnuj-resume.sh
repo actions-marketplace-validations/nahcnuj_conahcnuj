@@ -44,10 +44,11 @@ git -C "${WORK}" commit -qm init
 #   body -> real issue body), fetch_reviews (collection: one open thread, one
 #   resolved), update_pr (body sync on the reuse path), post_comment (the PR
 #   continuation comment), fetch_reviews (CHANGES_REQUESTED with an open
-#   thread), request_review, conditions. The feedback is read (and addressed)
-#   before the constraints poll: known feedback must not wait on CI (#219). The
-#   feedback round posts no comment of its own: the agent answers the reviewer
-#   in the thread.
+#   thread), conditions, request_review. The feedback is read (and addressed)
+#   before the constraints poll: known feedback must not wait on CI (#219); the
+#   constraints are re-verified before the PR is handed back, so the reviewer
+#   is asked only once the fix is green. The feedback round posts no comment of
+#   its own: the agent answers the reviewer in the thread.
 # The tape and log live OUTSIDE the repo (the driver's test-mode commit
 # path runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
@@ -59,8 +60,8 @@ cat > "${TAPE}" <<'EOF'
 {}
 {"id":889}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
+{}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
