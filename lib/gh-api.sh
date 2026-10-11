@@ -203,11 +203,24 @@ gh_api_graphql() {
   fi
   local payload
   payload="$(printf '{"query":"%s","variables":%s}' "$(gh_api_escape "${query}")" "${vars_json}")"
-  local json http_code
-  json="$(gh_api_call POST "${GH_APP_API_BASE:-https://api.github.com}/graphql" "${payload}")"
+  # Run gh_api_call in this shell (its stdout goes to a file) rather than in a
+  # command substitution: a command substitution is a subshell, so the
+  # GH_API_LAST_HTTP_CODE gh_api_call sets would be lost and this function would
+  # read whatever status an earlier REST call left in the parent (creating a
+  # branch or a PR sets 201). The stale 201 then looked like a GraphQL HTTP
+  # error and a perfectly good payload was discarded, which is how a live PR
+  # ended up reported as passing (issue #253).
+  local json http_code bodyfile
+  bodyfile="$(mktemp)"
+  gh_api_call POST "${GH_APP_API_BASE:-https://api.github.com}/graphql" "${payload}" > "${bodyfile}" || true
+  json="$(cat "${bodyfile}")"
+  rm -f "${bodyfile}"
   http_code="${GH_API_LAST_HTTP_CODE:-}"
-  # Check for HTTP-level errors (401, 403, etc.) that gh_api_call doesn't retry
-  if [[ -n "${http_code}" && "${http_code}" != "200" ]]; then
+  # Only 2xx responses carry a GraphQL payload; anything else is a transport or
+  # gateway error and its body is not a JSON document. 201 is accepted for the
+  # same reason gh_api_call accepts it: a POST that came back "Created" is still
+  # a successful response.
+  if [[ -n "${http_code}" && "${http_code}" != "200" && "${http_code}" != "201" ]]; then
     echo "GraphQL HTTP error ${http_code}: ${json}" >&2
     return 1
   fi
@@ -424,13 +437,27 @@ gh_api_rollup_state() {
 # polling. state is the PR state, so the caller can tell "still open" from
 # "merged/closed while we waited"; it is empty when the payload does not carry
 # it, which the caller reads as unknown (keep polling).
+# Exits non-zero when the conditions could not be read at all, so the caller
+# retries instead of mistaking a failed call for an empty (passing) PR.
 gh_api_fetch_pr_conditions() {
   local owner="${1}" repo="${2}" number="${3}" json
   local query="query { repository(owner: \"${owner}\", name: \"${repo}\") { pullRequest(number: ${number}) { mergeable, mergeStateStatus, state, commits(last: 1) { nodes { commit { statusCheckRollup { state, contexts(first: 100) { nodes { __typename, ... on CheckRun { name, status, conclusion, checkSuite { workflowRun { workflow { name } } } }, ... on StatusContext { context, state } }, pageInfo { hasNextPage } } } } } } } } }"
   if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
     json="$(gh_api_read_line)"
-  else
-    json="$(gh_api_graphql "${query}")"
+    # An exhausted/empty mock line stands for a failed read the same way an
+    # empty real response would: report it, do not hand back an empty payload.
+    if [[ -z "${json}" ]]; then
+      echo "ERROR: could not read the merge conditions of PR #${number}." >&2
+      return 1
+    fi
+  elif ! json="$(gh_api_graphql "${query}")"; then
+    # A failed read is not an empty PR: the caller must be able to tell a
+    # transient API error (retry) from a payload that truly says "no checks"
+    # (SUCCESS). Returning an empty value here let poll_conditions coerce the
+    # failure to SUCCESS and assume MERGEABLE, so a run whose conditions call
+    # had just errored reported the constraints as passing (issue #253).
+    echo "ERROR: could not read the merge conditions of PR #${number}." >&2
+    return 1
   fi
 
   local state mergeable mss pr_state
@@ -452,7 +479,7 @@ gh_api_fetch_pr_conditions() {
 # gh_api_review_summary to turn it into readable feedback text).
 gh_api_fetch_reviews() {
   local owner="${1}" repo="${2}" number="${3}" json
-  local query="query { repository(owner: \"${owner}\", name: \"${repo}\") { pullRequest(number: ${number}) { reviewDecision, reviews(last: 25) { nodes { state, body, author { login } } }, comments(last: 25) { nodes { body, author { login } } }, reviewThreads(first: 50) { nodes { isResolved, comments(first: 10) { nodes { body } } } } } } }"
+  local query="query { repository(owner: \"${owner}\", name: \"${repo}\") { pullRequest(number: ${number}) { reviewDecision, reviews(last: 25) { nodes { state, body, author { login } } }, comments(last: 25) { nodes { body, author { login } } }, reviewThreads(first: 50) { nodes { isResolved, comments(first: 10) { nodes { databaseId, body, author { login } } } } } } } }"
   if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
     json="$(gh_api_read_line)"
   else
@@ -505,16 +532,57 @@ gh_api_review_summary() {
   done < <(printf '%s\n' "${comment_matches}")
 
   # Inline review threads: skip resolved ones, quote unresolved feedback.
-  local threads_part tn
+  local threads_part
   threads_part="$(printf '%s' "${json}" | sed -n 's/.*"reviewThreads":{"nodes":\(.*\)/\1/p')"
   if echo "${threads_part}" | grep -q '"isResolved":false'; then
     echo "REVIEW THREADS (unresolved):"
   fi
+  gh_api_format_unresolved_threads "${json}"
+}
+
+# Unresolved inline review threads from a raw reviews payload (stdin).
+# Output: one "- [comment <id> by <author>] <body>" line per comment of an
+# unresolved thread, nothing when every thread is resolved (or there are none).
+# The comment id is what a reply is posted against (the agent answers the
+# reviewer in-thread; see the feedback round in bin/conahcnuj.sh), so the
+# summary names it. Split out so the initial context of a run can quote the
+# feedback that is still open without dragging the rest of the review state
+# along; collect_initial_context in bin/conahcnuj.sh is the caller.
+gh_api_unresolved_threads() {
+  local json
+  json="$(gh_api_read_line)"
+  gh_api_format_unresolved_threads "${json}"
+}
+
+# Shared formatter for the two callers above: walk each unresolved thread and
+# print every comment with the numeric id a reply would target. Comments that
+# carry no id (an older/parsed-down payload) still print their body.
+gh_api_format_unresolved_threads() {
+  local json="${1}" threads_part tn
+  threads_part="$(printf '%s' "${json}" | sed -n 's/.*"reviewThreads":{"nodes":\(.*\)/\1/p')"
   while IFS= read -r tn; do
     [[ -z "${tn}" ]] && continue
-    local tbd
-    tbd="$(printf '%s' "${tn}" | grep -oE '"body":"[^"]*"' | sed 's/"body":"//; s/"$//' | tr '\n' ' ')"
-    printf -- '- %s\n' "${tbd}"
+    local cn cid ca cb printed="false"
+    while IFS= read -r cn; do
+      [[ -z "${cn}" ]] && continue
+      cid="$(gh_api_json_num "${cn}" "databaseId")"
+      ca="$(gh_api_json_str "${cn}" "login")"
+      cb="$(gh_api_json_str "${cn}" "body")"
+      [[ -n "${cb}" ]] || cb="(no body)"
+      printed="true"
+      if [[ -n "${cid}" ]]; then
+        printf -- '- [comment %s by %s] %s\n' "${cid}" "${ca:-unknown}" "${cb}"
+      else
+        printf -- '- %s\n' "${cb}"
+      fi
+    done < <(printf '%s' "${tn}" | grep -oE '\{"databaseId":[0-9]+,"body":"[^"]*","author":\{"login":"[^"]*"\}' || true)
+    if [[ "${printed}" != "true" ]]; then
+      local bn
+      while IFS= read -r bn; do
+        [[ -z "${bn}" ]] && continue
+        printf -- '- %s\n' "${bn}"
+      done < <(printf '%s' "${tn}" | grep -oE '"body":"[^"]*"' | sed 's/"body":"//; s/"$//' || true)
+    fi
   done < <(printf '%s' "${threads_part}" | grep -oE '\{"isResolved":false,"comments":\{"nodes":\[[^]]*\]' || true)
 }
 
@@ -522,9 +590,12 @@ gh_api_review_summary() {
 # Returns empty when there is no reviewer feedback to act on, so a poll of the
 # initial "waiting for review" state (reviewDecision=REVIEW_REQUIRED or empty,
 # no reviews/comments/threads) is never mistaken for fresh feedback.
+# Comments carry their author, so the bot's own replies are dropped before the
+# hash: they are review comments too, and counting them would let a reply look
+# like fresh reviewer feedback (the driver would answer its own answer forever).
 gh_api_review_fingerprint() {
   local raw="${1}" matches="" decision=""
-  matches="$(printf '%s' "${raw}" | grep -oE '\{"state":"[^"]*","body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*"|"isResolved":(true|false)' | grep -v '"body":"<!-- conahcnuj-continuation -->' || true)"
+  matches="$(printf '%s' "${raw}" | grep -oE '\{"state":"[^"]*","body":"[^"]*","author":\{"login":"[^"]*"\}|\{"databaseId":[0-9]+,"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*"|"isResolved":(true|false)' | grep -v '\[bot\]' | grep -v '"body":"<!-- conahcnuj-continuation -->' || true)"
   if [[ -z "${matches}" ]]; then
     # Only a decision that means "do work now" counts as feedback on its own;
     # REVIEW_REQUIRED / empty just mean "waiting for reviewers".
@@ -575,12 +646,20 @@ gh_api_create_branch() {
   gh_api_call POST "https://api.github.com/repos/${owner}/${repo}/git/refs" "${body}"
 }
 
-# Create a PR. Output: PR number. Args: owner repo title body head base
+# Create a PR. Output: PR number. Args: owner repo title body head base [draft]
+# draft=true opens the PR as a draft, which is how the driver keeps an
+# unfinished issue from being presented as ready: while the coding agent's
+# per-issue TODO.md is still in the tree, the PR is created as a draft and only
+# marked ready once the file is gone (see bin/conahcnuj.sh).
 # The createPullRequest mutation requires the repository node id (it rejects
 # repositoryNameWithOwner), so this first resolves the id with one extra
 # GraphQL query. In test mode that consumes one extra mock line.
 gh_api_create_pr() {
-  local owner="${1}" repo="${2}" title="${3}" body="${4}" head="${5}" base="${6}"
+  local owner="${1}" repo="${2}" title="${3}" body="${4}" head="${5}" base="${6}" draft="${7:-false}"
+  local draft_field=""
+  if [[ "${draft}" == "true" ]]; then
+    draft_field=", draft: true"
+  fi
 
   local id_query="query(\$owner: String!, \$repo: String!) { repository(owner: \$owner, name: \$repo) { id } }"
   local id_json
@@ -597,7 +676,7 @@ gh_api_create_pr() {
   fi
 
   local query
-  query="mutation { createPullRequest(input: { repositoryId: \"${repo_id}\", headRefName: \"$(gh_api_escape "${head}")\", baseRefName: \"$(gh_api_escape "${base}")\", title: \"$(gh_api_escape "${title}")\", body: \"$(gh_api_escape "${body}")\" }) { pullRequest { number } } }"
+  query="mutation { createPullRequest(input: { repositoryId: \"${repo_id}\", headRefName: \"$(gh_api_escape "${head}")\", baseRefName: \"$(gh_api_escape "${base}")\", title: \"$(gh_api_escape "${title}")\", body: \"$(gh_api_escape "${body}")\"${draft_field} }) { pullRequest { number } } }"
 
   local json
   if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
@@ -606,6 +685,37 @@ gh_api_create_pr() {
     json="$(gh_api_graphql "${query}")"
   fi
   gh_api_json_num "${json}" "number"
+}
+
+# Mark a draft PR ready for review, the undo of creating it as a draft. REST:
+# POST /repos/{owner}/{repo}/pulls/{number}/ready_for_review. Args: owner repo pr
+gh_api_ready_pr() {
+  local owner="${1}" repo="${2}" number="${3}"
+  gh_api_call POST "https://api.github.com/repos/${owner}/${repo}/pulls/${number}/ready_for_review" >/dev/null
+}
+
+# Convert a PR back to draft. There is no REST endpoint for this, so it goes
+# through the convertPullRequestToDraft GraphQL mutation, which needs the PR
+# node id (resolved with one extra query). Args: owner repo pr
+gh_api_convert_pr_to_draft() {
+  local owner="${1}" repo="${2}" number="${3}" id_json pr_id query
+  local id_query="query { repository(owner: \"${owner}\", name: \"${repo}\") { pullRequest(number: ${number}) { id } } }"
+  if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
+    id_json="$(gh_api_read_line)"
+  else
+    id_json="$(gh_api_graphql "${id_query}")"
+  fi
+  pr_id="$(gh_api_json_str "${id_json}" "id")"
+  if [[ -z "${pr_id}" ]]; then
+    echo "ERROR: could not resolve the node id of PR #${number} to convert it to a draft." >&2
+    return 1
+  fi
+  query="mutation { convertPullRequestToDraft(input: {pullRequestId: \"${pr_id}\"}) { pullRequest { isDraft } } }"
+  if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
+    gh_api_read_line >/dev/null
+  else
+    gh_api_graphql "${query}" >/dev/null
+  fi
 }
 
 # Update a PR's body so it stays in sync with the linked issue. Args: owner repo pr body

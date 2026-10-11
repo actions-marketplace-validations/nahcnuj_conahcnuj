@@ -2,27 +2,32 @@
 # conahcnuj - issue-driven autonomous development driver.
 #
 # Resolves a GitHub issue (or resumes a pull request) end-to-end. The coding
-# agent's part is the change in the working tree; the driver creates everything
-# that needs GitHub (the branch, the commit, the push, the pull request and the
-# review request). The agent only labels its work: it writes the commit message
-# (.commit-msg) and may choose the feature branch name (.branch-name; when the
-# agent leaves none out, the driver picks one). A PR number given on the command
-# line is detected and resumed automatically:
+# agent's part is the change in the working tree and the answers it writes in
+# review threads; the driver creates the branch, the commit, the push, the pull
+# request and the review request. The agent labels its work: it writes the commit
+# message (.commit-msg) and may choose the feature branch name (.branch-name;
+# when the agent leaves none out, the driver picks one). A PR number given on
+# the command line is detected and resumed automatically:
 #   1. checks out the latest default branch and implements the issue with
 #      opencode (handing the same session and working tree to another model
 #      when one fails), committing only with the agent's .commit-msg
-#   2. opens a PR, waits until every non-reviewer constraint (CI checks,
-#      mergeability) passes, then assigns the repository owner as reviewer.
-#      That hand-off to a human is the last thing a run owes the PR, so the
-#      driver exits there; an already APPROVED PR exits earlier as "ready to
-#      merge". Never auto-merges. The request is retried once, and the PR is
-#      read back before a hand-off is called lost; only a PR that GitHub says
-#      has nobody asked fails the run, while a hand-off that cannot be verified
-#      at all ends the run with a warning (issues #134 / #139).
-#   3. when the run was resumed with fresh review feedback (comments /
-#      requested changes / security-review threads), addresses it, pushes a
-#      Verified commit, re-verifies the non-reviewer constraints, replies on
-#      the PR and re-requests review before exiting
+#   2. opens a PR, then verifies the non-reviewer constraints (mergeability
+#      first, then CI checks) and fixes whatever fails. Only after they pass
+#      does it ask the repository owner for review, so a human is handed a PR
+#      whose branch already merges and whose CI is green, not one that might
+#      still break. That hand-off to a human is the last thing a run owes the
+#      PR, so the driver exits then; an already APPROVED PR exits earlier as
+#      "ready to merge". Never auto-merges. The request is retried once, and
+#      the PR is read back before a hand-off is called lost; only a PR that
+#      GitHub says has nobody asked fails the run, while a hand-off that cannot
+#      be verified at all ends the run with a warning (issues #134 / #139).
+#   3. when the run was resumed with review feedback (comments / requested
+#      changes / unresolved review threads), addresses it first, before waiting
+#      on the non-reviewer constraints: a PR with open threads cannot reach
+#      those constraints until the threads are answered, so polling first only
+#      stalls (#219). It pushes a Verified commit, re-requests review (the agent
+#      answers the reviewer in the thread itself, so the driver posts no reply
+#      of its own), re-verifies the non-reviewer constraints and exits
 #   4. on an abnormal exit (timeout, no model completed the work, unexpected
 #      errors) automatically files a bug report issue in the repository so a
 #      run the driver could not resolve is never silently lost. The report
@@ -43,6 +48,12 @@
 #                            the model id it recorded
 #   CONAHCNUJ_OPENCODE_LOG_LEVEL  opencode --log-level for the run
 #                            (default: WARN; DEBUG to debug a failing model)
+#   CONAHCNUJ_CONTEXT_FILES  space-separated checkout files whose contents are
+#                            collected into the prompt alongside the issue
+#                            (default: README.md AGENTS.md; empty sends none)
+#   CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS  poll interval of the rate-limit
+#                            watchdog that stops a round when the provider
+#                            reports a rate limit (default: 1 s)
 #
 # Polling honours GitHub rate limits: API retries wait on Retry-After /
 # X-RateLimit-Reset headers (lib/rate-limit.sh), and poll loops sleep with
@@ -93,6 +104,26 @@ PR_CONTINUATION_COMMENTED_FILE="${PR_CONTINUATION_COMMENTED_FILE:-$(mktemp)}"
 # assignment. log_review_handoff words its final line after it, so the run log
 # never claims a review request the run could not verify.
 REVIEW_HANDOFF_CONFIRMED="true"
+
+# What collect_initial_context gathered for this run (unresolved review threads
+# of a resumed PR, the orientation files of the checkout). The issue / PR body
+# is always in the prompt by itself; this is the rest of the deterministically
+# collectable material, set once per run after the branch checkout and handed
+# to every fresh prompt through implement().
+COLLECTED_CONTEXT=""
+
+# Where the driver remembers models a round proved to be permanently gone
+# (deprecated, removed, unavailable). The default is a file committed to the
+# repository so the knowledge survives across runs -- including a fresh CI
+# checkout that has none of the last run's process state. A run reads it before
+# every round and appends to it when a round proves a model is gone, so a dead
+# model is never tried (nor logged) again (#209). Overridable for tests and for
+# a driver installed away from its repository.
+MISSING_MODELS_FILE="${CONAHCNUJ_MISSING_MODELS_FILE:-${HERE}/../gh-app/missing-models}"
+
+# Models a round has shown to be permanently gone, space-separated (loaded from
+# MISSING_MODELS_FILE and extended at runtime). Consulted before every round.
+OPENCODE_DEAD_MODELS=""
 
 # True once the per-process PR body sync has already run.
 pr_body_synced() {
@@ -157,8 +188,14 @@ driver_needs_relaunch() {
 # /c/... private key path, the Windows credential helper, opencode) sees the
 # path space it was written for. Passes the script back to Git Bash as a
 # Windows path (wslpath -m) and keeps the original arguments.
+#
+# Git Bash runs as a child, not via exec: the Windows console delivers Ctrl-C
+# to this WSL shell (the process PowerShell started), while an exec'd interop
+# process no longer reliably receives that interrupt, so Ctrl-C looked
+# ineffective (issue #203). Staying alive lets us pass the cancellation on.
+# A non-interactive async child ignores SIGINT, so TERM is what stops it.
 driver_relaunch() {
-  local bash_exe bash_mnt self self_win
+  local bash_exe bash_mnt self self_win child rc
   bash_exe="$(driver_bash_exe)"
   bash_mnt="$(wslpath -u "${bash_exe}")"
   self="${0}"
@@ -175,7 +212,14 @@ driver_relaunch() {
     return 1
   fi
   echo "Re-launching under ${bash_exe} so the GitHub App paths resolve." >&2
-  exec "${bash_mnt}" "${self_win}" "$@"
+  "${bash_mnt}" "${self_win}" "$@" &
+  child=$!
+  trap 'kill -TERM "${child}" 2>/dev/null || true' INT TERM
+  rc=0
+  wait "${child}" || rc=$?
+  wait "${child}" 2>/dev/null || true
+  trap - INT TERM
+  exit "${rc}"
 }
 
 # --- helpers ----------------------------------------------------------------
@@ -194,11 +238,19 @@ repo_detect() {
   printf '%s' "${url}" | sed -E 's#.*github\.com[:/]##; s#\.git$##'
 }
 
-check_timeout() {
+# True when the overall time budget is exhausted. Split out from check_timeout
+# so drive() can word the exhaustion differently once the PR is with the
+# reviewer: running out of time while waiting for a human is not a driver
+# failure, so that run ends cleanly instead of filing a bug report.
+time_budget_exhausted() {
   local now elapsed
   now="$(date +%s)"
   elapsed=$((now - START_TIME))
-  if [[ ${elapsed} -ge ${MAX_DURATION} ]]; then
+  [[ ${elapsed} -ge ${MAX_DURATION} ]]
+}
+
+check_timeout() {
+  if time_budget_exhausted; then
     echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
     exit 1
   fi
@@ -212,6 +264,17 @@ workdir_changed() {
   local dir="${1}" changes
   changes="$(git -C "${dir}" status --porcelain 2>/dev/null | grep -v '\.commit-msg' | grep -v '\.branch-name' || true)"
   [[ -n "${changes}" ]]
+}
+
+# Whether the per-issue progress file TODO.md is still in the working tree. The
+# coding agent creates it when it starts an issue, updates it as the work
+# proceeds and deletes it once the issue is resolved and ready to hand over
+# (AGENTS.md tells it so). Its lifetime is the issue's, so the driver keys the
+# PR's draft state on it: while the file is present the PR is a draft and is
+# never handed to the reviewer, which is what keeps an unfinished issue from
+# being presented as a non-draft (ready) pull request.
+todo_present() {
+  [[ -f "TODO.md" ]]
 }
 
 # True when the current branch already carries commits on top of the default
@@ -468,6 +531,15 @@ report_bug_on_exit() {
     run_log_cleanup
     return 0
   fi
+  # 130 (SIGINT) / 143 (SIGTERM): the user stopped the run on purpose (Ctrl-C in
+  # PowerShell sends the interrupt through the WSL relaunch as a TERM). That is
+  # not a driver defect, so it must not file a bug report (issue #203).
+  if [[ "${code}" == "130" || "${code}" == "143" ]]; then
+    echo "Interrupted (exit ${code}); not filing a bug report." >&2
+    BUG_REPORTED="1"
+    run_log_cleanup
+    return 0
+  fi
   if [[ -z "${owner}" || -z "${repo}" ]]; then
     echo "WARNING: abnormal exit (${code}) but no owner/repo is known; skipping the bug report." >&2
     BUG_REPORTED="1"
@@ -634,7 +706,94 @@ resolve_agent_branch_name() {
   printf '%s\n' "${want}"
 }
 
+# --- collected context ------------------------------------------------------
+
+# Gather the material the first model round would otherwise have to look up
+# itself, so a run starts from what is already known: the review threads a
+# resumed PR still has open, and the orientation files of the checkout
+# (README.md / AGENTS.md by default; CONAHCNUJ_CONTEXT_FILES takes a
+# space-separated list, an explicitly empty value sends no files). Only
+# deterministically collectable information goes in - the prompt labels it
+# Collected context and shows it as data, never as instruction, so the agent
+# contract stays the single paragraph that says how to work. Read after the
+# branch checkout: the files must come from the head the agent will work on.
+# Args: owner repo [pr]. Prints the sections; empty when there is nothing.
+collect_initial_context() {
+  local owner="${1}" repo="${2}" pr="${3:-}"
+  local out="" labels="" rv payload raw threads
+  if [[ -n "${pr}" ]]; then
+    rv="$(gh_api_fetch_reviews "${owner}" "${repo}" "${pr}")"
+    payload="$(printf '%s' "${rv}" | cut -d'|' -f2)"
+    raw="$(gh_api_unb64 "${payload}")"
+    threads="$(printf '%s' "${raw}" | gh_api_unresolved_threads)"
+    if [[ -n "${threads}" ]]; then
+      out="Unresolved review threads on PR #${pr}:
+${threads}"
+      labels="unresolved review threads of PR #${pr}"
+    fi
+  fi
+
+  local file_list file content
+  # No colon in the expansion: an explicitly empty CONAHCNUJ_CONTEXT_FILES
+  # means "collect no files at all", while an unset one keeps the default.
+  file_list="${CONAHCNUJ_CONTEXT_FILES-README.md AGENTS.md}"
+  while IFS= read -r file; do
+    [[ -f "${file}" ]] || continue
+    content="$(cat -- "${file}")"
+    [[ -n "${content}" ]] || continue
+    if [[ -n "${out}" ]]; then
+      out="${out}
+
+"
+    fi
+    out="${out}${file}:
+${content}"
+    labels="${labels:+${labels}, }${file}"
+  done < <(printf '%s\n' "${file_list}" | tr ' ' '\n')
+
+  echo "Collected context up front: ${labels:-nothing}" >&2
+  printf '%s\n' "${out}"
+}
+
 # --- implementation ---------------------------------------------------------
+
+# Load the persistently-remembered dead models into OPENCODE_DEAD_MODELS.
+# One provider/model per line; blank lines and #-comments are ignored. Additive
+# and idempotent, so implement() can call it every round without duplicating.
+load_missing_models() {
+  [[ -f "${MISSING_MODELS_FILE}" ]] || return 0
+  local line
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%%#*}"
+    line="${line//[[:space:]]/}"
+    [[ -n "${line}" ]] || continue
+    case " ${OPENCODE_DEAD_MODELS} " in
+      *" ${line} "*) ;;
+      *) OPENCODE_DEAD_MODELS="${OPENCODE_DEAD_MODELS} ${line}" ;;
+    esac
+  done < "${MISSING_MODELS_FILE}"
+}
+
+# Whether a model is remembered as permanently gone (exact match).
+is_missing_model() {
+  local model="${1}"
+  [[ -n "${model}" ]] || return 1
+  [[ " ${OPENCODE_DEAD_MODELS} " == *" ${model} "* ]]
+}
+
+# Remember a model a round proved permanently gone: skip it for the rest of
+# this process and append it to the committed list so the next run (a fresh CI
+# checkout) skips it before spending a round on it (#209). Only a file that
+# already exists is written to: a repository that never opted into the list
+# must not have one created for it by a run. Appending to a tracked file makes
+# the knowledge part of the run's own commit.
+persist_missing_model() {
+  local model="${1}"
+  is_missing_model "${model}" || OPENCODE_DEAD_MODELS="${OPENCODE_DEAD_MODELS} ${model}"
+  [[ -f "${MISSING_MODELS_FILE}" ]] || return 0
+  grep -qxF "${model}" "${MISSING_MODELS_FILE}" 2>/dev/null && return 0
+  printf '%s\n' "${model}" >> "${MISSING_MODELS_FILE}" 2>/dev/null || true
+}
 
 # Run opencode until one model completes the work. A failed model hands its
 # session and working tree to the next model. Records tried models and handoffs.
@@ -647,19 +806,42 @@ resolve_agent_branch_name() {
 # are skipped. When every failure was environmental, the run ends with that
 # diagnosis and the bug report says so, instead of blaming the driver for an
 # environment that was down all along (#149).
+#
+# A round cut short by a provider rate limit (#155) is the opposite case: the
+# provider works, its quota is just spent, so its other models stay in the pool
+# and the next model is picked up immediately instead of waiting out opencode's
+# retry backoff.
+#
+# A round that dies because the model itself is gone (deprecated, removed,
+# unavailable) says nothing about the provider: only that model is remembered
+# as dead -- in MISSING_MODELS_FILE too, so later runs skip it up front instead
+# of spending a round (and a log full of errors) on it (#209).
 implement() {
   local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
   local dead_providers="" failed_rounds=0 env_failed_rounds=0 ran_without_failure=0
+  local model_list known_skipped=""
   ENVIRONMENT_DOWN="0"
   workdir="$(pwd)"
   echo "Implementing with available models..." >&2
   OPENCODE_USED_MODELS=""
   OPENCODE_HANDOFFS=""
   OPENCODE_SESSION_ID=""
-  for model in $(opencode_get_models); do
+  load_missing_models
+  model_list="$(opencode_get_models)"
+  for model in ${model_list}; do
+    [[ -z "${model}" ]] && continue
+    is_missing_model "${model}" && known_skipped="${known_skipped} ${model}"
+  done
+  [[ -n "${known_skipped}" ]] && echo "Skipping models remembered as permanently unavailable:${known_skipped}" >&2
+  for model in ${model_list}; do
     [[ -z "${model}" ]] && continue
     check_timeout
     provider="${model%%/*}"
+    # A model a previous round (this run or a past one) proved gone is not even
+    # tried: no round, no error in the log.
+    if is_missing_model "${model}"; then
+      continue
+    fi
     if [[ " ${dead_providers} " == *" ${provider} "* ]]; then
       echo "Skipping ${model}: provider ${provider} already failed on an environment error, and no other of its models can change that." >&2
       continue
@@ -674,7 +856,7 @@ implement() {
       echo "Session handoff was unavailable after ${previous_model}; ${model} will continue from the working tree." >&2
     fi
     run_failed="false"
-    if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}"; then
+    if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}" "${COLLECTED_CONTEXT}"; then
       run_failed="true"
     fi
     OPENCODE_USED_MODELS="${OPENCODE_USED_MODELS}${model} "
@@ -691,10 +873,15 @@ implement() {
     previous_model="${model}"
     if [[ "${run_failed}" == "true" ]]; then
       failed_rounds=$((failed_rounds + 1))
-      if [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
+      if [[ "${OPENCODE_ROUND_MODEL_GONE}" == "true" ]]; then
+        persist_missing_model "${model}"
+        echo "Model ${model} failed before completing the work: the model itself is gone (deprecated / removed / unavailable); remembering it as unavailable and skipping it from now on." >&2
+      elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
         env_failed_rounds=$((env_failed_rounds + 1))
         dead_providers="${dead_providers} ${provider}"
         echo "Model ${model} failed before completing the work: environment error (provider unreachable or credentials rejected); giving up on provider ${provider} for the rest of this run." >&2
+      elif [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
+        echo "Model ${model} hit a rate limit; trying the next model without waiting for the retry." >&2
       else
         echo "Model ${model} failed before completing the work; handing off to the next model." >&2
       fi
@@ -743,7 +930,7 @@ strip_closing_references() {
 # The update runs at most once per driver process (PR_BODY_SYNCED_FILE) to avoid
 # a PATCH on every poll iteration. Outputs PR number.
 ensure_pr() {
-  local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}"
+  local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" draft="${9:-false}"
   local pr_body
   # A resumed PR that is not linked to any issue must keep its body verbatim;
   # prefixing it with a bare "Closes #" would produce a malformed description.
@@ -781,12 +968,16 @@ ${body}"
     return 0
   fi
   local num
-  num="$(gh_api_create_pr "${owner}" "${repo}" "${title}" "${pr_body}" "${branch}" "${base}")"
+  num="$(gh_api_create_pr "${owner}" "${repo}" "${title}" "${pr_body}" "${branch}" "${base}" "${draft}")"
   if [[ -z "${num}" ]]; then
     echo "ERROR: PR creation failed for ${branch} -> ${base}." >&2
     return 1
   fi
-  echo "Created PR #${num} (${branch} -> ${base})." >&2
+  if [[ "${draft}" == "true" ]]; then
+    echo "Created draft PR #${num} (${branch} -> ${base}): TODO.md is still present, so the issue is not ready to hand over." >&2
+  else
+    echo "Created PR #${num} (${branch} -> ${base})." >&2
+  fi
   printf '%s\n' "${num}"
 }
 
@@ -799,7 +990,16 @@ poll_conditions() {
   while true; do
     check_timeout
     local cond state mergeable mss pr_state
-    cond="$(gh_api_fetch_pr_conditions "${owner}" "${repo}" "${pr}")"
+    # A conditions call that failed is a transport problem, not a verdict on
+    # the PR: retry it. Reading the failure as an empty payload used to coerce
+    # the checks to SUCCESS and let the driver assume MERGEABLE, so a PR whose
+    # merge state was never actually observed was reported as passing (issue
+    # #253).
+    if ! cond="$(gh_api_fetch_pr_conditions "${owner}" "${repo}" "${pr}")"; then
+      echo "PR #${pr}: could not read constraints; retrying." >&2
+      rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      continue
+    fi
     state="$(printf '%s' "${cond}" | cut -d'|' -f1)"
     mergeable="$(printf '%s' "${cond}" | cut -d'|' -f2)"
     mss="$(printf '%s' "${cond}" | cut -d'|' -f3)"
@@ -823,16 +1023,15 @@ poll_conditions() {
       echo "All non-reviewer constraints pass." >&2
       return 0
     fi
-    # Fallback: if checks pass but mergeable is empty (API parsing issue),
-    # assume mergeable since CI passes.
-    if [[ "${state}" == "SUCCESS" && -z "${mergeable}" ]]; then
-      echo "Checks pass but mergeable state unknown; assuming MERGEABLE." >&2
-      return 0
-    fi
     if [[ "${state}" == "FAILURE" || "${state}" == "ERROR" || "${mergeable}" == "CONFLICTING" || "${mss}" == "DIRTY" ]]; then
       echo "Constraints require changes (state=${state} mergeable=${mergeable})." >&2
       return 1
     fi
+    # Anything else (checks still running, mergeable UNKNOWN, or a mergeable
+    # state the API has not computed yet) is "not known to pass": keep polling
+    # rather than assume the PR is mergeable. GitHub computes mergeability
+    # asynchronously, so UNKNOWN is normal right after a push and resolves on a
+    # later poll.
     rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
   done
 }
@@ -928,14 +1127,37 @@ log_review_handoff() {
 # --- review fingerprint -----------------------------------------------------
 
 # Main state machine. Handles both the fresh-issue path and the resume path.
-# Never auto-merges, and never waits for an approval: it exits once the review
-# request is on the PR ("ready to merge" when the PR is already APPROVED).
+# Never auto-merges, but does take the PR to the owner's approval: it asks for
+# review, then keeps polling for the verdict (addressing new feedback, waiting
+# otherwise) and exits once the PR is approved.
 drive() {
-  local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}"
+  local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" initial_draft="${9:-false}"
   local last_sig=""
+  # Whether the PR is currently a draft. The driver keeps it in sync with the
+  # per-issue TODO.md: created as a draft while the file exists, marked ready
+  # once it is gone (see the TODO.md gate below). A resumed PR's state comes
+  # from resume_pr (its isDraft field); a fresh one is set right after
+  # ensure_pr creates it.
+  local pr_draft="${initial_draft}"
+  # Whether this run has already handed the PR to the owner by asking for a
+  # review, and is now only waiting for the verdict. Once true the driver never
+  # asks again until new review feedback makes it work a fresh round: the job is
+  # to take the PR to the owner's approval, not to stop at the request.
+  local handed_off="false"
 
   while true; do
-    check_timeout
+    # The budget expired. Once the PR is with the reviewer, that is simply a
+    # human who has not answered yet, so end cleanly (the pull_request_review
+    # trigger starts the next run and the merge workflow chains off the
+    # approval); before the hand-off it is a real failure worth a bug report.
+    if time_budget_exhausted; then
+      if [[ "${handed_off}" == "true" ]]; then
+        echo "PR #${pr}: the time budget is exhausted while waiting for the reviewer's decision; the PR is complete and waits for a human." >&2
+        exit 0
+      fi
+      echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
+      exit 1
+    fi
 
     # Commit leftovers from a previously interrupted run. Only possible while
     # the interrupted run's agent had already written its .commit-msg: the
@@ -951,7 +1173,16 @@ drive() {
       continue
     fi
 
-    if ! pr="$(ensure_pr "${owner}" "${repo}" "${pr}" "${branch}" "${base}" "${title}" "${body}" "${closes}")"; then
+    # The PR is a draft exactly while the per-issue TODO.md is present: the
+    # agent's progress file outlives the issue only if the issue is unfinished,
+    # and a draft cannot be handed to the reviewer, so an unfinished issue can
+    # never be presented as a ready (non-draft) PR. want_draft is the state this
+    # iteration wants; pr_draft tracks what the PR actually is.
+    local want_draft="false" creating="false"
+    todo_present && want_draft="true"
+    [[ -n "${pr}" ]] || creating="true"
+
+    if ! pr="$(ensure_pr "${owner}" "${repo}" "${pr}" "${branch}" "${base}" "${title}" "${body}" "${closes}" "${want_draft}")"; then
       # PR creation failed (GitHub refuses a PR with no diff between base and
       # head, a vanished head ref, ...). There is nothing to gain by retrying
       # as-is, so run an implementation round to give the branch real work and
@@ -962,7 +1193,10 @@ drive() {
       if implement "${title}" "${body}" "The pull request for ${branch} could not be opened; GitHub rejects a PR with no changes between the branches. Make a real change so the PR can be created."; then
         produced_change="true"
       fi
-      if workdir_changed "$(pwd)"; then
+      # Only a round that both changed the tree AND named the commit may be
+      # committed: a failed round can leave a dirty tree without a .commit-msg,
+      # and the driver must not crash on it (it never invents a message).
+      if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
         produced_change="true"
       fi
@@ -972,6 +1206,11 @@ drive() {
       fi
       continue
     fi
+    # A PR this iteration created carries the wanted draft state (ensure_pr used
+    # want_draft); a reused one keeps whatever state it already had.
+    if [[ "${creating}" == "true" ]]; then
+      pr_draft="${want_draft}"
+    fi
 
     if ! pr_continuation_commented; then
       if post_pr_continuation_comment "${owner}" "${repo}" "${pr}"; then
@@ -979,34 +1218,61 @@ drive() {
       fi
     fi
 
-    if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
-      # CI failed or the branch conflicts: implement again with that context.
-      # When no model produces a change there is nothing new to push, so back
-      # off before re-checking instead of hammering every model in a tight loop
-      # (poll_conditions returns immediately on FAILURE).
-      echo "PR #${pr}: constraints failing; fixing with a new implementation round." >&2
-      local produced_change="false"
-      if implement "${title}" "${body}" "The pull request's CI / merge constraints are currently failing. Fix whatever breaks them."; then
-        produced_change="true"
+    # --- TODO.md gate ---
+    # TODO.md is the coding agent's per-issue progress file: present while the
+    # issue is unfinished, deleted when it is resolved and ready for review. It
+    # gates the hand-off: while it is present the PR stays a draft and no review
+    # is requested, and the agent gets another round to finish (and delete it).
+    # Once it is gone the PR is marked ready and the normal hand-off runs. This
+    # makes "the issue is done" a property of the work tree, not a claim in a
+    # chat message, so an unfinished issue cannot be presented as ready.
+    if [[ "${want_draft}" == "true" ]]; then
+      if [[ "${pr_draft}" != "true" ]]; then
+        echo "PR #${pr} is not a draft while TODO.md is present; converting it back to a draft." >&2
+        gh_api_convert_pr_to_draft "${owner}" "${repo}" "${pr}" || echo "WARNING: could not convert PR #${pr} to a draft; continuing without requesting review." >&2
+        pr_draft="true"
       fi
-      if workdir_changed "$(pwd)"; then
+      echo "TODO.md is still present; the issue is not finished. Keeping PR #${pr} a draft and continuing the work." >&2
+      local todo_change="false"
+      if implement "${title}" "${body}" "The per-issue progress file TODO.md is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.md current, and delete it once the issue is fully resolved and the pull request is ready for review."; then
+        todo_change="true"
+      fi
+      # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
+      # committed; a failed round never crashes the driver.
+      if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
-        produced_change="true"
+        todo_change="true"
       fi
-      if [[ "${produced_change}" != "true" ]]; then
-        echo "No model completed work for the failing constraints; backing off before re-checking." >&2
+      if [[ "${todo_change}" != "true" ]]; then
+        echo "No model produced a change to finish the issue; backing off before retrying." >&2
         rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
       fi
       continue
     fi
 
-    echo "PR #${pr}: non-reviewer constraints satisfied." >&2
+    # TODO.md is gone: the issue is finished, so a draft can become a real PR.
+    # Only the driver lifts the draft, never the agent, and only once the file
+    # is actually deleted from the branch head.
+    if [[ "${pr_draft}" == "true" ]]; then
+      echo "TODO.md is gone; marking PR #${pr} ready for review." >&2
+      gh_api_ready_pr "${owner}" "${repo}" "${pr}" || echo "WARNING: could not mark PR #${pr} ready for review; continuing." >&2
+      pr_draft="false"
+    fi
 
-    # --- review phase ---
-    # Asking for review is what a run hands over to a human, so the review
-    # request (not an approval) is the last thing the driver produces. The
-    # approval, and the merge owner-approved-auto-merge chains off it, are the
-    # reviewer's part to give: the driver reports and exits instead of polling.
+    # --- review feedback phase ---
+    # Address the review feedback (open threads / requested changes) BEFORE
+    # waiting on the non-reviewer constraints. A PR that still has unresolved
+    # review threads, or that waits on required conversation resolution, cannot
+    # reach the constraints the poll below waits for until those threads are
+    # answered, so polling first only burns the time budget while the known
+    # feedback sits untouched (#219). The round runs even while checks are still
+    # PENDING: any commit it makes restarts CI, which is re-verified below.
+    #
+    # The run's job is the owner's approval, not the review request: asking for
+    # review hands the PR to a human, but the driver then keeps polling for the
+    # verdict instead of stopping. An approval ends the run (the merge workflow
+    # chains off it); new feedback loops back into this phase to be addressed;
+    # while nothing changes it waits, below, without re-asking.
     local rv decision payload raw summary sig actionable
     rv="$(gh_api_fetch_reviews "${owner}" "${repo}" "${pr}")"
     decision="$(printf '%s' "${rv}" | cut -d'|' -f1)"
@@ -1028,36 +1294,95 @@ drive() {
 
     if [[ "${actionable}" == "true" && -n "${sig}" && "${sig}" != "${last_sig}" ]]; then
       last_sig="${sig}"
+      # A fresh round invalidates the previous hand-off: the owner has to be
+      # asked again once this round's work passes the constraints, and until
+      # then the driver must keep driving rather than wait.
+      handed_off="false"
       echo "New review feedback detected; addressing it." >&2
-      local addressed="false"
-      if implement "${title}" "${body}" "Address the pull request review feedback:
+      # The coding agent answers the reviewer in the thread itself (the reply
+      # endpoint and every thread comment id are in the summary), besides any
+      # code change the feedback asks for. The driver no longer posts its own
+      # "Addressed the review feedback" comment: the in-thread replies are how
+      # the reviewer learns what happened. Because the fingerprint drops
+      # bot-authored comments, those replies never look like fresh feedback.
+      local reply_help="Address the pull request review feedback. Reply in each unresolved thread below, saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread, and make code changes where the feedback asks for them."
+      if ! implement "${title}" "${body}" "${reply_help}
 
 ${summary}"; then
-        addressed="true"
+        echo "No working-tree change was produced for this feedback; keeping whatever thread replies were already made." >&2
       fi
-      if workdir_changed "$(pwd)"; then
+      # A round can fail after leaving a partial change and no .commit-msg (a
+      # provider outage mid-round is what filed issue #251). There is nothing
+      # the driver may commit, and refusing must not abort the run: it hands the
+      # PR back to the reviewer below and keeps driving.
+      if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
-        addressed="true"
       fi
-      if [[ "${addressed}" == "true" ]]; then
-        if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
-          echo "Constraints failing after addressing feedback; fixing next cycle." >&2
-          continue
-        fi
-        request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-        gh_api_post_comment "${owner}" "${repo}" "${pr}" "Addressed the review feedback:
-
-${summary}" >/dev/null || echo "WARNING: could not post the review-feedback reply on PR #${pr}." >&2
-        echo "Replied on PR #${pr} after addressing review feedback." >&2
-        log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-        exit 0
+      # Verify the non-reviewer constraints again before handing the PR back:
+      # the fix restarted CI, so the reviewer is only asked once the checks are
+      # green again (and the branch still merges), exactly as on the first
+      # hand-off.
+      if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
+        echo "Constraints failing after addressing feedback; fixing next cycle." >&2
+        continue
       fi
-      echo "No changes could be produced for this feedback; leaving the review request as it is." >&2
+      request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
+      log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+      handed_off="true"
+      continue
     fi
 
+    # --- wait for the reviewer phase ---
+    # The PR is complete and with the owner; the driver has already asked for
+    # review. Do not ask again: poll for the verdict. An approval is handled
+    # just above (it ends the run); new feedback loops back there to be
+    # addressed; while neither happens this keeps waiting, so the run takes the
+    # issue to the owner's approval instead of stopping at the request. A
+    # resumed run that finds the PR already requested and untouched comes here
+    # too, which is what lets it stay with the reviewer across restarts.
+    if [[ "${handed_off}" == "true" ]]; then
+      echo "PR #${pr}: waiting for the reviewer's decision." >&2
+      rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      continue
+    fi
+
+    # --- constraints phase ---
+    # Verify every non-reviewer constraint (mergeability, then CI checks)
+    # before asking the owner for review: the reviewer is handed a PR whose
+    # branch already merges and whose CI is green, not one that might still
+    # break. Whatever fails is fixed and the constraints are re-verified, so
+    # the hand-off only happens on a PR that is actually ready. A merged or
+    # closed PR ends the run inside poll_conditions itself.
+    if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
+      # CI failed or the branch conflicts: implement again with that context.
+      # When no model produces a change there is nothing new to push, so back
+      # off before re-checking instead of hammering every model in a tight loop
+      # (poll_conditions returns immediately on FAILURE).
+      echo "PR #${pr}: constraints failing; fixing with a new implementation round." >&2
+      local produced_change="false"
+      if implement "${title}" "${body}" "The pull request's CI / merge constraints are currently failing. Fix whatever breaks them."; then
+        produced_change="true"
+      fi
+      # Same rule as the feedback round: a dirty tree without a .commit-msg is
+      # no commit, never a crash; back off and re-check instead.
+      if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
+        commit_changes
+        produced_change="true"
+      fi
+      if [[ "${produced_change}" != "true" ]]; then
+        echo "No model completed work for the failing constraints; backing off before re-checking." >&2
+        rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      fi
+      continue
+    fi
+
+    echo "PR #${pr}: non-reviewer constraints satisfied." >&2
+    # The constraints pass, so the PR is ready for a human: hand it over. The
+    # run does not end here; the next loop iteration waits for the verdict.
     request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
     log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-    exit 0
+    handed_off="true"
+    continue
   done
 }
 
@@ -1083,6 +1408,10 @@ start_issue() {
   branch="$(next_free_branch "${owner}" "${repo}" "${base_branch}")"
   branch="$(ensure_issue_branch "${owner}" "${repo}" "${num}" "${title}" "${default_branch}" "${default_oid}" "${branch}")"
 
+  # Only after the checkout, so the files below are read from the head the
+  # agent will work on. An issue has no PR yet, hence no review threads.
+  COLLECTED_CONTEXT="$(collect_initial_context "${owner}" "${repo}")"
+
   # An earlier run may have already committed the implementation to this
   # branch. In that case there is nothing left to implement, so skip the
   # model fall-through and go straight to opening the PR for review. This is
@@ -1107,11 +1436,12 @@ start_issue() {
 
 resume_pr() {
   local owner="${1}" repo="${2}" pr="${3}"
-  local ps state title_b64 body_b64 head base closes title body
+  local ps state title_b64 body_b64 head base closes title body draft
   ps="$(gh_api_fetch_pr_state "${owner}" "${repo}" "${pr}")"
   state="$(printf '%s' "${ps}" | cut -d'|' -f2)"
   title_b64="$(printf '%s' "${ps}" | cut -d'|' -f3)"
   body_b64="$(printf '%s' "${ps}" | cut -d'|' -f4)"
+  draft="$(printf '%s' "${ps}" | cut -d'|' -f5)"
   head="$(printf '%s' "${ps}" | cut -d'|' -f9)"
   base="$(printf '%s' "${ps}" | cut -d'|' -f10)"
   closes="$(printf '%s' "${ps}" | cut -d'|' -f12)"
@@ -1149,7 +1479,14 @@ resume_pr() {
   esac
 
   ensure_pr_branch_head "${owner}" "${repo}" "${head}"
-  drive "${owner}" "${repo}" "${pr}" "${head}" "${base}" "${title}" "${body}" "${closes}"
+  # The PR's still-open review threads are gathered here, once, instead of
+  # waiting for the review phase to hand them over mid-run.
+  COLLECTED_CONTEXT="$(collect_initial_context "${owner}" "${repo}" "${pr}")"
+  # Pass the PR's current draft state so drive() knows whether closing the
+  # TODO.md gate has to lift the draft; an empty field (older payload) is not a
+  # draft.
+  [[ "${draft}" == "true" ]] || draft="false"
+  drive "${owner}" "${repo}" "${pr}" "${head}" "${base}" "${title}" "${body}" "${closes}" "${draft}"
 }
 
 main() {

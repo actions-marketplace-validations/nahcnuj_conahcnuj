@@ -3,7 +3,11 @@
 # Provides model enumeration and hands the same opencode session to the next
 # model when the current model cannot complete the work. A failed round sets
 # OPENCODE_ROUND_ENVIRONMENT, so the driver can tell "this provider is down"
-# apart from "this model is not good enough".
+# apart from "this model is not good enough". A round cut short by a provider
+# rate limit sets OPENCODE_ROUND_RATE_LIMITED: opencode sits out its own
+# retry backoff ("Rate limit exceeded. Please try again later.") with nothing
+# on stdout, so the driver stops the process and moves on without waiting
+# (#155).
 #
 # opencode's own output is a stream of JSON events; lib/opencode-render.sh
 # turns it into the driver's run log, one context header per block. The stream
@@ -25,6 +29,21 @@ OPENCODE_RENDER_SH="${OPENCODE_LIB_DIR}/opencode-render.sh"
 # is down" apart from "this model is not good enough" -- only the former says
 # anything about the provider's other models (#149).
 OPENCODE_ROUND_ENVIRONMENT="false"
+
+# Whether the round that just finished died because the model itself is gone:
+# the provider reports it as deprecated, removed, unavailable or otherwise
+# unknown. Unlike an environment error this is specific to one model, so the
+# driver remembers only that model as dead (never the whole provider) and skips
+# it in later rounds (#209). opencode_run sets it for every round.
+OPENCODE_ROUND_MODEL_GONE="false"
+
+# Whether the round that just finished was cut short by a provider rate limit.
+# opencode retries "Rate limit exceeded. Please try again later." with its own
+# exponential backoff, emitting nothing usable on stdout for minutes, so the
+# driver kills the process and tries the next model at once. Not an environment
+# error: the provider works, its quota is simply exhausted for now, so its
+# other models stay in the pool.
+OPENCODE_ROUND_RATE_LIMITED="false"
 
 # List available models, one per line. Test mode: $MOCK_OPENCODE_MODELS.
 opencode_get_models() {
@@ -48,16 +67,27 @@ EOF
 }
 
 # Build the implementation prompt for a single model run.
-# Args: issue_title issue_body [extra_context]
+# Args: issue_title issue_body [extra_context] [collected_context]
 # A fresh implementation round (no extra_context) also lets the agent choose
 # the feature branch via .branch-name; follow-up rounds (fix constraints,
 # review feedback) keep the existing branch, so the instruction is omitted.
+# collected_context is what the driver gathered deterministically before this
+# run (unresolved review threads of a resumed PR, README.md / AGENTS.md, ...)
+# and is appended as plain data: the contract below stays the only place that
+# says anything about how to work, so adding material must not read as another
+# instruction.
 opencode_build_prompt() {
-  local issue_title="${1}" issue_body="${2}" extra_context="${3:-}"
+  local issue_title="${1}" issue_body="${2}" extra_context="${3:-}" collected_context="${4:-}"
   local prompt
   prompt="Issue: ${issue_title}
 
 ${issue_body}"
+  if [[ -n "${collected_context}" ]]; then
+    prompt="${prompt}
+
+Collected context:
+${collected_context}"
+  fi
   if [[ -n "${extra_context}" ]]; then
     prompt="${prompt}
 
@@ -92,24 +122,70 @@ opencode_build_handoff_prompt() {
 # extractor would cut at the first escaped quote. Text events are ignored on
 # purpose -- a model that merely writes the words in its answer is not an
 # environment failure.
+# A model-level condition ("Model is unavailable", a model that has been
+# deprecated or does not exist) is NOT an environment error: it says nothing
+# about the provider's other models, so it must not drop the whole provider.
+# Such lines are filtered out before the environment patterns are matched, so
+# even a generic wrapper message ("Upstream request failed: Model is
+# unavailable.") that embeds both reads as the model being the problem.
 opencode_round_is_environment() {
   local file="${1}"
   [[ -f "${file}" ]] || return 1
   grep -F '"type":"error"' "${file}" 2>/dev/null |
+    grep -Evi 'model .*is unavailable|has been deprecated|model not found|no such model|unknown model|does not exist' |
+    grep -Evi 'rate limit|rate_limit|too many requests|please try again later|quota exceeded|usage limit|resource_exhausted|(^|[^0-9])429([^0-9]|$)' |
     grep -Eiq 'token refresh failed|invalid_grant|cannot connect to api|unable to connect|was there a typo in the url|transport error|fetch failed|endpoint is unavailable|upstream request failed|upstream error|service temporarily overloaded|socket connection|providerautherror|authenticationerror|unauthorized|enotfound|econnrefused|econnreset|etimedout|getaddrinfo'
+}
+
+# True when the round's error stream says the model itself is permanently gone:
+# the provider reports it as deprecated, removed, unavailable or otherwise
+# unknown. These are exactly the model-level lines opencode_round_is_environment
+# filters out, so a gone model never drops its whole provider. The driver uses
+# this to remember just that model as dead and skip it in later rounds (#209).
+opencode_round_is_model_gone() {
+  local file="${1}"
+  [[ -f "${file}" ]] || return 1
+  grep -F '"type":"error"' "${file}" 2>/dev/null |
+    grep -Eiq 'model .*is unavailable|has been deprecated|is deprecated|no longer supported|model not found|no such model|unknown model|does not exist'
+}
+
+# True when the round carries a provider rate limit: the exact message opencode
+# retries for minutes ("Rate limit exceeded. Please try again later."), its
+# providers' HTTP 429 wording, or the error-event lines on stdout. opencode
+# swallows the rate limit into its own retry loop while --format json prints
+# nothing, but the retry/error diagnostics go to opencode's own stderr, and
+# --print-logs (always passed) streams that stderr into this process. Checking
+# both keeps the early-abort working even when the error event only appears on
+# stdout as the round finally gives up. Like opencode_round_is_environment,
+# text events are ignored on purpose: a model that merely writes the words is
+# not rate limited (#155).
+opencode_round_is_rate_limited() {
+  local output_file="${1}" err_file="${2:-}"
+  local pattern='rate limit|rate_limit|too many requests|please try again later|retry-after|retry after|quota exceeded|usage limit|resource_exhausted|\b429\b'
+  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
+    return 0
+  fi
+  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiq "${pattern}" "${err_file}" 2>/dev/null; then
+    return 0
+  fi
+  return 1
 }
 
 # Run opencode with a specific model and publish its session ID in
 # OPENCODE_SESSION_ID so a later model can continue the same conversation.
-# Args: title body workdir model [extra_context] [session_id] [previous_model]
+# Args: title body workdir model [extra_context] [session_id] [previous_model] [collected_context]
+# A session handoff reuses the conversation the first prompt already carried
+# the collected context in, so only the fresh-prompt branch below gets it.
 opencode_run() {
-  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}"
+  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}" collected_context="${8:-}"
   local prompt
   OPENCODE_ROUND_ENVIRONMENT="false"
+  OPENCODE_ROUND_MODEL_GONE="false"
+  OPENCODE_ROUND_RATE_LIMITED="false"
   if [[ -n "${session_id}" ]]; then
     prompt="$(opencode_build_handoff_prompt "${previous_model:-unknown}")"
   else
-    prompt="$(opencode_build_prompt "${issue_title}" "${issue_body}" "${extra_context}")"
+    prompt="$(opencode_build_prompt "${issue_title}" "${issue_body}" "${extra_context}" "${collected_context}")"
     if [[ -n "${previous_model}" ]]; then
       prompt="${prompt}"$'\n\n'"Model ${previous_model} did not finish this work through its session. Continue from the current working tree without discarding existing changes."
     fi
@@ -130,11 +206,29 @@ opencode_run() {
     if [[ " ${MOCK_OPENCODE_ENV_ERROR:-} " == *" ${model} "* ]]; then
       OPENCODE_ROUND_ENVIRONMENT="true"
     fi
-    if [[ "${MOCK_OPENCODE_ERROR:-}" == "${model}" || "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
+    # MOCK_OPENCODE_DEPRECATED lists the models whose round dies because the
+    # model itself is gone (deprecated / removed / unavailable). It implies
+    # MOCK_OPENCODE_ERROR for those models, but is a model-level, not an
+    # environment, failure: only that model is remembered as dead.
+    if [[ " ${MOCK_OPENCODE_DEPRECATED:-} " == *" ${model} "* ]]; then
+      OPENCODE_ROUND_MODEL_GONE="true"
+    fi
+    # MOCK_OPENCODE_RATE_LIMIT lists the models whose round is cut short by a
+    # provider rate limit, as the watchdog does in real mode.
+    if [[ " ${MOCK_OPENCODE_RATE_LIMIT:-} " == *" ${model} "* ]]; then
+      OPENCODE_ROUND_RATE_LIMITED="true"
+    fi
+    if [[ "${MOCK_OPENCODE_ERROR:-}" == "${model}" || "${OPENCODE_ROUND_ENVIRONMENT}" == "true" || "${OPENCODE_ROUND_MODEL_GONE}" == "true" || "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
       if [[ -d "${workdir}" && -w "${workdir}" ]]; then
         printf 'partial change from %s\n' "${model}" >> "${workdir}/conahcnuj.mock"
       fi
-      echo "opencode: mock error for ${model} (leaves an incomplete change)" >&2
+      if [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
+        echo "opencode: mock rate limit for ${model} (round stops immediately)" >&2
+      elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
+        echo "opencode: mock environment error for ${model} (leaves an incomplete change)" >&2
+      else
+        echo "opencode: mock error for ${model} (leaves an incomplete change)" >&2
+      fi
       return 1
     fi
     if [[ -z "${MOCK_OPENCODE_NOOP:-}" || "${MOCK_OPENCODE_NOOP}" != "${model}" ]]; then
@@ -154,6 +248,22 @@ opencode_run() {
     else
       echo "opencode: mock no-op for ${model} (produces no changes)" >&2
     fi
+    # MOCK_OPENCODE_TODO lists the models that simulate the per-issue progress
+    # file. The first round of such a model creates TODO.md (and remembers it in
+    # MOCK_OPENCODE_STATE_DIR); the next round deletes it, standing in for an
+    # agent that starts the issue, then finishes and cleans up. The state file
+    # lives outside the work tree so it is never committed.
+    if [[ " ${MOCK_OPENCODE_TODO:-} " == *" ${model} "* && -d "${workdir}" && -w "${workdir}" ]]; then
+      local todo_state
+      todo_state="${MOCK_OPENCODE_STATE_DIR:-${TMPDIR:-/tmp}}/conahcnuj-todo-${model//\//-}"
+      mkdir -p "$(dirname "${todo_state}")" 2>/dev/null || true
+      if [[ -f "${todo_state}" ]]; then
+        rm -f "${workdir}/TODO.md"
+      else
+        printf '# TODO\n' > "${workdir}/TODO.md"
+        : > "${todo_state}"
+      fi
+    fi
     return 0
   fi
 
@@ -169,9 +279,17 @@ opencode_run() {
   CONAHCNUJ_SESSION_MODEL="${model}"
   export CONAHCNUJ_SESSION_MODEL
 
-  local output_file status
+  local output_file prompt_file status
   local -a args executable
   output_file="$(mktemp)"
+  # The prompt carries the issue body plus every collected file (README.md /
+  # AGENTS.md), so it can outgrow the OS argument-list limit (E2BIG:
+  # "Argument list too long" from exec). opencode reads the message from stdin
+  # when no positional argument is given, so deliver it there and keep argv
+  # small. The redirect below is on the executable, not the whole pipeline, so
+  # $PIPESTATUS stays aligned with opencode.
+  prompt_file="$(mktemp)"
+  printf '%s\n' "${prompt}" > "${prompt_file}"
   executable=(opencode)
   if [[ -n "${CONAHCNUJ_RUN_TIMEOUT_SECONDS:-}" ]]; then
     executable=(timeout --signal=TERM --kill-after=30s "${CONAHCNUJ_RUN_TIMEOUT_SECONDS}s" opencode)
@@ -188,7 +306,6 @@ opencode_run() {
   else
     args+=(--title conahcnuj)
   fi
-  args+=("${prompt}")
   status=0
   # tee keeps the raw stream for the session id, the renderer prints the log to
   # stderr as the run proceeds (the header's SHA / diff only mean anything
@@ -206,11 +323,59 @@ opencode_run() {
     echo "WARNING: ${OPENCODE_RENDER_SH} is missing; printing the raw opencode output." >&2
     render=(cat)
   fi
-  "${executable[@]}" "${args[@]}" | tee "${output_file}" | "${render[@]}" >&2 || status="${PIPESTATUS[0]}"
+
+  # opencode sits out a rate limit for minutes (its own retry backoff, nothing
+  # useful on stdout) before the --format json error event finally appears.
+  # To cut a round short the moment the limit shows up, opencode runs against
+  # two FIFOs: a consumer tees stdout for the renderer and the session id, a
+  # second keeps opencode's own log (--print-logs -> stderr, where the retry
+  # diagnostics actually land) in a file, and a tiny watchdog kills the process
+  # as soon as either shows the rate-limit tell (#155). The consumers read a
+  # FIFO, so they exit on EOF the moment opencode closes it -- no orphans, no
+  # extra pids to chase. When FIFOs are unavailable the plain tee pipeline is
+  # kept and the rate limit is only detected at the end of the round.
+  local out_fifo err_fifo err_file consumer_pid err_pid rate_aborted
+  out_fifo="${output_file}.out"
+  err_fifo="${output_file}.errfifo"
+  err_file="${output_file}.err"
+  rate_aborted="false"
+  if mkfifo "${out_fifo}" "${err_fifo}" 2>/dev/null; then
+    "${executable[@]}" "${args[@]}" < "${prompt_file}" >"${out_fifo}" 2>"${err_fifo}" &
+    local opencode_pid=$!
+    ( tee "${output_file}" <"${out_fifo}" | "${render[@]}" >&2 ) &
+    consumer_pid=$!
+    ( cat <"${err_fifo}" | tee "${err_file}" >&2 ) &
+    err_pid=$!
+    while kill -0 "${opencode_pid}" 2>/dev/null; do
+      if opencode_round_is_rate_limited "${output_file}" "${err_file}"; then
+        rate_aborted="true"
+        echo "opencode: ${model} hit a rate limit; stopping its retry loop." >&2
+        kill -TERM "${opencode_pid}" 2>/dev/null || true
+        break
+      fi
+      sleep "${CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS:-1}"
+    done
+    wait "${opencode_pid}" 2>/dev/null || status=$?
+    # The FIFO consumers exit once opencode's write ends close; reap them so
+    # the session-id extraction below sees the whole stream.
+    wait "${consumer_pid}" "${err_pid}" 2>/dev/null || true
+    rm -f "${out_fifo}" "${err_fifo}"
+  else
+    "${executable[@]}" "${args[@]}" < "${prompt_file}" | tee "${output_file}" | "${render[@]}" >&2 || status="${PIPESTATUS[0]}"
+  fi
+
   # Only a failed round is classified: a round that ended fine may still carry
   # a retried-and-recovered error event, which says nothing about the provider.
+  # A model that is gone is classified first; it is a model-level condition, so
+  # it must not be read as the provider being down.
+  if [[ "${status}" != "0" ]] && opencode_round_is_model_gone "${output_file}"; then
+    OPENCODE_ROUND_MODEL_GONE="true"
+  fi
   if [[ "${status}" != "0" ]] && opencode_round_is_environment "${output_file}"; then
     OPENCODE_ROUND_ENVIRONMENT="true"
+  fi
+  if [[ "${status}" != "0" ]] && { [[ "${rate_aborted}" == "true" ]] || opencode_round_is_rate_limited "${output_file}" "${err_file}"; }; then
+    OPENCODE_ROUND_RATE_LIMITED="true"
   fi
   local detected_session
   detected_session="$(sed -n 's/.*"sessionID":"\([^"]*\)".*/\1/p' "${output_file}" | sed -n '1p')"
@@ -218,7 +383,7 @@ opencode_run() {
     OPENCODE_SESSION_ID="${detected_session}"
     export OPENCODE_SESSION_ID
   fi
-  rm -f "${output_file}"
+  rm -f "${output_file}" "${prompt_file}" "${err_file}"
   if [[ "${status}" == "124" ]]; then
     echo "opencode exceeded the remaining driver time budget; stopping this model." >&2
   fi
