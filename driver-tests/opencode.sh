@@ -331,6 +331,44 @@ test_opencode_round_is_rate_limited() {
   echo "opencode_round_is_rate_limited passed"
 }
 
+test_opencode_round_is_quota_exhausted() {
+  local dir out err
+  dir="$(mktemp -d)"
+  out="${dir}/out.jsonl"
+  err="${dir}/err.log"
+  # The xAI spending-limit error from issue #276: account-level, so no other
+  # model of the same provider can succeed.
+  printf '%s\n' '{"type":"error","error":{"name":"AI_APICallError","data":{"message":"AI_APICallError: personal-team-blocked:spending-limit: You have run out of credits or need a Grok subscription."}}}' > "${out}"
+  : > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" || { echo "FAIL: spending-limit not classified as quota exhaustion"; exit 1; }
+  # The same signal on opencode's own stderr counts too.
+  : > "${out}"
+  printf '%s\n' 'timestamp=2026-10-11T14:33:52.325Z level=ERROR run=c82bc528 message="stream error" error.error="AI_APICallError: personal-team-blocked:spending-limit: You have run out of credits."' > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" || { echo "FAIL: stderr spending-limit not classified"; exit 1; }
+  # An OpenAI-style billing error counts as well.
+  printf '%s\n' '{"type":"error","error":{"data":{"message":"You exceeded your current quota, please check your plan and billing details."}}}' > "${out}"
+  : > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" || { echo "FAIL: billing-details error not classified"; exit 1; }
+  # A transient quota rate limit stays a rate limit, not billing exhaustion.
+  printf '%s\n' '{"type":"error","error":{"message":"Rate limit exceeded. Please try again later."}}' > "${out}"
+  : > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" && { echo "FAIL: transient rate limit classified as quota exhaustion"; exit 1; }
+  # Quota exhaustion is its own bucket: neither environment nor rate limit.
+  printf '%s\n' '{"type":"error","error":{"data":{"message":"personal-team-blocked:spending-limit: You have run out of credits."}}}' > "${out}"
+  printf '%s\n' 'level=ERROR message="stream error" error.error="spending-limit: You have run out of credits."' > "${err}"
+  opencode_round_is_environment "${out}" "${err}" && { echo "FAIL: spending-limit classified as environment"; exit 1; }
+  opencode_round_is_rate_limited "${out}" "${err}" && { echo "FAIL: spending-limit classified as rate limit"; exit 1; }
+  # A model that writes the words in its answer is not quota-exhausted.
+  printf '%s\n' '{"type":"text","part":{"type":"text","text":"we ran out of credits, please top up billing"}}' > "${out}"
+  printf 'booted provider x\n' > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" && { echo "FAIL: model text classified as quota exhaustion"; exit 1; }
+  : > "${out}"
+  : > "${err}"
+  opencode_round_is_quota_exhausted "${out}" "${err}" && { echo "FAIL: empty stream classified as quota exhaustion"; exit 1; }
+  rm -rf "${dir}"
+  echo "opencode_round_is_quota_exhausted passed"
+}
+
 test_opencode_run_rate_limit() {
   export OPENCODE_TEST_MODE=1
   export MOCK_OPENCODE_RATE_LIMIT="opencode/limited opencode/also-limited"
@@ -356,6 +394,31 @@ test_opencode_run_rate_limit() {
   echo "opencode_run (rate limit) passed"
 }
 
+test_opencode_run_quota() {
+  export OPENCODE_TEST_MODE=1
+  export MOCK_OPENCODE_QUOTA="xai/broke"
+  local tmp log rc
+  tmp="$(mktemp -d)"
+  log="$(mktemp)"
+  rc=0
+  opencode_run "Issue" "Body" "${tmp}" "xai/broke" >/dev/null 2>"${log}" || rc=$?
+  [[ "${rc}" -eq 1 ]]
+  [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]
+  [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "false" ]]
+  [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "false" ]]
+  [[ -s "${tmp}/conahcnuj.mock" ]]
+  [[ ! -e "${tmp}/.commit-msg" ]]
+  grep -q "opencode: mock quota/billing exhaustion for xai/broke" "${log}" || { echo "FAIL: no mock quota trace"; cat "${log}" >&2; exit 1; }
+  # The next model resets the flag and can finish the work.
+  opencode_run "Issue" "Body" "${tmp}" "xai/rich" >/dev/null 2>&1
+  [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "false" ]]
+  [[ -e "${tmp}/.commit-msg" ]]
+  rm -f "${log}"
+  rm -rf "${tmp}"
+  unset OPENCODE_TEST_MODE MOCK_OPENCODE_QUOTA OPENCODE_SESSION_ID
+  echo "opencode_run (quota exhaustion) passed"
+}
+
 test_opencode_get_models
 test_opencode_build_prompt
 test_opencode_build_prompt_fresh
@@ -369,6 +432,8 @@ test_opencode_run_prompt_via_stdin
 test_opencode_run_renders_log
 test_opencode_run_timeout
 test_opencode_round_is_rate_limited
+test_opencode_round_is_quota_exhausted
 test_opencode_run_rate_limit
+test_opencode_run_quota
 
 echo "All opencode tests passed"
