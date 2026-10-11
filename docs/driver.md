@@ -74,6 +74,12 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 検知した時点でラウンドを打ち切って次モデルへ移ります（rate limit は provider の
 障害ではなくクォータ枯渇なので provider は落としません。#155）。
 
+アカウント単位の quota/billing 枯渇（`spending-limit`、out of credits 等）は
+一過性の rate limit と違い、同じ provider の他モデルに切り替えても解消しないため、
+その provider を残りのラウンドから外します。環境エラーと quota/billing 枯渇だけで
+全ラウンドが潰えた場合は、ドライバのバグではなく環境側の失敗としてバグ報告に
+記録します（#276）。
+
 ## エージェントとの契約
 
 全ラウンド共通で、コーディングエージェントには次の一段落だけが伝えられます:

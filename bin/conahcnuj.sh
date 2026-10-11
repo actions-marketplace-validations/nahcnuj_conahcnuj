@@ -483,8 +483,8 @@ report_bug_body() {
     label="unknown (no issue/PR number was given; repository: ${owner}/${repo})"
   fi
   if [[ "${ENVIRONMENT_DOWN}" == "1" ]]; then
-    opener="The conahcnuj driver stopped early on issue #${input}: every model round died on an environment error (provider unreachable or credentials rejected), so no model ever got to work. This issue was filed automatically to record the failed run (re-run: conahcnuj ${input})."
-    closing="Nothing in the log below points at a driver defect: the run's providers were unreachable or their credentials were rejected for the whole run. Re-run the driver once its providers are reachable."
+    opener="The conahcnuj driver stopped early on issue #${input}: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted), so no model ever got to work. This issue was filed automatically to record the failed run (re-run: conahcnuj ${input})."
+    closing="Nothing in the log below points at a driver defect: the run's providers were unreachable, their credentials were rejected, or their quota/billing was exhausted for the whole run. Re-run the driver once its providers are usable again."
   else
     opener="The conahcnuj driver terminated abnormally and could not resolve the item it was working on. This issue was filed automatically so the driver bug can be fixed (re-run: conahcnuj ${input})."
     closing="The driver exits this way only when it is unable to finish the run; a maintainer should investigate and pick this report up."
@@ -812,13 +812,19 @@ persist_missing_model() {
 # and the next model is picked up immediately instead of waiting out opencode's
 # retry backoff.
 #
+# A round that dies on account-level quota/billing exhaustion
+# ("spending-limit", out of credits) is provider-level like an environment
+# error, not model-level and not a transient rate limit: every model of the
+# same provider bills the same account, so the rest of that provider is
+# skipped instead of burning a round per model (#276).
+#
 # A round that dies because the model itself is gone (deprecated, removed,
 # unavailable) says nothing about the provider: only that model is remembered
 # as dead -- in MISSING_MODELS_FILE too, so later runs skip it up front instead
 # of spending a round (and a log full of errors) on it (#209).
 implement() {
   local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
-  local dead_providers="" failed_rounds=0 env_failed_rounds=0 ran_without_failure=0
+  local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   ENVIRONMENT_DOWN="0"
   workdir="$(pwd)"
@@ -844,6 +850,10 @@ implement() {
     fi
     if [[ " ${dead_providers} " == *" ${provider} "* ]]; then
       echo "Skipping ${model}: provider ${provider} already failed on an environment error, and no other of its models can change that." >&2
+      continue
+    fi
+    if [[ " ${quota_providers} " == *" ${provider} "* ]]; then
+      echo "Skipping ${model}: provider ${provider} already exhausted its quota/billing, and no other of its models can change that." >&2
       continue
     fi
     now="$(date +%s)"
@@ -876,6 +886,10 @@ implement() {
       if [[ "${OPENCODE_ROUND_MODEL_GONE}" == "true" ]]; then
         persist_missing_model "${model}"
         echo "Model ${model} failed before completing the work: the model itself is gone (deprecated / removed / unavailable); remembering it as unavailable and skipping it from now on." >&2
+      elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
+        quota_failed_rounds=$((quota_failed_rounds + 1))
+        quota_providers="${quota_providers} ${provider}"
+        echo "Model ${model} failed before completing the work: provider quota/billing exhausted; giving up on provider ${provider} for the rest of this run." >&2
       elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
         env_failed_rounds=$((env_failed_rounds + 1))
         dead_providers="${dead_providers} ${provider}"
@@ -895,9 +909,9 @@ implement() {
     fi
   done
   echo "ERROR: no available model completed the work (tried: ${OPENCODE_USED_MODELS:-none}; handoffs: ${OPENCODE_HANDOFFS:-none})." >&2
-  if [[ "${failed_rounds}" -gt 0 && "${env_failed_rounds}" -eq "${failed_rounds}" && "${ran_without_failure}" -eq 0 ]]; then
+  if [[ "${failed_rounds}" -gt 0 && "$((env_failed_rounds + quota_failed_rounds))" -eq "${failed_rounds}" && "${ran_without_failure}" -eq 0 ]]; then
     ENVIRONMENT_DOWN="1"
-    echo "ERROR: every model round died on an environment error (provider unreachable or credentials rejected; providers given up on: ${dead_providers# }). Nothing the driver can do about that -- re-run it once its providers are reachable." >&2
+    echo "ERROR: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted; providers given up on:${dead_providers}${quota_providers}). Nothing the driver can do about that -- re-run it once its providers are usable again." >&2
   fi
   return 1
 }
