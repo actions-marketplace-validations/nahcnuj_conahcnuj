@@ -831,9 +831,10 @@ persist_missing_model() {
 # base, so a message-only round there stays no work and still falls through to
 # the other models.
 implement() {
-  local title="${1}" body="${2}" extra="${3:-}" base_branch="${4:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
+  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
   local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
+  local base_branch="${4:-}"
   ENVIRONMENT_DOWN="0"
   workdir="$(pwd)"
   echo "Implementing with available models..." >&2
