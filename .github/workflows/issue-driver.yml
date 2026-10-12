@@ -62,10 +62,12 @@ on:
         description: 'owner/name of the repository to drive (default: the caller repository)'
         required: false
         type: string
+        default: nahcnuj/conahcnuj
       environment:
         description: 'Environment holding the GitHub App secrets (default: conahcnuj)'
         required: false
         type: string
+        default: conahcnuj
     secrets:
       APP_ID:
         required: true
@@ -89,7 +91,7 @@ jobs:
     # The caller's environment wins for a cross-repository call: the
     # environment resolves in the run's (caller's) repository, so the caller
     # names its own environment holding the App secrets.
-    environment: ${{ inputs.environment || 'conahcnuj' }}
+    environment: ${{ inputs.environment }}
     # Do not chase the driver's own outputs: its tracking issue and bug-report
     # issues are bot-authored and carry no `self-improvement` label, so they
     # stay skipped and the loop cannot recurse. The weekly findings issue is
@@ -174,7 +176,7 @@ jobs:
         env:
           # The caller's repository for a reusable call (`inputs.repository`
           # overrides it when the caller drives yet another repository).
-          CONAHCNUJ_REPO: ${{ inputs.repository || github.repository }}
+          CONAHCNUJ_REPO: ${{ inputs.repository }}
           CONAHCNUJ_INPUT: ${{ inputs.number || github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) }}
           # Just under the 60-minute job cap so the driver exits gracefully
           # and files its bug report before Actions kills the run.
