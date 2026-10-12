@@ -30,7 +30,20 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y shellcheck
           elif command -v choco >/dev/null 2>&1; then
-            choco install shellcheck --yes --no-progress
+            # Windows Git Bash: the Chocolatey community feed has been
+            # unreliable when resolving shellcheck (503, so the whole lint
+            # job dies with "shellcheck: command not found"), so pull the
+            # official Windows binary from the release archive instead.
+            # Same 0.9.0 the apt/choco packages carried, so both platforms
+            # lint with the same rule set. The later ShellCheck step runs in
+            # its own shell, so the directory is persisted via $GITHUB_PATH.
+            curl -fsSL --retry 3 --retry-all-errors -o "${RUNNER_TEMP}/shellcheck.zip" \
+              "https://github.com/koalaman/shellcheck/releases/download/v0.9.0/shellcheck-v0.9.0.zip"
+            mkdir -p "${RUNNER_TEMP}/shellcheck"
+            powershell -NoProfile -Command "Expand-Archive -LiteralPath '${RUNNER_TEMP}/shellcheck.zip' -DestinationPath '${RUNNER_TEMP}/shellcheck' -Force"
+            echo "${RUNNER_TEMP}/shellcheck" >> "${GITHUB_PATH}"
+            export PATH="${RUNNER_TEMP}/shellcheck:${PATH}"
+            echo "shellcheck installed from the official release archive" >&2
           else
             echo "no package manager available to install shellcheck" >&2
             exit 1
