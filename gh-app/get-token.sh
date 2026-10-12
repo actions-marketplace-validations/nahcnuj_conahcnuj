@@ -58,6 +58,23 @@ if [[ "${1:-}" != "--print-jwt" && -f "${CACHE_FILE}" ]]; then
   fi
 fi
 
+if [[ -z "${APP_ID}" ]]; then
+  echo "ERROR: APP_ID is not set (see gh-app/app.env or app.env.example)." >&2
+  exit 1
+fi
+if [[ -z "${PEM_PATH}" ]]; then
+  echo "ERROR: PRIVATE_KEY_PATH is not set (see gh-app/app.env or app.env.example)." >&2
+  exit 1
+fi
+if [[ ! -f "${PEM_PATH}" ]]; then
+  echo "ERROR: private key file not found: ${PEM_PATH}" >&2
+  exit 1
+fi
+if [[ ! -s "${PEM_PATH}" ]]; then
+  echo "ERROR: private key file is empty: ${PEM_PATH}" >&2
+  exit 1
+fi
+
 # 1) Build JWT header + payload
 NOW="$(date +%s)"
 IAT="${NOW}"
@@ -71,8 +88,17 @@ HEADER="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
 PAYLOAD="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "${IAT}" "${EXP}" "${APP_ID}" | b64url)"
 SIGNING_INPUT="${HEADER}.${PAYLOAD}"
 
-# 2) Sign with the app private key (RS256)
-SIG="$(printf '%s' "${SIGNING_INPUT}" | openssl dgst -sha256 -binary -sign "${PEM_PATH}" | b64url)"
+# 2) Sign with the app private key (RS256). Capture openssl's stderr so a
+#    signing failure (bad key format, wrong key type, ...) is visible instead
+#    of a bare non-zero exit.
+SIG_ERR="$(mktemp)"
+SIG="$(printf '%s' "${SIGNING_INPUT}" | openssl dgst -sha256 -binary -sign "${PEM_PATH}" 2>"${SIG_ERR}" | b64url)" || {
+  echo "ERROR: failed to sign the App JWT with ${PEM_PATH}:" >&2
+  sed 's/^/  /' "${SIG_ERR}" >&2
+  rm -f "${SIG_ERR}"
+  exit 1
+}
+rm -f "${SIG_ERR}"
 JWT="${SIGNING_INPUT}.${SIG}"
 
 # --print-jwt callers want only the signed JWT (app-level auth such as

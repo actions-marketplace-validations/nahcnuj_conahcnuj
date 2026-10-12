@@ -60,3 +60,44 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 
 rm -f "${REAL}"
+
+set_key_path ""
+OUT="$(bash "${STAGE}/get-token.sh" --print-jwt 2>&1 || true)"
+if [[ "${OUT}" != *"PRIVATE_KEY_PATH is not set"* ]]; then
+  echo "FAIL: empty PRIVATE_KEY_PATH should report missing config:" >&2
+  echo "${OUT}" >&2
+  exit 1
+fi
+echo "PASS empty PRIVATE_KEY_PATH reports missing config"
+
+set_key_path "/tmp/nonexistent-conahcnuj-key-${$}.pem"
+OUT="$(bash "${STAGE}/get-token.sh" --print-jwt 2>&1 || true)"
+if [[ "${OUT}" != *"private key file not found"* ]]; then
+  echo "FAIL: missing key file should report not found:" >&2
+  echo "${OUT}" >&2
+  exit 1
+fi
+echo "PASS missing key file reports not found"
+
+EMPTY="$(mktemp)"
+set_key_path "${EMPTY}"
+OUT="$(bash "${STAGE}/get-token.sh" --print-jwt 2>&1 || true)"
+if [[ "${OUT}" != *"private key file is empty"* ]]; then
+  echo "FAIL: empty key file should report empty:" >&2
+  echo "${OUT}" >&2
+  exit 1
+fi
+echo "PASS empty key file reports empty"
+rm -f "${EMPTY}"
+
+BAD="$(mktemp)"
+printf 'not-a-pem' > "${BAD}"
+set_key_path "${BAD}"
+OUT="$(bash "${STAGE}/get-token.sh" --print-jwt 2>&1 || true)"
+if [[ "${OUT}" != *"failed to sign the App JWT"* ]]; then
+  echo "FAIL: invalid key should report signing failure:" >&2
+  echo "${OUT}" >&2
+  exit 1
+fi
+echo "PASS invalid key reports signing failure"
+rm -f "${BAD}"
