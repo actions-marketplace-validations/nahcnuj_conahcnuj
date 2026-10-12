@@ -212,6 +212,8 @@ submit・編集・dismiss された場合も、PR 番号でドライバを再開
 - runner 上の `GITHUB_TOKEN` は `contents: read` のみで、書き込み（ブランチ・
   コミット・PR・レビュー依頼・コメント）はすべてローカル実行と同じく App の
   インストールトークンで行われます。
+- このワークフローは `workflow_call` で他リポジトリから再利用できます
+  （`number` + App の secrets を渡す。詳細は [workflows.md](docs/workflows.md)）。
 
 ## owner 承認後の自動マージ（GitHub Actions）
 
