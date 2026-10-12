@@ -88,6 +88,7 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | `MOCK_OPENCODE_ENV_ERROR` | 各ラウンドを環境エラーで終了させる（`conahcnuj-env-failure` 再現） |
 | `MOCK_OPENCODE_DEPRECATED` | 指定モデルを「モデル自体が消失（deprecated / 削除 / 利用不可）」で失敗させる（`conahcnuj-missing-models` 再現） |
 | `MOCK_OPENCODE_RATE_LIMIT` | 指定モデルを provider の rate limit で打ち切る（`conahcnuj-rate-limit` 再現） |
+| `MOCK_OPENCODE_QUOTA` | 指定モデルを provider の quota/billing 枯渇で失敗させる（`conahcnuj-env-failure` の scenario 3 再現。provider ごと落とす） |
 | `MOCK_OPENCODE_MESSAGE_ONLY` | 作業ツリー無変更 + `.commit-msg` のみのラウンドを再現 |
 | `MOCK_OPENCODE_NOOP` | 指定モデルを no-op（実装を省略した振る舞い）にする |
 | `MOCK_OPENCODE_SESSION_ID` | モックが返す `sessionID` |
@@ -100,6 +101,7 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 `OPENCODE_HANDOFFS` / `OPENCODE_ROUND_ENVIRONMENT`（ラウンド成否の分類）/
 `OPENCODE_ROUND_MODEL_GONE`（モデル自体の消失。provider は落とさない）/
 `OPENCODE_ROUND_RATE_LIMITED`（provider の rate limit による打ち切り。provider は落とさない）/
+`OPENCODE_ROUND_QUOTA_EXHAUSTED`（provider の quota/billing 枯渇。provider ごと落とす）/
 `OPENCODE_DEAD_MODELS` / `MISSING_MODELS_FILE`（永久に使えないモデルの記録）/
 `CONAHCNUJ_RUN_TIMEOUT_SECONDS`（単発ラウンドのタイムアウト）/
 `OPENCODE_LIB_DIR` / `OPENCODE_RENDER_SH`（ライブラリの場所）/

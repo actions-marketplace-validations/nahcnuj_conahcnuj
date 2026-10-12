@@ -6,17 +6,18 @@
 # throwaway git repository. Exercises the happy path end to end:
 #
 #   issue #10 read -> feature branch -> implement -> PR #123 created ->
-#   owner assigned as reviewer before the constraints poll -> the poll waits
-#   through PENDING until SUCCESS -> "review requested" -> exit 0
+#   the constraints poll waits through PENDING until SUCCESS -> owner assigned
+#   as reviewer -> the run keeps polling -> approval -> "ready to merge" ->
+#   exit 0
 #
-# The driver hands the PR to the reviewer as soon as the PR exists, then
-# verifies the constraints: a fresh PR must not wait for green CI before the
-# human is asked. Asking for review is not the end of the run: the driver keeps
-# polling after the request and only exits once CI is green, so the issue is
-# actually resolved rather than handed off in a failing state (#233). The
-# driver stops at the review request, not at an approval: approval (and the
-# merge owner-approved-auto-merge chains off it) belongs to the human reviewer.
-# The feedback round of a resumed run is covered by conahcnuj-resume.sh.
+# The driver verifies the non-reviewer constraints before it hands the PR to
+# the reviewer: the human is asked only once CI is green and the branch merges,
+# not while CI still runs. Whatever fails during the poll gets a fix round, so
+# the issue is actually resolved rather than handed off in a failing state. The
+# driver does not stop at the review request: it keeps polling for the verdict
+# and ends on the approval (the merge owner-approved-auto-merge chains off it),
+# which belongs to the human reviewer. The feedback round of a resumed run is
+# covered by conahcnuj-resume.sh.
 #
 # No secrets, no network.
 set -euo pipefail
@@ -45,13 +46,16 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape. One JSON document per GitHub API call, in call order:
 #   fetch_issue, get_repo, find_pr_by_head (empty), repo id lookup, create_pr
 #   (123), continuation comment, fetch_reviews (REVIEW_REQUIRED, nothing to act
-#   on), request_review, conditions (PENDING|MERGEABLE), conditions
-#   (SUCCESS|MERGEABLE). The review request is made before the constraints
-#   poll: a fresh PR is handed to the reviewer while CI still runs (#233). The
-#   CI is still PENDING on the first poll, so the driver must keep polling
-#   after the request rather than exit at the hand-off (#233). The reviews are
-#   still read before the poll so known review feedback is handled before
-#   waiting on CI (#219).
+#   on), conditions (PENDING|MERGEABLE), conditions (SUCCESS|MERGEABLE),
+#   request_review, then the wait loop: PR body sync, fetch_reviews
+#   (REVIEW_REQUIRED, still waiting), fetch_reviews (APPROVED -> ready to
+#   merge). The constraints are polled before the review request: a fresh PR is
+#   only handed to the reviewer once the checks are green and the branch merges,
+#   never while CI still runs. CI is PENDING on the first poll, so the driver
+#   must keep polling until SUCCESS before it asks. The reviews are read before
+#   the poll so known review feedback is handled before waiting on CI (#219).
+#   The approval is read only after the driver has waited once, so the test
+#   proves the run keeps polling past the review request instead of exiting.
 # Keep the tape and the run log OUTSIDE the repo: the driver's test-mode
 # commit path does `git add -A`, and a file living in the worktree would be
 # re-staged as it grows.
@@ -65,9 +69,12 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"createPullRequest":{"pullRequest":{"number":123}}}}
 {"id":776}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING"}}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
+{}
+{}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -98,21 +105,27 @@ echo "-----------------------------"
 
 grep -q "Review requested on PR #123 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/123" "${LOG}" || { echo "FAIL: the driver did not hand the PR to the owner as reviewer"; exit 1; }
 grep -q "Assigned nahcnuj as reviewer on PR #123" "${LOG}" || { echo "FAIL: the owner was not assigned as reviewer"; exit 1; }
-# The reviewer is asked before the constraints are polled: a fresh PR is handed
-# to the human while CI still runs, instead of waiting for green first (#233).
+# The reviewer is asked only after the constraints pass: a fresh PR is handed
+# to the human once it merges and CI is green, not while CI still runs.
 ASSIGNED_LINE="$(grep -n 'Assigned nahcnuj as reviewer on PR #123' "${LOG}" | head -1 | cut -d: -f1)"
-FIRST_CONSTRAINTS_LINE="$(grep -n 'PR #123 constraints: checks=' "${LOG}" | head -1 | cut -d: -f1)"
-[[ -n "${ASSIGNED_LINE}" && -n "${FIRST_CONSTRAINTS_LINE}" && "${ASSIGNED_LINE}" -lt "${FIRST_CONSTRAINTS_LINE}" ]] || { echo "FAIL: the review request must come before the constraints poll"; exit 1; }
-# The hand-off is not the end of the run: the first poll finds CI still PENDING,
-# so the driver must keep polling until SUCCESS and only then exit. Ending at the
-# review request would hand the reviewer a failing PR (#233).
+PASS_LINE="$(grep -n 'All non-reviewer constraints pass.' "${LOG}" | head -1 | cut -d: -f1)"
+[[ -n "${ASSIGNED_LINE}" && -n "${PASS_LINE}" && "${PASS_LINE}" -lt "${ASSIGNED_LINE}" ]] || { echo "FAIL: the review request must come after the constraints pass"; exit 1; }
+# The first poll finds CI still PENDING, so the driver must keep polling until
+# SUCCESS before it asks for review. Asking while CI runs would hand the
+# reviewer a PR that might still fail.
 PENDING_LINE="$(grep -n 'PR #123 constraints: checks=PENDING' "${LOG}" | head -1 | cut -d: -f1)"
 SUCCESS_LINE="$(grep -n 'PR #123 constraints: checks=SUCCESS' "${LOG}" | head -1 | cut -d: -f1)"
-PASS_LINE="$(grep -n 'All non-reviewer constraints pass.' "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${PENDING_LINE}" ]] || { echo "FAIL: the driver did not poll while CI was still PENDING"; exit 1; }
-[[ -n "${SUCCESS_LINE}" && "${PENDING_LINE}" -lt "${SUCCESS_LINE}" ]] || { echo "FAIL: the driver must keep polling after the review request until CI is green"; exit 1; }
+[[ -n "${SUCCESS_LINE}" && "${PENDING_LINE}" -lt "${SUCCESS_LINE}" ]] || { echo "FAIL: the driver must keep polling until CI is green"; exit 1; }
 [[ -n "${PASS_LINE}" && "${SUCCESS_LINE}" -lt "${PASS_LINE}" ]] || { echo "FAIL: the run must only finish once the constraints are satisfied"; exit 1; }
-grep -q "Ready to merge" "${LOG}" && { echo "FAIL: the driver waited for an approval that never came"; exit 1; }
+# The run does not stop at the review request: it keeps polling until the
+# reviewer approves, so "Ready to merge" must appear and must come after the
+# hand-off (and after a wait iteration in between).
+READY_LINE="$(grep -n 'Ready to merge' "${LOG}" | head -1 | cut -d: -f1)"
+WAIT_LINE="$(grep -n "waiting for the reviewer's decision" "${LOG}" | head -1 | cut -d: -f1)"
+[[ -n "${WAIT_LINE}" ]] || { echo "FAIL: the driver exited at the review request instead of waiting for the verdict"; exit 1; }
+[[ -n "${READY_LINE}" && "${ASSIGNED_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
+[[ "${WAIT_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the driver must wait for the verdict before it sees the approval"; exit 1; }
 grep -q "Created PR #123" "${LOG}" || { echo "FAIL: PR #123 was not created"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" && { echo "FAIL: a fresh PR must not fire an implementation round"; exit 1; }
 grep -q "Model opencode/first failed before completing the work; handing off to the next model" "${LOG}" || { echo "FAIL: failed model did not hand off"; exit 1; }

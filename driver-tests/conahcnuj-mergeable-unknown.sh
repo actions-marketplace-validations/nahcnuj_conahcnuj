@@ -39,7 +39,8 @@ git -C "${WORK}" commit -qm init
 #   continuation comment), fetch_reviews (REVIEW_REQUIRED, no feedback),
 #   conditions (empty line -> the read failed, must be retried, never read as
 #   "no checks, mergeable"), conditions (checks SUCCESS, mergeable MERGEABLE
-#   -> passes), request_review.
+#   -> passes), request_review, fetch_reviews (APPROVED -> the run ends on the
+#   approval, not the request).
 # The tape and log live OUTSIDE the repo (the driver's test-mode commit path
 # runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
@@ -53,6 +54,7 @@ cat > "${TAPE}" <<'EOF'
 
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1

@@ -11,16 +11,16 @@
 #   1. checks out the latest default branch and implements the issue with
 #      opencode (handing the same session and working tree to another model
 #      when one fails), committing only with the agent's .commit-msg
-#   2. opens a PR and asks the repository owner for review right away, so a
-#      human can review while CI still runs; the non-reviewer constraints (CI
-#      checks, mergeability) are then verified, and whatever fails is fixed.
-#      That hand-off to a human is the last thing a run owes the PR, so the
-#      driver exits once the constraints pass; an already APPROVED PR exits
-#      earlier as "ready to merge". Never auto-merges. The request is retried
-#      once, and the PR is read back before a hand-off is called lost; only a
-#      PR that GitHub says has nobody asked fails the run, while a hand-off
-#      that cannot be verified at all ends the run with a warning
-#      (issues #134 / #139).
+#   2. opens a PR, then verifies the non-reviewer constraints (mergeability
+#      first, then CI checks) and fixes whatever fails. Only after they pass
+#      does it ask the repository owner for review, so a human is handed a PR
+#      whose branch already merges and whose CI is green, not one that might
+#      still break. That hand-off to a human is the last thing a run owes the
+#      PR, so the driver exits then; an already APPROVED PR exits earlier as
+#      "ready to merge". Never auto-merges. The request is retried once, and
+#      the PR is read back before a hand-off is called lost; only a PR that
+#      GitHub says has nobody asked fails the run, while a hand-off that cannot
+#      be verified at all ends the run with a warning (issues #134 / #139).
 #   3. when the run was resumed with review feedback (comments / requested
 #      changes / unresolved review threads), addresses it first, before waiting
 #      on the non-reviewer constraints: a PR with open threads cannot reach
@@ -238,11 +238,19 @@ repo_detect() {
   printf '%s' "${url}" | sed -E 's#.*github\.com[:/]##; s#\.git$##'
 }
 
-check_timeout() {
+# True when the overall time budget is exhausted. Split out from check_timeout
+# so drive() can word the exhaustion differently once the PR is with the
+# reviewer: running out of time while waiting for a human is not a driver
+# failure, so that run ends cleanly instead of filing a bug report.
+time_budget_exhausted() {
   local now elapsed
   now="$(date +%s)"
   elapsed=$((now - START_TIME))
-  if [[ ${elapsed} -ge ${MAX_DURATION} ]]; then
+  [[ ${elapsed} -ge ${MAX_DURATION} ]]
+}
+
+check_timeout() {
+  if time_budget_exhausted; then
     echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
     exit 1
   fi
@@ -475,8 +483,8 @@ report_bug_body() {
     label="unknown (no issue/PR number was given; repository: ${owner}/${repo})"
   fi
   if [[ "${ENVIRONMENT_DOWN}" == "1" ]]; then
-    opener="The conahcnuj driver stopped early on issue #${input}: every model round died on an environment error (provider unreachable or credentials rejected), so no model ever got to work. This issue was filed automatically to record the failed run (re-run: conahcnuj ${input})."
-    closing="Nothing in the log below points at a driver defect: the run's providers were unreachable or their credentials were rejected for the whole run. Re-run the driver once its providers are reachable."
+    opener="The conahcnuj driver stopped early on issue #${input}: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted), so no model ever got to work. This issue was filed automatically to record the failed run (re-run: conahcnuj ${input})."
+    closing="Nothing in the log below points at a driver defect: the run's providers were unreachable, their credentials were rejected, or their quota/billing was exhausted for the whole run. Re-run the driver once its providers are usable again."
   else
     opener="The conahcnuj driver terminated abnormally and could not resolve the item it was working on. This issue was filed automatically so the driver bug can be fixed (re-run: conahcnuj ${input})."
     closing="The driver exits this way only when it is unable to finish the run; a maintainer should investigate and pick this report up."
@@ -804,6 +812,12 @@ persist_missing_model() {
 # and the next model is picked up immediately instead of waiting out opencode's
 # retry backoff.
 #
+# A round that dies on account-level quota/billing exhaustion
+# ("spending-limit", out of credits) is provider-level like an environment
+# error, not model-level and not a transient rate limit: every model of the
+# same provider bills the same account, so the rest of that provider is
+# skipped instead of burning a round per model (#276).
+#
 # A round that dies because the model itself is gone (deprecated, removed,
 # unavailable) says nothing about the provider: only that model is remembered
 # as dead -- in MISSING_MODELS_FILE too, so later runs skip it up front instead
@@ -818,7 +832,7 @@ persist_missing_model() {
 # the other models.
 implement() {
   local title="${1}" body="${2}" extra="${3:-}" base_branch="${4:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
-  local dead_providers="" failed_rounds=0 env_failed_rounds=0 ran_without_failure=0
+  local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   ENVIRONMENT_DOWN="0"
   workdir="$(pwd)"
@@ -844,6 +858,10 @@ implement() {
     fi
     if [[ " ${dead_providers} " == *" ${provider} "* ]]; then
       echo "Skipping ${model}: provider ${provider} already failed on an environment error, and no other of its models can change that." >&2
+      continue
+    fi
+    if [[ " ${quota_providers} " == *" ${provider} "* ]]; then
+      echo "Skipping ${model}: provider ${provider} already exhausted its quota/billing, and no other of its models can change that." >&2
       continue
     fi
     now="$(date +%s)"
@@ -891,6 +909,10 @@ implement() {
       if [[ "${OPENCODE_ROUND_MODEL_GONE}" == "true" ]]; then
         persist_missing_model "${model}"
         echo "Model ${model} failed before completing the work: the model itself is gone (deprecated / removed / unavailable); remembering it as unavailable and skipping it from now on." >&2
+      elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
+        quota_failed_rounds=$((quota_failed_rounds + 1))
+        quota_providers="${quota_providers} ${provider}"
+        echo "Model ${model} failed before completing the work: provider quota/billing exhausted; giving up on provider ${provider} for the rest of this run." >&2
       elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
         env_failed_rounds=$((env_failed_rounds + 1))
         dead_providers="${dead_providers} ${provider}"
@@ -910,9 +932,9 @@ implement() {
     fi
   done
   echo "ERROR: no available model completed the work (tried: ${OPENCODE_USED_MODELS:-none}; handoffs: ${OPENCODE_HANDOFFS:-none})." >&2
-  if [[ "${failed_rounds}" -gt 0 && "${env_failed_rounds}" -eq "${failed_rounds}" && "${ran_without_failure}" -eq 0 ]]; then
+  if [[ "${failed_rounds}" -gt 0 && "$((env_failed_rounds + quota_failed_rounds))" -eq "${failed_rounds}" && "${ran_without_failure}" -eq 0 ]]; then
     ENVIRONMENT_DOWN="1"
-    echo "ERROR: every model round died on an environment error (provider unreachable or credentials rejected; providers given up on: ${dead_providers# }). Nothing the driver can do about that -- re-run it once its providers are reachable." >&2
+    echo "ERROR: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted; providers given up on:${dead_providers}${quota_providers}). Nothing the driver can do about that -- re-run it once its providers are usable again." >&2
   fi
   return 1
 }
@@ -1142,8 +1164,9 @@ log_review_handoff() {
 # --- review fingerprint -----------------------------------------------------
 
 # Main state machine. Handles both the fresh-issue path and the resume path.
-# Never auto-merges, and never waits for an approval: it exits once the review
-# request is on the PR ("ready to merge" when the PR is already APPROVED).
+# Never auto-merges, but does take the PR to the owner's approval: it asks for
+# review, then keeps polling for the verdict (addressing new feedback, waiting
+# otherwise) and exits once the PR is approved.
 drive() {
   local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" initial_draft="${9:-false}"
   local last_sig=""
@@ -1153,15 +1176,25 @@ drive() {
   # from resume_pr (its isDraft field); a fresh one is set right after
   # ensure_pr creates it.
   local pr_draft="${initial_draft}"
-  # Whether this run opened the PR (start_issue passes no PR number) or resumed
-  # one. A freshly opened PR can be handed to the reviewer before the CI poll;
-  # a resumed PR is polled first because it may already be merged, and asking a
-  # merged PR for review is not a hand-off (#233).
-  local fresh="false"
-  [[ -n "${pr}" ]] || fresh="true"
+  # Whether this run has already handed the PR to the owner by asking for a
+  # review, and is now only waiting for the verdict. Once true the driver never
+  # asks again until new review feedback makes it work a fresh round: the job is
+  # to take the PR to the owner's approval, not to stop at the request.
+  local handed_off="false"
 
   while true; do
-    check_timeout
+    # The budget expired. Once the PR is with the reviewer, that is simply a
+    # human who has not answered yet, so end cleanly (the pull_request_review
+    # trigger starts the next run and the merge workflow chains off the
+    # approval); before the hand-off it is a real failure worth a bug report.
+    if time_budget_exhausted; then
+      if [[ "${handed_off}" == "true" ]]; then
+        echo "PR #${pr}: the time budget is exhausted while waiting for the reviewer's decision; the PR is complete and waits for a human." >&2
+        exit 0
+      fi
+      echo "ERROR: time budget (${MAX_DURATION}s) exhausted while waiting. Exiting." >&2
+      exit 1
+    fi
 
     # Commit leftovers from a previously interrupted run. Only possible while
     # the interrupted run's agent had already written its .commit-msg: the
@@ -1272,10 +1305,11 @@ drive() {
     # feedback sits untouched (#219). The round runs even while checks are still
     # PENDING: any commit it makes restarts CI, which is re-verified below.
     #
-    # Asking for review is what a run hands over to a human, so the review
-    # request (not an approval) is the last thing the driver produces. The
-    # approval, and the merge owner-approved-auto-merge chains off it, are the
-    # reviewer's part to give: the driver reports and exits instead of polling.
+    # The run's job is the owner's approval, not the review request: asking for
+    # review hands the PR to a human, but the driver then keeps polling for the
+    # verdict instead of stopping. An approval ends the run (the merge workflow
+    # chains off it); new feedback loops back into this phase to be addressed;
+    # while nothing changes it waits, below, without re-asking.
     local rv decision payload raw summary sig actionable
     rv="$(gh_api_fetch_reviews "${owner}" "${repo}" "${pr}")"
     decision="$(printf '%s' "${rv}" | cut -d'|' -f1)"
@@ -1297,6 +1331,10 @@ drive() {
 
     if [[ "${actionable}" == "true" && -n "${sig}" && "${sig}" != "${last_sig}" ]]; then
       last_sig="${sig}"
+      # A fresh round invalidates the previous hand-off: the owner has to be
+      # asked again once this round's work passes the constraints, and until
+      # then the driver must keep driving rather than wait.
+      handed_off="false"
       echo "New review feedback detected; addressing it." >&2
       # The coding agent answers the reviewer in the thread itself (the reply
       # endpoint and every thread comment id are in the summary), besides any
@@ -1317,28 +1355,41 @@ ${summary}" "${base}"; then
       if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
       fi
-      # Hand the PR back to the reviewer before polling the non-reviewer
-      # constraints: the reviewer can start looking at the replies the moment
-      # the round is over, and the constraints are re-verified while they do.
-      request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
+      # Verify the non-reviewer constraints again before handing the PR back:
+      # the fix restarted CI, so the reviewer is only asked once the checks are
+      # green again (and the branch still merges), exactly as on the first
+      # hand-off.
       if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
         echo "Constraints failing after addressing feedback; fixing next cycle." >&2
         continue
       fi
+      request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
       log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-      exit 0
+      handed_off="true"
+      continue
+    fi
+
+    # --- wait for the reviewer phase ---
+    # The PR is complete and with the owner; the driver has already asked for
+    # review. Do not ask again: poll for the verdict. An approval is handled
+    # just above (it ends the run); new feedback loops back there to be
+    # addressed; while neither happens this keeps waiting, so the run takes the
+    # issue to the owner's approval instead of stopping at the request. A
+    # resumed run that finds the PR already requested and untouched comes here
+    # too, which is what lets it stay with the reviewer across restarts.
+    if [[ "${handed_off}" == "true" ]]; then
+      echo "PR #${pr}: waiting for the reviewer's decision." >&2
+      rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      continue
     fi
 
     # --- constraints phase ---
-    # A PR this run opened is handed to the reviewer before the CI poll: the
-    # reviewer can start looking while the checks still run, instead of waiting
-    # for green first. The poll still runs - and whatever fails is fixed -
-    # before the run ends, so the hand-off and the verification both happen, in
-    # that order. A resumed PR is polled first: it may already be merged, and
-    # asking a merged PR for review is not a hand-off (#233).
-    if [[ "${fresh}" == "true" ]]; then
-      request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-    fi
+    # Verify every non-reviewer constraint (mergeability, then CI checks)
+    # before asking the owner for review: the reviewer is handed a PR whose
+    # branch already merges and whose CI is green, not one that might still
+    # break. Whatever fails is fixed and the constraints are re-verified, so
+    # the hand-off only happens on a PR that is actually ready. A merged or
+    # closed PR ends the run inside poll_conditions itself.
     if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
       # CI failed or the branch conflicts: implement again with that context.
       # When no model produces a change there is nothing new to push, so back
@@ -1363,15 +1414,12 @@ ${summary}" "${base}"; then
     fi
 
     echo "PR #${pr}: non-reviewer constraints satisfied." >&2
-    # A resumed PR hands off here (a fresh PR was handed off before the poll
-    # already); a fresh PR only asks again when the first request could not be
-    # confirmed, giving it a second chance without duplicating the "assigned"
-    # line on the normal path.
-    if [[ "${fresh}" != "true" || "${REVIEW_HANDOFF_CONFIRMED}" != "true" ]]; then
-      request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-    fi
+    # The constraints pass, so the PR is ready for a human: hand it over. The
+    # run does not end here; the next loop iteration waits for the verdict.
+    request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
     log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
-    exit 0
+    handed_off="true"
+    continue
   done
 }
 

@@ -8,7 +8,7 @@
 # round dies that way the run must end pointing at the environment instead of
 # at a driver bug (#149).
 #
-# Two scenarios, one mocked API tape each (the shape matches
+# Three scenarios, one mocked API tape each (the shape matches
 # conahcnuj-bugreport.sh):
 #
 #   1. two providers, both dead (every round environment-fails) -> the second
@@ -17,6 +17,10 @@
 #      was at fault, not the driver
 #   2. a provider whose model fails for a non-environment reason -> that
 #      provider is NOT dropped and no environment diagnosis is printed
+#   3. a provider whose account quota/billing is exhausted (#276) -> the rest
+#      of that provider is skipped like a dead one, and a run where every
+#      round died environmentally or on quota still names the environment
+#      (now including quota/billing) instead of blaming a driver bug
 #
 # No secrets, no network.
 set -euo pipefail
@@ -105,6 +109,36 @@ grep -q "opencode: mock no-op for plain/two" "${LOG2}" || { echo "FAIL: plain/tw
 grep -q "Skipping" "${LOG2}" && { echo "FAIL: a provider was skipped on a non-environment failure"; exit 1; }
 grep -q "every model round died on an environment error" "${LOG2}" && { echo "FAIL: environment diagnosis printed although a round failed non-environmentally"; exit 1; }
 
+LOG3="${ROOT}/run3.log"
+RC3=0
+(
+  cd "${WORK}"
+  CONAHCNUJ_MAX_SECONDS=120 \
+    MOCK_OPENCODE_MODELS="$(printf '%s\n' billed/a billed/b poor/c)" \
+    MOCK_OPENCODE_QUOTA="billed/a" \
+    MOCK_OPENCODE_ENV_ERROR="poor/c" \
+    bash "${DRIVER}" 14 < "${TAPE}"
+) > "${LOG3}" 2>&1 || RC3=$?
+
+echo "----- scenario 3: quota/billing exhaustion drops the provider -----"
+cat "${LOG3}"
+echo "-------------------------------------------------------------------"
+
+[[ ${RC3} -eq 1 ]] || { echo "FAIL: scenario 3 exited ${RC3} (expected 1)"; exit 1; }
+
+# The first billed model names quota/billing exhaustion...
+grep -q "Model billed/a failed before completing the work: provider quota/billing exhausted" "${LOG3}" || { echo "FAIL: billed/a was not reported as quota/billing exhaustion"; exit 1; }
+# ...and the second billed model is skipped without a round: every model of
+# the same provider bills the same account.
+grep -q "Skipping billed/b: provider billed already exhausted its quota/billing" "${LOG3}" || { echo "FAIL: billed/b was not skipped"; exit 1; }
+grep -q "partial change from billed/b" "${WORK}/conahcnuj.mock" && { echo "FAIL: billed/b ran despite its exhausted provider"; exit 1; }
+# An environment failure next to a quota failure still rolls up to the
+# environment diagnosis, now naming quota/billing as a cause.
+grep -q "Model poor/c failed before completing the work: environment error" "${LOG3}" || { echo "FAIL: poor/c was not reported as an environment failure"; exit 1; }
+grep -q "every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted" "${LOG3}" || { echo "FAIL: no widened environment diagnosis in the log"; exit 1; }
+grep -q "re-run it once its providers are usable again" "${LOG3}" || { echo "FAIL: the re-run advice was not widened past reachability"; exit 1; }
+grep -q "Bug report issue #25 created" "${LOG3}" || { echo "FAIL: no bug report was filed"; exit 1; }
+
 # ---------------------------------------------------------------------------
 # Unit: the bug report words the failure as the environment (or not) based on
 # ENVIRONMENT_DOWN. Capture the body through a stubbed gh_api_create_issue.
@@ -126,6 +160,7 @@ gh_api_create_issue() {
   report_bug_on_exit "1"
 )
 grep -q "stopped early on issue #14: every model round died on an environment error" "${ROOT}/captured-env.txt" || { echo "FAIL: environment opener missing from the bug report"; exit 1; }
+grep -q "quota/billing exhausted" "${ROOT}/captured-env.txt" || { echo "FAIL: environment opener does not name quota/billing exhaustion"; exit 1; }
 grep -q "Nothing in the log below points at a driver defect" "${ROOT}/captured-env.txt" || { echo "FAIL: environment closing missing from the bug report"; exit 1; }
 grep -q "the driver bug can be fixed" "${ROOT}/captured-env.txt" && { echo "FAIL: the environment report still blames a driver bug"; exit 1; }
 
@@ -172,5 +207,24 @@ opencode_round_is_environment "${F}" && { echo "FAIL: a deprecated-model error w
 
 : > "${F}"
 opencode_round_is_environment "${F}" && { echo "FAIL: an empty event stream was classified as environment"; exit 1; }
+
+# opencode's own log names the same failure the JSON error event does. A
+# round the watchdog cuts short mid-retry never emits the final error event,
+# so the log's error lines count too (#276: "Upstream request failed:
+# Endpoint is unavailable." read as a rate limit with the provider kept).
+E="${ROOT}/opencode-stderr.log"
+printf '%s\n' 'timestamp=2026-10-11T14:33:12.115Z level=ERROR run=3d39438f message="stream error" providerID=opencode modelID=step-5-preview-free error.error="AI_APICallError: Upstream request failed: Endpoint is unavailable."' > "${E}"
+: > "${F}"
+opencode_round_is_environment "${F}" "${E}" || { echo "FAIL: an upstream outage on opencode stderr was not classified as environment"; exit 1; }
+
+# Non-error log lines do not count, even with the words in them.
+printf '%s\n' 'timestamp=2026-10-11T14:33:12.115Z level=WARN run=3d39438f message="cannot connect to api, retrying in the model answer text econnrefused"' > "${E}"
+opencode_round_is_environment "${F}" "${E}" && { echo "FAIL: a non-error log line was classified as environment"; exit 1; }
+
+# The model-level and quota filters apply to the log lines as well.
+printf '%s\n' 'timestamp=2026-10-11T14:33:12.115Z level=ERROR run=3d39438f message="stream error" error.error="AI_APICallError: Upstream request failed: Model is unavailable."' > "${E}"
+opencode_round_is_environment "${F}" "${E}" && { echo "FAIL: a model-unavailable error on stderr was classified as environment"; exit 1; }
+printf '%s\n' 'timestamp=2026-10-11T14:33:52.325Z level=ERROR run=c82bc528 message="stream error" error.error="AI_APICallError: personal-team-blocked:spending-limit: You have run out of credits."' > "${E}"
+opencode_round_is_environment "${F}" "${E}" && { echo "FAIL: a spending-limit error on stderr was classified as environment"; exit 1; }
 
 echo "conahcnuj environment-failure handling passed"

@@ -25,7 +25,8 @@
 #   excluded) -> CHANGES_REQUESTED detected -> the agent addresses it and
 #   commits -> review re-requested from the owner -> constraints re-verified
 #   (a pending real CI check still waits, then the own run CANCELLED and the
-#   failed auto-merge check are excluded too) -> "review requested" -> exit 0
+#   failed auto-merge check are excluded too) -> "review requested" -> poll ->
+#   approval -> exit 0
 #
 # No secrets, no network.
 set -euo pipefail
@@ -53,11 +54,14 @@ git -C "${WORK}" commit -qm init
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue
 #   (stub body -> real issue body), fetch_reviews (collection: nothing open),
 #   update_pr (body sync), continuation comment, fetch_reviews
-#   (CHANGES_REQUESTED -> feedback round), request_review, conditions (own run
+#   (CHANGES_REQUESTED -> feedback round), conditions (own run
 #   SUCCESS + real CI running -> PENDING), conditions (own run CANCELLED +
-#   auto-merge FAILED + real CI SUCCESS -> SUCCESS). Reviews are read before the
-#   constraints poll (#219); the feedback round posts no comment of its own: the
-#   agent answers the reviewer in the thread.
+#   auto-merge FAILED + real CI SUCCESS -> SUCCESS), request_review,
+#   fetch_reviews (APPROVED -> ready to merge, exit 0). Reviews are read before
+#   the constraints poll (#219); the constraints are re-verified before the PR
+#   is handed back to the reviewer, and the run keeps polling to the approval.
+#   The feedback round posts no comment of its own: the agent answers the
+#   reviewer in the thread.
 # The tape and log live OUTSIDE the repo (the driver's test-mode commit
 # path runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
@@ -69,9 +73,10 @@ cat > "${TAPE}" <<'EOF'
 {}
 {"id":889}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING","contexts":{"nodes":[{"__typename":"CheckRun","name":"Attempt to resolve issue","status":"COMPLETED","conclusion":"SUCCESS","checkSuite":{"workflowRun":{"workflow":{"name":"Issue auto-drive"}}}},{"__typename":"CheckRun","name":"Lint shell scripts (ubuntu-latest)","status":"IN_PROGRESS","conclusion":null,"checkSuite":{"workflowRun":{"workflow":{"name":"CI"}}}}],"pageInfo":{"hasNextPage":false}}}}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[{"__typename":"CheckRun","name":"Attempt to resolve issue","status":"COMPLETED","conclusion":"CANCELLED","checkSuite":{"workflowRun":{"workflow":{"name":"Issue auto-drive"}}}},{"__typename":"CheckRun","name":"enable / enable","status":"COMPLETED","conclusion":"FAILURE","checkSuite":{"workflowRun":{"workflow":{"name":"Owner-approved auto-merge"}}}},{"__typename":"CheckRun","name":"Lint shell scripts (ubuntu-latest)","status":"COMPLETED","conclusion":"SUCCESS","checkSuite":{"workflowRun":{"workflow":{"name":"CI"}}}}],"pageInfo":{"hasNextPage":false}}}}}]}}}}}
+{}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -94,9 +99,9 @@ echo "-----------------------------"
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
 grep -q "Review requested on PR #15 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the PR was not handed back to the owner as reviewer"; exit 1; }
-# The driver stops at the review request: waiting for the approval is the
-# reviewer's part, and the merge job's.
-grep -q "Ready to merge" "${LOG}" && { echo "FAIL: the driver waited for an approval that never came"; exit 1; }
+# The run does not stop at the review request: it keeps polling until the
+# owner approves.
+grep -q "Ready to merge" "${LOG}" || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" || { echo "FAIL: the requested changes were not acted on"; exit 1; }
 # The driver posts no reply of its own: the agent answers the reviewer in the
 # thread (see conahcnuj-resume.sh for the reply-target assertions).

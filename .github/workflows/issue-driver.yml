@@ -2,9 +2,19 @@ name: Issue auto-drive
 
 # When an issue is created or reopened, a non-approval review is submitted,
 # edited, or dismissed, a required check (the CI workflow) fails on a pull
-# request, or the workflow is dispatched by hand, attempt to resolve it with the
-# conahcnuj driver end-to-end (feature branch -> PR -> review feedback) and end
-# with a ready-to-merge PR, or file a bug-report issue on failure.
+# request, the workflow is dispatched by hand, or another repository's workflow
+# calls this one (`workflow_call` with a `number` input), attempt to resolve it
+# with the conahcnuj driver end-to-end (feature branch -> PR -> review feedback)
+# and end with a ready-to-merge PR, or file a bug-report issue on failure.
+#
+# Reusable use keeps the same driver checkout: the job checks out this
+# workflow's own repository (`job.workflow_repository` at `job.workflow_sha`)
+# and drives the issue or PR in the caller's repository (`inputs.repository`,
+# defaulting to the caller), exactly like makamujo's local auto-drive pattern.
+# The caller passes the GitHub App secrets (`secrets: inherit` within the same
+# organization or enterprise, named secrets otherwise); the job-level
+# `environment` (default `conahcnuj`, overridable with `inputs.environment`)
+# still decides which environment secrets win over the passed ones.
 #
 # The timeout is controlled on the Actions side: "timeout-minutes" below is
 # the hard cap for the whole job, and CONAHCNUJ_MAX_SECONDS is kept just under
@@ -37,12 +47,40 @@ on:
         description: Issue or pull request number to continue
         required: true
         type: number
+  # Another repository drives one of its issues or pull requests by calling
+  # this workflow. The job `if` below runs whenever `inputs.number` is set,
+  # and the driver checkout follows this file (`job.workflow_repository` at
+  # `job.workflow_sha`), not the caller. Secrets are passed with
+  # `secrets: inherit` (same organization or enterprise) or by name.
+  workflow_call:
+    inputs:
+      number:
+        description: Issue or pull request number to continue
+        required: true
+        type: number
+      repository:
+        description: 'owner/name of the repository to drive (default: the caller repository)'
+        required: false
+        type: string
+        default: nahcnuj/conahcnuj
+      environment:
+        description: 'Environment holding the GitHub App secrets (default: conahcnuj)'
+        required: false
+        type: string
+        default: conahcnuj
+    secrets:
+      APP_ID:
+        required: true
+      INSTALLATION_ID:
+        required: true
+      PRIVATE_KEY:
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: conahcnuj-${{ github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) || inputs.number }}
+  group: conahcnuj-${{ inputs.number || github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) }}
   cancel-in-progress: false
 
 jobs:
@@ -50,7 +88,15 @@ jobs:
     name: Attempt to resolve issue
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: conahcnuj
+    # The caller's environment wins for a cross-repository call: the
+    # environment resolves in the run's (caller's) repository, so the caller
+    # names its own environment holding the App secrets. `inputs.environment`
+    # is only populated for `workflow_call` (its default) and is empty for the
+    # repository's own events (issues, pull_request_review, workflow_run,
+    # workflow_dispatch), where an empty `environment:` drops the job's
+    # environment secrets - PRIVATE_KEY included - and the staging step fails
+    # with "cannot sign an App JWT" (#281). Fall back to `conahcnuj` for those.
+    environment: ${{ inputs.environment || 'conahcnuj' }}
     # Do not chase the driver's own outputs: its tracking issue and bug-report
     # issues are bot-authored and carry no `self-improvement` label, so they
     # stay skipped and the loop cannot recurse. The weekly findings issue is
@@ -60,7 +106,11 @@ jobs:
     # so the check keys off the label, not a secret. Missing secrets are not
     # pre-checked either: the run fails loudly and the driver files its own bug
     # report (no silent skip).
+    # `inputs.number` covers both hand dispatch and `workflow_call`: a called
+    # run's `github` context belongs to the caller, so only the passed number
+    # reliably identifies a reusable call.
     if: >-
+      inputs.number ||
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'issues' &&
@@ -88,7 +138,14 @@ jobs:
       run:
         shell: bash
     steps:
+      # Check out the driver source, i.e. this workflow's own repository: for
+      # a cross-repository `workflow_call` the default checkout would be the
+      # caller's repository, which has no driver. For this repository's own
+      # events these are identical to the caller's repository and SHA.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
 
       # opencode is not preinstalled on runners; shared with ci.yml through the
       # install-opencode composite action (authenticated release lookup so
@@ -98,12 +155,14 @@ jobs:
 
       # The driver reads gh-app/app.env like any local run. The private key is
       # staged from the sealed secret, outside the work tree, so `git add -A`
-      # can never pick it up.
+      # can never pick it up. The App slug is not staged from a secret: it is
+      # public (the <slug>[bot] login, and here also the repository name), and
+      # a secret with that value made Actions mask the repository name in the
+      # whole job log - the created PR URL included.
       - name: Stage App private key and app.env
         env:
           APP_ID: ${{ secrets.APP_ID }}
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
-          APP_SLUG: ${{ secrets.APP_SLUG }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
         run: |
           pem="$RUNNER_TEMP/conahcnuj-app.pem"
@@ -112,15 +171,18 @@ jobs:
           cat > gh-app/app.env <<EOF
           APP_ID="$APP_ID"
           INSTALLATION_ID="$INSTALLATION_ID"
-          APP_SLUG="$APP_SLUG"
           PRIVATE_KEY_PATH="$pem"
           BASH_EXE="/usr/bin/bash"
           EOF
+          APP_SLUG="$(bash gh-app/app-slug.sh)"
+          printf 'APP_SLUG="%s"\n' "${APP_SLUG}" >> gh-app/app.env
 
       - name: Run the conahcnuj driver
         env:
-          CONAHCNUJ_REPO: ${{ github.repository }}
-          CONAHCNUJ_INPUT: ${{ github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) || inputs.number }}
+          # The caller's repository for a reusable call (`inputs.repository`
+          # overrides it when the caller drives yet another repository).
+          CONAHCNUJ_REPO: ${{ inputs.repository }}
+          CONAHCNUJ_INPUT: ${{ inputs.number || github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) }}
           # Just under the 60-minute job cap so the driver exits gracefully
           # and files its bug report before Actions kills the run.
           CONAHCNUJ_MAX_SECONDS: "3540"

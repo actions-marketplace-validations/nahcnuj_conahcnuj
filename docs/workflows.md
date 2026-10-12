@@ -6,7 +6,7 @@
 | ファイル | 名前 | 触発 | 役割 |
 | --- | --- | --- | --- |
 | `ci.yml` | CI | push to main / PR | lint・offline テスト・型チェック・smoke・e2e・docs ビルド |
-| `issue-driver.yml` | Issue auto-drive | issue open/reopen、非 approve の review、required checks（CI）失敗、手動 | ドライバを Actions 上で実行 |
+| `issue-driver.yml` | Issue auto-drive | issue open/reopen、非 approve の review、required checks（CI）失敗、手動、`workflow_call` | ドライバを Actions 上で実行 |
 | `weekly-self-improvement.yml` | Weekly auto-drive self-improvement | schedule（月曜） | 直近の auto-drive 実行ログを解析し、findings を Project とドライバへ引き渡す |
 | `auto-merge.yml` | Owner-approved auto-merge | owner が approve | 再利用 workflow を呼び出してマージ |
 | `owner-approved-auto-merge.yml` | Owner-approved auto-merge | `workflow_call` | マージ処理本体（他リポジトリからも利用可） |
@@ -65,6 +65,41 @@ CI では行いません。
   インストールトークンで行う
 - environment `conahcnuj` を使用
 - 同一 issue/PR に対する実行は concurrency で直列化される
+
+### 再利用 workflow の入力（`workflow_call`）
+
+他リポジトリはこの workflow を呼び出して自分の issue / PR を駆動できる
+（makamujo のローカル auto-drive パターンの置き換え）:
+
+| 入力 | 必須 | 既定 | 内容 |
+| --- | --- | --- | --- |
+| `number` | ○ | - | 駆動する issue / PR 番号 |
+| `repository` | - | 呼び出し側 | `owner/name` 形式の対象リポジトリ |
+| `environment` | - | `conahcnuj` | App の secrets を持つ environment 名 |
+
+secret（`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`）は必須。同一
+organization / enterprise 内なら `secrets: inherit`、それ以外は名前付きで渡す。
+`environment` は run の所属リポジトリ（＝呼び出し側）で解決されるため、
+呼び出し側はその environment に App の secrets を持たせる。
+
+```yaml
+jobs:
+  drive:
+    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
+    with:
+      number: 123
+    secrets: inherit
+```
+
+振る舞い:
+
+- ドライバの checkout は呼び出し側ではなくこの workflow 自身
+  （`job.workflow_repository` at `job.workflow_sha`）から取るため、
+  呼び出し側に `bin/` / `gh-app/` / `lib/` は不要
+- `number` が渡されればジョブは実行される（呼び出し側のイベント種別に
+  依らない）。`repository` 未指定なら呼び出し側リポジトリを駆動する
+- `GITHUB_TOKEN` の権限は `contents: read` のみ。書き込みはすべて、
+  自リポジトリの実行と同じく App のインストールトークンで行う
 
 ## Weekly auto-drive self-improvement（`weekly-self-improvement.yml`）
 

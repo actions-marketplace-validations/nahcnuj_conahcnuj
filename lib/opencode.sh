@@ -37,6 +37,14 @@ OPENCODE_ROUND_ENVIRONMENT="false"
 # it in later rounds (#209). opencode_run sets it for every round.
 OPENCODE_ROUND_MODEL_GONE="false"
 
+# Whether the round that just finished died because the provider's
+# account-level quota or billing is exhausted ("spending-limit", out of
+# credits, ...). Every model of the same provider bills the same account, so
+# unlike a transient rate limit no other model of that provider can succeed:
+# the driver gives up on the whole provider (#276). opencode_run sets it for
+# every round.
+OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
+
 # Whether the round that just finished was cut short by a provider rate limit.
 # opencode retries "Rate limit exceeded. Please try again later." with its own
 # exponential backoff, emitting nothing usable on stdout for minutes, so the
@@ -116,25 +124,59 @@ opencode_build_handoff_prompt() {
 
 # True when the round's JSON event stream carries an environment error
 # (provider unreachable, credentials rejected, transport broken).
-# Matched against the raw error-event lines, message and error name together,
-# so no JSON value extraction is needed: those messages embed quoted JSON of
-# their own ("xAI token refresh failed (400): {\"error\":...}"), which a value
-# extractor would cut at the first escaped quote. Text events are ignored on
-# purpose -- a model that merely writes the words in its answer is not an
-# environment failure.
+# Args: output_file [err_file]. Matched against the raw error-event lines,
+# message and error name together, so no JSON value extraction is needed:
+# those messages embed quoted JSON of their own ("xAI token refresh failed
+# (400): {\"error\":...}"), which a value extractor would cut at the first
+# escaped quote. Text events are ignored on purpose -- a model that merely
+# writes the words in its answer is not an environment failure.
+# opencode's own log (err_file, --print-logs) names the failure the same way
+# the JSON error event does ("Upstream request failed: Endpoint is
+# unavailable."). A round the watchdog cuts short mid-retry never emits the
+# final JSON error event, so without the log the outage would read as a quota
+# rate limit and the dead provider would stay in the pool (#276). Only the
+# log's own error lines count, for the same reason text events do not.
 # A model-level condition ("Model is unavailable", a model that has been
 # deprecated or does not exist) is NOT an environment error: it says nothing
 # about the provider's other models, so it must not drop the whole provider.
 # Such lines are filtered out before the environment patterns are matched, so
 # even a generic wrapper message ("Upstream request failed: Model is
-# unavailable.") that embeds both reads as the model being the problem.
+# unavailable.") that embeds both reads as the model being the problem. The
+# same goes for quota/billing exhaustion, which has its own classifier below.
 opencode_round_is_environment() {
-  local file="${1}"
+  local file="${1}" err_file="${2:-}"
   [[ -f "${file}" ]] || return 1
-  grep -F '"type":"error"' "${file}" 2>/dev/null |
+  local signals
+  signals="$(grep -F '"type":"error"' "${file}" 2>/dev/null || true)"
+  if [[ -n "${err_file}" && -f "${err_file}" ]]; then
+    signals+=$'\n'"$(grep -E 'level=ERROR' "${err_file}" 2>/dev/null || true)"
+  fi
+  printf '%s\n' "${signals}" |
     grep -Evi 'model .*is unavailable|has been deprecated|model not found|no such model|unknown model|does not exist' |
     grep -Evi 'rate limit|rate_limit|too many requests|please try again later|quota exceeded|usage limit|resource_exhausted|(^|[^0-9])429([^0-9]|$)' |
+    grep -Evi 'spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent' |
     grep -Eiq 'token refresh failed|invalid_grant|cannot connect to api|unable to connect|was there a typo in the url|transport error|fetch failed|endpoint is unavailable|upstream request failed|upstream error|service temporarily overloaded|socket connection|providerautherror|authenticationerror|unauthorized|enotfound|econnrefused|econnreset|etimedout|getaddrinfo'
+}
+
+# True when the round carries provider account-level quota/billing
+# exhaustion ("spending-limit", out of credits, ...): the account cannot pay
+# for any model of that provider, so no other model of the same provider can
+# succeed and the driver gives up on the whole provider (#276). Unlike the
+# transient quota wording a rate limit retries through ("quota exceeded",
+# "usage limit", HTTP 429), these errors do not clear by switching models or
+# waiting out a backoff. Args: output_file [err_file]. Like
+# opencode_round_is_environment, text events are ignored on purpose: a model
+# that merely writes the words is not quota-exhausted.
+opencode_round_is_quota_exhausted() {
+  local output_file="${1}" err_file="${2:-}"
+  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent'
+  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
+    return 0
+  fi
+  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiq "${pattern}" "${err_file}" 2>/dev/null; then
+    return 0
+  fi
+  return 1
 }
 
 # True when the round's error stream says the model itself is permanently gone:
@@ -181,6 +223,7 @@ opencode_run() {
   local prompt
   OPENCODE_ROUND_ENVIRONMENT="false"
   OPENCODE_ROUND_MODEL_GONE="false"
+  OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
   OPENCODE_ROUND_RATE_LIMITED="false"
   if [[ -n "${session_id}" ]]; then
     prompt="$(opencode_build_handoff_prompt "${previous_model:-unknown}")"
@@ -213,17 +256,25 @@ opencode_run() {
     if [[ " ${MOCK_OPENCODE_DEPRECATED:-} " == *" ${model} "* ]]; then
       OPENCODE_ROUND_MODEL_GONE="true"
     fi
+    # MOCK_OPENCODE_QUOTA lists the models whose round dies on provider
+    # quota/billing exhaustion (it implies MOCK_OPENCODE_ERROR for those
+    # models). Like an environment error it drops the whole provider (#276).
+    if [[ " ${MOCK_OPENCODE_QUOTA:-} " == *" ${model} "* ]]; then
+      OPENCODE_ROUND_QUOTA_EXHAUSTED="true"
+    fi
     # MOCK_OPENCODE_RATE_LIMIT lists the models whose round is cut short by a
     # provider rate limit, as the watchdog does in real mode.
     if [[ " ${MOCK_OPENCODE_RATE_LIMIT:-} " == *" ${model} "* ]]; then
       OPENCODE_ROUND_RATE_LIMITED="true"
     fi
-    if [[ "${MOCK_OPENCODE_ERROR:-}" == "${model}" || "${OPENCODE_ROUND_ENVIRONMENT}" == "true" || "${OPENCODE_ROUND_MODEL_GONE}" == "true" || "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
+    if [[ "${MOCK_OPENCODE_ERROR:-}" == "${model}" || "${OPENCODE_ROUND_ENVIRONMENT}" == "true" || "${OPENCODE_ROUND_MODEL_GONE}" == "true" || "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" || "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
       if [[ -d "${workdir}" && -w "${workdir}" ]]; then
         printf 'partial change from %s\n' "${model}" >> "${workdir}/conahcnuj.mock"
       fi
       if [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
         echo "opencode: mock rate limit for ${model} (round stops immediately)" >&2
+      elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
+        echo "opencode: mock quota/billing exhaustion for ${model} (leaves an incomplete change)" >&2
       elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
         echo "opencode: mock environment error for ${model} (leaves an incomplete change)" >&2
       else
@@ -371,7 +422,12 @@ opencode_run() {
   if [[ "${status}" != "0" ]] && opencode_round_is_model_gone "${output_file}"; then
     OPENCODE_ROUND_MODEL_GONE="true"
   fi
-  if [[ "${status}" != "0" ]] && opencode_round_is_environment "${output_file}"; then
+  # Quota/billing exhaustion is provider-level like an environment error, and
+  # is read before it so the specific diagnosis wins over the generic one.
+  if [[ "${status}" != "0" ]] && opencode_round_is_quota_exhausted "${output_file}" "${err_file}"; then
+    OPENCODE_ROUND_QUOTA_EXHAUSTED="true"
+  fi
+  if [[ "${status}" != "0" ]] && opencode_round_is_environment "${output_file}" "${err_file}"; then
     OPENCODE_ROUND_ENVIRONMENT="true"
   fi
   if [[ "${status}" != "0" ]] && { [[ "${rate_aborted}" == "true" ]] || opencode_round_is_rate_limited "${output_file}" "${err_file}"; }; then

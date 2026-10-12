@@ -142,12 +142,15 @@ conahcnuj <PR番号>           # 入力が PR なら自動で引き継いで再�
    issue の進捗はリポジトリルートの `TODO.md`（生存期間は issue 毎）で管理・共有する。
    エージェントが着手時に作成し、作業中に更新し、完了して ready to merge するときに
    削除する（書式は問わない。）
-1. PR を作成したら、まず **リポジトリ owner を reviewer にアサイン**して
-   レビューを依頼し、その後にレビュアー以外の制約（status checks・mergeable）を
-   ポーリングして、失敗していれば直す（人がレビューを引き受ける引き渡し点
-   hand-off を先に作るので、CI が green になるのを待ってから依頼するより
-   レビューが早く進む。#233）。依頼付けられて制約が通った時点でドライバは
-   正常終了する（既に Approved なら「ready to merge」で終了する）。
+1. PR を作成したら、まず **レビュアー以外の制約**（mergeable → status checks）を
+   ポーリングして、失敗していれば直す（コンフリクトの解消・CI 失敗の修正）。制約が
+   通って初めて **リポジトリ owner を reviewer にアサイン**してレビューを依頼する
+   （レビュアーには「マージできる・CI が green の PR」だけを渡す）。依頼したら
+   終わりではなく、ドライバは **owner が Approve するまでポーリングする**
+   （承認されたら「ready to merge」で正常終了する）。待っている間に新しいレビュー
+   意見が来れば次のラウンドで対応して再依頼する。承認待ちのまま時間予算が尽きた
+   場合は人間待ちとしてバグ報告せず正常終了し、次の `pull_request_review` 起動が
+   続きを引き継ぐ。
    `TODO.md` がある状態では PR は **draft** として作られ、レビュー依頼をしない。
    削除されて初めてドライバが draft を解除してレビュー依頼するので、
    `TODO.md` がある限りエージェント自身で draft を解除できない（draft でない PR を
@@ -159,7 +162,8 @@ conahcnuj <PR番号>           # 入力が PR なら自動で引き継いで再�
 2. 再開実行時に新しいレビュー意見（Comment / Request changes / 未解決の
    レビュースレッド。セキュリティレビューの指摘を含む）がある場合は、
    モデルを使って対応し、api-commit.sh で Verified コミットを push し、
-   owner へレビューを再依頼してから制約を再確認して終了する。既知のレビュー
+   **制約を再確認してから** owner へレビューを再依頼し、承認までポーリングする。
+   既知のレビュー
    意見は制約（status checks・mergeable）のポーリングを待たずに先に対応する
    （未解決スレッドが残る PR は、スレッドが片付くまで制約を満たせないため、
    先に待つと時間予算を無駄にするだけ。#219）。レビュースレッド
@@ -200,10 +204,18 @@ submit・編集・dismiss された場合も、PR 番号でドライバを再開
   `CONAHCNUJ_MAX_SECONDS=3540` をその直下に設定し、ジョブが強制終了される前に
   ドライバが自己終了してバグ報告を残せるようにしています。予算を変えるときは
   両方を合わせて変更してください。
-- 必要な repo secrets: `APP_ID` / `INSTALLATION_ID` / `APP_SLUG` /
-  `PRIVATE_KEY`（App の秘密鍵 PEM）。runner 上の `GITHUB_TOKEN` は
-  `contents: read` のみで、書き込み（ブランチ・コミット・PR・レビュー依頼・
-  コメント）はすべてローカル実行と同じく App のインストールトークンで行われます。
+- 必要な repo secrets: `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`
+  （App の秘密鍵 PEM）。`APP_SLUG` はシークレットにしません。実行時に
+  `gh-app/app-slug.sh` が App 自身（`GET /app`）からスラッグを解決して
+  `gh-app/app.env` へ書きます。スラッグは `<slug>[bot]` のログイン名という
+  公開情報であり、シークレットにしてしまうと Actions がその値をログから
+  `***` に塗り潰すため、リポジトリ名を含む行（作成した PR の URL など）が
+  読めなくなる（既存の `APP_SLUG` シークレットは削除してよい）。
+- runner 上の `GITHUB_TOKEN` は `contents: read` のみで、書き込み（ブランチ・
+  コミット・PR・レビュー依頼・コメント）はすべてローカル実行と同じく App の
+  インストールトークンで行われます。
+- このワークフローは `workflow_call` で他リポジトリから再利用できます
+  （`number` + App の secrets を渡す。詳細は [workflows.md](docs/workflows.md)）。
 
 ## owner 承認後の自動マージ（GitHub Actions）
 

@@ -96,6 +96,7 @@ jobs:
             "gh-app/setup-git.sh",
             "gh-app/api-commit.sh",
             "gh-app/bot-user-id.sh",
+            "gh-app/app-slug.sh",
             "gh-app/app.env.example",
             "gh-app/missing-models",
             "plugins/gh-app-token.ts",
