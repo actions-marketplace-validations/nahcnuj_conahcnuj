@@ -30,11 +30,15 @@ if [[ -n "${SLUG}" && "${SLUG}" != "<"* ]]; then
   exit 0
 fi
 
-if ! JWT="$(bash "${DIR}/get-token.sh" --print-jwt)"; then
+JWT_ERR="$(mktemp)"
+if ! JWT="$(bash "${DIR}/get-token.sh" --print-jwt 2>"${JWT_ERR}")"; then
   echo "ERROR: cannot sign an App JWT to look the slug up (APP_ID / PRIVATE_KEY_PATH?)." >&2
+  sed 's/^/  /' "${JWT_ERR}" >&2
+  rm -f "${JWT_ERR}"
   echo "Set APP_SLUG in gh-app/app.env (see app.env.example)." >&2
   exit 1
 fi
+rm -f "${JWT_ERR}"
 
 LOOKUP="$(curl -fsSL \
   -H "Authorization: Bearer ${JWT}" \

@@ -72,3 +72,20 @@ EOF
 else
   echo "SKIP app-slug.sh lookup (openssl unavailable)"
 fi
+
+# When get-token.sh fails, app-slug.sh must surface the underlying error
+# (not just a generic message) so the real cause is visible in CI logs.
+cat > "${WORK}/app.env" <<'EOF'
+APP_ID=12345
+INSTALLATION_ID=67890
+APP_SLUG="<your-app-name>"
+PRIVATE_KEY_PATH=/tmp/nonexistent-conahcnuj-key.pem
+BASH_EXE="bash"
+EOF
+OUT="$(bash "${WORK}/app-slug.sh" 2>&1 || true)"
+if [[ "${OUT}" != *"private key file not found"* ]]; then
+  echo "FAIL: app-slug.sh should surface the underlying get-token.sh error:" >&2
+  echo "${OUT}" >&2
+  exit 1
+fi
+echo "PASS app-slug.sh surfaces underlying get-token.sh error"

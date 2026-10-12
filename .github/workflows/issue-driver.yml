@@ -90,8 +90,13 @@ jobs:
     timeout-minutes: 60
     # The caller's environment wins for a cross-repository call: the
     # environment resolves in the run's (caller's) repository, so the caller
-    # names its own environment holding the App secrets.
-    environment: ${{ inputs.environment }}
+    # names its own environment holding the App secrets. `inputs.environment`
+    # is only populated for `workflow_call` (its default) and is empty for the
+    # repository's own events (issues, pull_request_review, workflow_run,
+    # workflow_dispatch), where an empty `environment:` drops the job's
+    # environment secrets - PRIVATE_KEY included - and the staging step fails
+    # with "cannot sign an App JWT" (#281). Fall back to `conahcnuj` for those.
+    environment: ${{ inputs.environment || 'conahcnuj' }}
     # Do not chase the driver's own outputs: its tracking issue and bug-report
     # issues are bot-authored and carry no `self-improvement` label, so they
     # stay skipped and the loop cannot recurse. The weekly findings issue is
