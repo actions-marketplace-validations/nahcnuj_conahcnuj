@@ -388,13 +388,19 @@ commit_changes() {
 
 # --- bug reporting ----------------------------------------------------------
 
-# When the driver terminates abnormally it files a bug report issue in the
-# repository it was working on, so a failed run is never silently lost and the
-# next driver invocation can pick the report up (the driver resolves issues).
+# When the driver terminates abnormally it files a bug report issue in its own
+# repository, labelled with the repository it was working on, so a failed run is
+# never silently lost and the next driver invocation can pick the report up (the
+# driver resolves issues).
 # Best-effort only: the report must never change the exit code, never trigger
 # an extra API call on a successful run, and must not recurse into another
 # report (a failed report files nothing further).
 BUG_REPORT_INPUT=""
+# The repository the run is driving (owner/repo). Bug reports are always filed
+# in the driver's own repository, but the report's "Issue/PR" line must name the
+# item the run actually worked on, so a cross-repository run points at its
+# target here. Set in main() once repo_detect has resolved it.
+BUG_REPORT_TARGET=""
 BUG_REPORTED="0"
 # Set when implement() gave up because every model round died on an
 # environment error (providers unreachable / credentials rejected). The bug
@@ -525,8 +531,18 @@ EOF
 # need no extra tape entry. The trap must never change the exit code.
 report_bug_on_exit() {
   local code="${1:-}"
+  # The report is filed in the driver's own repository, but its "Issue/PR" line
+  # must name the item the run was working on: a cross-repository run drives an
+  # issue or PR in another repository (BUG_REPORT_TARGET), so the label has to
+  # come from there and not from where the report lands. Fall back to the
+  # report's repository when the target was never resolved.
   local owner="nahcnuj" repo="conahcnuj" input="${BUG_REPORT_INPUT:-}"
+  local label_owner="${owner}" label_repo="${repo}"
   local branch oid title body num
+  if [[ -n "${BUG_REPORT_TARGET:-}" ]]; then
+    label_owner="${BUG_REPORT_TARGET%%/*}"
+    label_repo="${BUG_REPORT_TARGET#*/}"
+  fi
   # Complete the run log (close the FIFO, reap the reader) so report_bug_body
   # sees the whole console output, then always clean up, successful run or not.
   run_log_finalize
@@ -552,7 +568,7 @@ report_bug_on_exit() {
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   oid="$(git rev-parse --short HEAD 2>/dev/null || true)"
   title="$(report_bug_title "${code}" "${input}")"
-  body="$(report_bug_body "${code}" "${owner}" "${repo}" "${input}" "${branch}" "${oid}")"
+  body="$(report_bug_body "${code}" "${label_owner}" "${label_repo}" "${input}" "${branch}" "${oid}")"
   echo "Driver exited abnormally (code ${code}); filing a bug report issue in ${owner}/${repo}." >&2
   if num="$(gh_api_create_issue "${owner}" "${repo}" "${title}" "${body}")"; then
     if [[ -n "${num}" ]]; then
@@ -1629,6 +1645,7 @@ main() {
   repo_info="$(repo_detect)"
   owner="${repo_info%%/*}"
   repo="${repo_info#*/}"
+  BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
 
   # File a bug report issue when the run terminates abnormally. Registered only

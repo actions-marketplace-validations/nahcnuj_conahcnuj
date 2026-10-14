@@ -100,6 +100,34 @@ grep -q "## Error log" "${ROOT}/captured-body.txt" || { echo "FAIL: bug report h
 grep -q "ERROR: could not implement issue #14 with any available model." "${ROOT}/captured-body.txt" || { echo "FAIL: the error log does not carry the failing message"; exit 1; }
 grep -q "Exit code: 1" "${ROOT}/captured-body.txt" || { echo "FAIL: exit code is missing from the report"; exit 1; }
 grep -q "Repository:" "${ROOT}/captured-body.txt" && { echo "FAIL: self-evident repository line is still in the report"; exit 1; }
+# When the target is the driver's own repository the label names it.
+grep -q "nahcnuj/conahcnuj#14" "${ROOT}/captured-body.txt" || { echo "FAIL: same-repo report does not label the item with the target repository"; exit 1; }
+
+# --- unit: a cross-repository run labels the target item --------------------
+# Bug reports are always filed in the driver's own repository, but a reusable
+# cross-repository call drives an issue in another repository. The report's
+# "Issue/PR" line must name the item actually worked on (BUG_REPORT_TARGET),
+# not the repository the report lands in (issue #306).
+(
+  # shellcheck source=bin/conahcnuj.sh
+  source "${DRIVER}"
+  gh_api_create_issue() {
+    printf '%s\n' "${4}" > "${ROOT}/captured-body-cross.txt"
+    printf '99\n'
+  }
+  RUN_LOG_FILE="$(mktemp)"
+  printf '%s\n' \
+    "Repository: nahcnuj/makamujo" \
+    "ERROR: could not implement issue #753 with any available model." \
+    > "${RUN_LOG_FILE}"
+  BUG_REPORT_INPUT="753"
+  BUG_REPORT_TARGET="nahcnuj/makamujo"
+  BUG_REPORTED="0"
+  report_bug_on_exit "1"
+)
+
+grep -q "nahcnuj/makamujo#753" "${ROOT}/captured-body-cross.txt" || { echo "FAIL: cross-repo report does not label the target item"; exit 1; }
+grep -q "nahcnuj/conahcnuj#753" "${ROOT}/captured-body-cross.txt" && { echo "FAIL: cross-repo report labels the report repository, not the target"; exit 1; }
 
 # --- unit: control bytes in the run log cannot break the report payload ------
 # The report body is the tail of the run log, and that log holds the decoded

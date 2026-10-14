@@ -96,6 +96,12 @@ jobs:
 - ドライバの checkout は呼び出し側ではなくこの workflow 自身
   （`job.workflow_repository` at `job.workflow_sha`）から取るため、
   呼び出し側に `bin/` / `gh-app/` / `lib/` は不要
+- 駆動対象がドライバのリポジトリと異なる場合（他リポジトリからの呼び出し）は、
+  対象リポジトリを `target/` にも checkout し、ドライバをその中で実行する。
+  するとブランチ作成・fetch・Verified コミットも、エージェントの編集も、
+  ローカル実行と同じく対象リポジトリに対して行われる
+- バグ報告 issue は常にドライバのリポジトリ（`nahcnuj/conahcnuj`）へ作られるが、
+  本文の「Issue/PR」行は実際に駆動した対象（`repository`）を指す（#306）
 - `number` が渡されればジョブは実行される（呼び出し側のイベント種別に
   依らない）。`repository` 未指定なら呼び出し側リポジトリを駆動する
 - `GITHUB_TOKEN` の権限は `contents: read` のみ。書き込みはすべて、
