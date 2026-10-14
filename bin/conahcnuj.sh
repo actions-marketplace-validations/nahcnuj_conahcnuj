@@ -40,6 +40,9 @@
 #   CONAHCNUJ_MAX_SECONDS    overall time budget (default: 259200 = 72 h)
 #   CONAHCNUJ_HANDOFF_RETRY_SECONDS  pause before the single review-request
 #                            retry (default: 15 s; 0 disables the pause)
+#   CONAHCNUJ_BRANCH_FETCH_RETRY_PAUSE  pause between the retries of a
+#                            just-created branch's fetch (default: 2 s; 0
+#                            disables the pause)
 #   CONAHCNUJ_POLL_CONDITIONS_MIN/MAX  rate-limited poll window (default 15/300 s)
 #   CONAHCNUJ_TEST_MODE=1    offline driver test (mock API tape + mock opencode)
 #   CONAHCNUJ_COMMIT_MODEL   Co-Authored-By trailer value; when unset, the
@@ -617,6 +620,56 @@ checkout_branch_head() {
   git checkout -B "${branch}" "origin/${branch}" 1>&2
 }
 
+# Fetch a just-created feature branch, tolerating the short window between the
+# ref being created through the API and the git endpoint advertising it (the
+# create call returns 201 before a follow-up `git fetch` can always see the new
+# ref, which used to abort the run with a bogus stale-head error). git's own
+# error is printed only on the last attempt so a genuine failure is still
+# explained in the run log. Returns non-zero when the ref stayed unfetchable.
+# Args: branch
+fetch_new_branch_ref() {
+  local branch="${1}" attempt pause
+  pause="${CONAHCNUJ_BRANCH_FETCH_RETRY_PAUSE:-2}"
+  [[ "${TEST_MODE}" == "1" ]] && pause=0
+  for attempt in 1 2 3; do
+    if [[ "${attempt}" -lt 3 ]]; then
+      if git fetch origin "${branch}" >/dev/null 2>&1; then
+        return 0
+      fi
+      if [[ "${pause}" -gt 0 ]]; then
+        sleep "${pause}"
+      fi
+    elif git fetch origin "${branch}" 1>&2; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Check out a brand-new feature branch from the default-branch base. The branch
+# was just created on the remote at ${default_oid}; that OID may not be in this
+# clone yet (the clone can lag the API), so fall back to the locally known
+# default branch, and finally to the current HEAD. This is only for a branch
+# with no prior implementation, which is exactly what makes the fallback safe
+# (see #115). Args: branch [default_branch] [default_oid]
+checkout_new_branch_from_base() {
+  local branch="${1}" default_branch="${2:-}" default_oid="${3:-}" base=""
+  if [[ -n "${default_oid}" ]] && git rev-parse --verify -q "${default_oid}^{commit}" >/dev/null 2>&1; then
+    base="${default_oid}"
+  elif [[ -n "${default_branch}" ]] && git rev-parse --verify -q "origin/${default_branch}" >/dev/null 2>&1; then
+    base="origin/${default_branch}"
+  elif [[ -n "${default_branch}" ]] && git fetch origin "${default_branch}" 1>&2; then
+    base="origin/${default_branch}"
+  elif git rev-parse --verify -q "HEAD^{commit}" >/dev/null 2>&1; then
+    base="HEAD"
+  fi
+  if [[ -z "${base}" ]]; then
+    echo "ERROR: no base commit to start ${branch} from." >&2
+    return 1
+  fi
+  git checkout -B "${branch}" "${base}" 1>&2
+}
+
 # Create (or reuse) the feature branch off the default branch and check it out.
 ensure_issue_branch() {
   local owner="${1}" repo="${2}" num="${3}" title="${4}" default_branch="${5}" default_oid="${6}" branch_override="${7:-}"
@@ -644,8 +697,28 @@ ensure_issue_branch() {
     checkout_branch_head "${branch}" || return 1
     echo "Using existing feature branch ${branch} (resume)." >&2
   else
-    gh_api_create_branch "${owner}" "${repo}" "${branch}" "${default_oid}" >/dev/null 2>&1 || echo "WARNING: branch create returned an error for ${branch}; will try to fetch it." >&2
-    checkout_branch_head "${branch}" || return 1
+    # Brand-new branch: create the remote ref so it can host the Verified
+    # commits, then check it out. A freshly created ref is not always fetchable
+    # at once, so fall back to the base commit when the create call succeeded:
+    # no implementation exists on a new branch, so starting from the base loses
+    # nothing (the #115 stale-head trap only applies to a branch that already
+    # existed). If the creation itself failed, the branch may exist on the
+    # remote under a head we cannot safely assume, so the run stops.
+    local created=0
+    if gh_api_create_branch "${owner}" "${repo}" "${branch}" "${default_oid}" >/dev/null 2>&1; then
+      created=1
+    else
+      echo "WARNING: branch create returned an error for ${branch}; will try to fetch it." >&2
+    fi
+    if fetch_new_branch_ref "${branch}"; then
+      git checkout -B "${branch}" "origin/${branch}" 1>&2 || return 1
+    elif [[ "${created}" == "1" ]]; then
+      echo "WARNING: ${branch} is not fetchable right after creation; starting it from ${default_branch}." >&2
+      checkout_new_branch_from_base "${branch}" "${default_branch}" "${default_oid}" || return 1
+    else
+      echo "ERROR: could not fetch ${branch} from origin; refusing to work on a stale branch head." >&2
+      return 1
+    fi
     echo "Created feature branch ${branch}." >&2
   fi
   printf '%s\n' "${branch}"
@@ -697,8 +770,17 @@ resolve_agent_branch_name() {
       printf '%s\n' "${current}"
       return 0
     fi
-    git fetch origin "${want}" 1>&2
-    git checkout -B "${want}" "origin/${want}" 1>&2
+    # The ref may not be fetchable the instant it was created; the branch is
+    # brand-new, so starting it from the base loses no committed work.
+    if fetch_new_branch_ref "${want}"; then
+      git checkout -B "${want}" "origin/${want}" 1>&2
+    else
+      echo "WARNING: ${want} is not fetchable right after creation; starting it from the base." >&2
+      checkout_new_branch_from_base "${want}" "" "${default_oid}" || {
+        printf '%s\n' "${current}"
+        return 0
+      }
+    fi
   else
     git checkout -B "${want}" >/dev/null 2>&1
   fi

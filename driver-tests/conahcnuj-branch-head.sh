@@ -27,16 +27,21 @@ trap 'rm -rf "${ROOT}"' EXIT
 
 export CONAHCNUJ_TEST_MODE=0
 export CONAHCNUJ_IMPORT=1
+# No real run should sit in the fetch retry pause during an offline test.
+export CONAHCNUJ_BRANCH_FETCH_RETRY_PAUSE=0
 # shellcheck source=bin/conahcnuj.sh
 . "${REPO}/bin/conahcnuj.sh"
 
 # Any branch (re)creation would be an API call; a fetch failure must never
-# reach it, so record it instead of letting it hit the network.
+# reach it, so record it instead of letting it hit the network. The exit status
+# is switchable: creation can succeed while the ref is still not fetchable,
+# which is the case that used to abort a run on a brand-new branch.
 API_CALLS="${ROOT}/api-calls.txt"
 : > "${API_CALLS}"
+CREATE_BRANCH_RC=1
 gh_api_create_branch() {
   printf 'gh_api_create_branch %s\n' "$*" >> "${API_CALLS}"
-  return 1
+  return "${CREATE_BRANCH_RC}"
 }
 
 git init -q --bare -b main "${REMOTE}"
@@ -114,5 +119,29 @@ out="$(
 [[ -z "${out}" ]] || { echo "FAIL: ensure_issue_branch returned a branch name on failure: ${out}" >&2; exit 1; }
 [[ "$(git -C "${WORK}" rev-parse HEAD)" == "${STALE_HEAD}" ]] || { echo "FAIL: HEAD moved despite the failed fetch" >&2; exit 1; }
 [[ ! -s "${API_CALLS}" ]] || { echo "FAIL: a failed fetch recreated the branch: $(cat "${API_CALLS}")" >&2; exit 1; }
+
+# 5. A brand-new branch whose remote creation succeeds but which is not
+#    fetchable yet (the create API returns before the git endpoint advertises
+#    the ref, or the fetch is briefly unavailable) must NOT abort: nothing is
+#    committed on a new branch, so the run starts it from the base and carries
+#    on. The remote repository is reachable again, and the branch simply is not
+#    there, so the fetch fails exactly as it did in the reported #738 run.
+git -C "${WORK}" remote set-url origin "${REMOTE}"
+git -C "${WORK}" fetch -q origin main
+BASE_HEAD="$(git -C "${WORK}" rev-parse origin/main)"
+NEW_BRANCH="conahcnuj/115-brand-new"
+CREATE_BRANCH_RC=0
+: > "${API_CALLS}"
+rc=0
+out="$(
+  cd "${WORK}"
+  ensure_issue_branch "nahcnuj" "conahcnuj" 115 "brand new" "main" "${BASE_HEAD}" "${NEW_BRANCH}" 2>"${ROOT}/new.log"
+)" || rc=$?
+[[ ${rc} -eq 0 ]] || { echo "FAIL: a brand-new branch with a transient fetch failure aborted (rc=${rc})" >&2; exit 1; }
+[[ "${out}" == "${NEW_BRANCH}" ]] || { echo "FAIL: ensure_issue_branch did not return the new branch name: ${out}" >&2; exit 1; }
+[[ "$(git -C "${WORK}" rev-parse HEAD)" == "${BASE_HEAD}" ]] || { echo "FAIL: the new branch was not started from the base" >&2; exit 1; }
+[[ "$(git -C "${WORK}" branch --show-current)" == "${NEW_BRANCH}" ]] || { echo "FAIL: wrong current branch after the fallback" >&2; exit 1; }
+grep -q "gh_api_create_branch" "${API_CALLS}" || { echo "FAIL: the remote branch was not created" >&2; exit 1; }
+grep -q "not fetchable right after creation" "${ROOT}/new.log" || { echo "FAIL: the fallback was not explained in the log" >&2; exit 1; }
 
 echo "conahcnuj branch-head checkout passed"
