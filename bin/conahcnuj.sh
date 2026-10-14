@@ -241,6 +241,36 @@ repo_detect() {
   printf '%s' "${url}" | sed -E 's#.*github\.com[:/]##; s#\.git$##'
 }
 
+# Fail fast when the run's target repository (CONAHCNUJ_REPO) and the local
+# origin remote point at different GitHub repositories. The feature branch is
+# created through the API on the target, while fetches and Verified commits go
+# through origin: when the two disagree, the fetch of the fresh branch fails
+# ("couldn't find remote ref") or, worse, the commits land in origin's
+# repository instead of the target's (issue #309's root cause). The reusable
+# workflow aligns origin with the target for a cross-repository call by checking
+# the target out separately; this guard catches a stale workflow pin or a
+# hand-rolled CONAHCNUJ_REPO override before any work is lost. Non-GitHub
+# origins (offline tests use local paths) are skipped. Args: target
+verify_repo_alignment() {
+  local target="${1}" url owner_repo
+  [[ -n "${target}" ]] || return 0
+  url="$(git remote get-url origin 2>/dev/null || true)"
+  case "${url}" in
+    *github.com*) ;;
+    *) return 0 ;;
+  esac
+  owner_repo="$(printf '%s' "${url}" | sed -E 's#.*github\.com[:/]##; s#\.git$##')"
+  if [[ "${owner_repo}" != "${target}" ]]; then
+    echo "ERROR: origin points at ${owner_repo} but this run targets ${target}." >&2
+    echo " The feature branch would be created on ${target} while fetches and" >&2
+    echo "       Verified commits go through origin (${owner_repo}), acting on the" >&2
+    echo "       wrong repository. Update the caller's workflow pin to a commit that" >&2
+    echo "       checks the target out separately, or run the driver from a clone of" >&2
+    echo "       ${target}." >&2
+    exit 1
+  fi
+}
+
 # True when the overall time budget is exhausted. Split out from check_timeout
 # so drive() can word the exhaustion differently once the PR is with the
 # reviewer: running out of time while waiting for a human is not a driver
@@ -1647,6 +1677,14 @@ main() {
   repo="${repo_info#*/}"
   BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
+
+  # A target/origin mismatch is a configuration error (a stale workflow pin or
+  # a hand-rolled CONAHCNUJ_REPO override), not a driver bug, so it stops the
+  # run before the bug-report trap is registered: the clear error on stderr is
+  # the report, and filing an issue for it would only add noise (#309).
+  if [[ "${TEST_MODE}" != "1" ]]; then
+    verify_repo_alignment "${repo_info}"
+  fi
 
   # File a bug report issue when the run terminates abnormally. Registered only
   # once owner/repo and the input are known: a usage error or a failed repo
