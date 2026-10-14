@@ -7,10 +7,14 @@ name: Issue auto-drive
 # with the conahcnuj driver end-to-end (feature branch -> PR -> review feedback)
 # and end with a ready-to-merge PR, or file a bug-report issue on failure.
 #
-# Reusable use keeps the same driver checkout: the job checks out this
-# workflow's own repository (`job.workflow_repository` at `job.workflow_sha`)
-# and drives the issue or PR in the caller's repository (`inputs.repository`,
-# defaulting to the caller), exactly like makamujo's local auto-drive pattern.
+# Reusable use checks out this workflow's own repository
+# (`job.workflow_repository` at `job.workflow_sha`) for the driver scripts and
+# drives the issue or PR in the caller's repository (`inputs.repository`,
+# defaulting to the caller). When the target is not the driver's own repository
+# the target is checked out again into the working directory and the driver runs
+# from there, so its git operations (branch, fetch, Verified commits) and the
+# coding agent's edits all act on the target, exactly like makamujo's local
+# auto-drive pattern; the caller needs no copy of the driver.
 # The caller passes the GitHub App secrets (`secrets: inherit` within the same
 # organization or enterprise, named secrets otherwise); the job-level
 # `environment` (default `conahcnuj`, overridable with `inputs.environment`)
@@ -48,10 +52,12 @@ on:
         required: true
         type: number
   # Another repository drives one of its issues or pull requests by calling
-  # this workflow. The job `if` below runs whenever `inputs.number` is set,
-  # and the driver checkout follows this file (`job.workflow_repository` at
-  # `job.workflow_sha`), not the caller. Secrets are passed with
-  # `secrets: inherit` (same organization or enterprise) or by name.
+  # this workflow. The job `if` below runs whenever `inputs.number` is set, and
+  # the driver checkout follows this file (`job.workflow_repository` at
+  # `job.workflow_sha`), not the caller. The target repository (`repository`,
+  # defaulting to the caller) is checked out separately below and the driver
+  # runs from inside it. Secrets are passed with `secrets: inherit` (same
+  # organization or enterprise) or by name.
   workflow_call:
     inputs:
       number:
@@ -62,7 +68,6 @@ on:
         description: 'owner/name of the repository to drive (default: the caller repository)'
         required: false
         type: string
-        default: nahcnuj/conahcnuj
       environment:
         description: 'Environment holding the GitHub App secrets (default: conahcnuj)'
         required: false
@@ -147,6 +152,20 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
 
+      # The coding agent edits the target repository, so when the target is not
+      # the driver's own repository (a cross-repository call) check it out as
+      # well and run the driver from inside it (see the last step). The driver's
+      # git operations (branch creation, fetch, Verified commits) and the
+      # agent's edits then all act on the target, matching a local run, instead
+      # of on the driver checkout. For the driver's own repository the single
+      # checkout above already is the target and is used as the working tree.
+      - name: Check out the target repository
+        if: ${{ (inputs.repository || github.repository) != job.workflow_repository }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          path: target
+
       # opencode is not preinstalled on runners; shared with ci.yml through the
       # install-opencode composite action (authenticated release lookup so
       # shared runner IPs do not hit the API rate limit).
@@ -179,9 +198,16 @@ jobs:
 
       - name: Run the conahcnuj driver
         env:
-          # The caller's repository for a reusable call (`inputs.repository`
-          # overrides it when the caller drives yet another repository).
-          CONAHCNUJ_REPO: ${{ inputs.repository }}
+          # The repository to drive: the caller's repository for a reusable
+          # call, unless the caller overrides it with `inputs.repository`. Set
+          # explicitly (not left empty): for a cross-repository call the target
+          # checkout below puts the driver's own repository name in origin, so
+          # relying on origin detection would drive the wrong repository.
+          CONAHCNUJ_REPO: ${{ inputs.repository || github.repository }}
+          # When true the driver runs from the `target/` checkout (same value as
+          # the target checkout step's `if`). For the driver's own repository it
+          # runs from the workspace root, the driver checkout itself.
+          CONAHCNUJ_CROSS_REPO: ${{ (inputs.repository || github.repository) != job.workflow_repository }}
           CONAHCNUJ_INPUT: ${{ inputs.number || github.event_name == 'issues' && github.event.issue.number || github.event_name == 'pull_request_review' && github.event.pull_request.number || (github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number) }}
           # Just under the 60-minute job cap so the driver exits gracefully
           # and files its bug report before Actions kills the run.
@@ -189,4 +215,11 @@ jobs:
           OPENCODE_DISABLE_AUTOUPDATE: "true"
         run: |
           [[ "${CONAHCNUJ_INPUT}" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid issue or pull request number: ${CONAHCNUJ_INPUT}" >&2; exit 1; }
-          bash bin/conahcnuj.sh "${CONAHCNUJ_INPUT}"
+          # Absolute path so the driver source is still found after cd'ing into
+          # the target checkout; the driver resolves its own directory from it.
+          driver="${PWD}/bin/conahcnuj.sh"
+          if [[ "${CONAHCNUJ_CROSS_REPO}" == "true" ]]; then
+            echo "Driving ${CONAHCNUJ_REPO} from the target checkout." >&2
+            cd target
+          fi
+          bash "${driver}" "${CONAHCNUJ_INPUT}"
