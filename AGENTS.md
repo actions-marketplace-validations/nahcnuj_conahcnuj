@@ -65,6 +65,7 @@ GitHub App「conahcnuj」のインストールトークンを発行し、`gh` CL
 | `Dockerfile` | conahcnuj 実行用の隔離イメージ（opencode・git・curl・openssl とドライバを同梱） | 秘密鍵・`app.env` は焼き込まない。`ENTRYPOINT` はドライバ |
 | `docker-run.sh` | 上記イメージでドライバを実行するラッパー（対象リポジトリを `/work` へマウント、コンテナ用 `app.env` を生成し秘密鍵を読み取り専用マウント） | テストではなく**実走行**用（実キー・ネットワーク・opencode 設定が必要） |
 | `docs/` | AI 向けリファレンス（設定・CLI・ドライバ・プラグイン・環境変数・ワークフロー・導入）。GitHub Pages で配信される | `.md` がソース。`docs/build.py` がリンク・index 目次・`llms.txt` 収録を検証して `_site/` へ HTML を生成（`--check` は検証のみ）。標準ライブラリだけで動く（サードパーティ依存なし）。インストール状態やリポジトリのホスト存在を前提にしない記述にする |
+| `.github/dependabot.yml` | ピン留めした GitHub Actions（ワークフローと `.github/actions/` の composite action）の更新 PR を自動生成 | 週次。`github-actions` ecosystem。更新は regular な PR として入る |
 | `.github/workflows/ci.yml` | 読み取り専用 CI（`permissions: contents: read`） | `actions/checkout` は full-length SHA でピン留め（リポジトリの Actions ポリシー準拠）。`lint-bash` / `mock-test` / `plugin-unit` / `plugin-smoke` は Ubuntu + Windows、`lint-ts` / `e2e-opencode` / `docs` は Ubuntu、`lint-ps` / `install-test` は Windows のみ |
 | `.github/workflows/pages.yml` | `docs/` をビルドして GitHub Pages へデプロイ（push to main / 手動） | `upload-pages-artifact` / `deploy-pages` も full-length SHA でピン留め。必須チェックではない。初回のみ Settings → Pages → Source = GitHub Actions が必要 |
 | `.github/actions/install-opencode/action.yml` | opencode を最新リリースで導入する composite action（authenticated リリース検索＋PATH 設定） | `ci.yml` と `issue-driver.yml` の両方が `uses: ./.github/actions/install-opencode` で共有。未認証の `api.github.com` は共有ランナーでレート制限に当たりやすいためトークン付きで解決する |
