@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Validate docs/ and render the GitHub Pages site into _site/.
 
-Checks (always, stdlib only):
+Everything here uses the Python standard library only: there is no third-party
+render dependency (the `markdown` package was removed; the small renderer
+below covers the Markdown subset the docs actually use). `--check` and the
+default render therefore run with a bare `python3`.
+
+Checks (always):
   * every relative link in every docs/*.md resolves to a file in docs/
   * every docs/*.md is linked from docs/index.md
   * every docs/*.md is listed in docs/llms.txt
@@ -13,22 +18,19 @@ Render (default):
   * _site/llms.txt      raw copy
   * then every rendered fragment link (page#id) must resolve
 
-Heading ids keep their Unicode text (toc's slugify_unicode), so Japanese
+Heading ids keep their Unicode text (slugify_unicode-compatible), so Japanese
 headings are linkable as-is instead of turning into `_1`, `_2`, ...
 
 Usage:
-  python3 docs/build.py           check + render (needs the `markdown` package)
-  python3 docs/build.py --check   check only (no third-party dependency)
-
-Install the render dependency from the committed Pipfile.lock:
-  pipenv sync            (or `pipenv install --deploy` to verify the lock)
-  pipenv run python3 docs/build.py
+  python3 docs/build.py           check + render
+  python3 docs/build.py --check   check only
 """
 
 import html
 import re
 import shutil
 import sys
+import unicodedata
 from pathlib import Path
 
 DOCS = Path(__file__).resolve().parent
@@ -157,30 +159,240 @@ def rewrite_md_links(body):
     return re.sub(r'href="([^"]+)"', repl, body)
 
 
-def render(md_files):
-    try:
-        import markdown
-    except ImportError:
-        print("ERROR: the 'markdown' package is required to render.", file=sys.stderr)
-        print("       pipenv sync && pipenv run python3 docs/build.py", file=sys.stderr)
-        print("       (or run with --check for validation only)", file=sys.stderr)
-        return False
+def slugify_unicode(value):
+    """Match Python-Markdown's toc slugify_unicode for heading ids.
 
+    Normalizes, removes punctuation/symbols (keeping word characters,
+    whitespace and hyphens, including CJK), and collapses runs of whitespace
+    or hyphens into a single hyphen.
+    """
+    value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"[^\w\s-]", "", value.lower())
+    return re.sub(r"[-\s]+", "-", value).strip("-_")
+
+
+def heading_text(content):
+    """Plain text of a heading (drop inline code/bold/link markup)."""
+    content = re.sub(r"`([^`]+)`", r"\1", content)
+    content = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", content)
+    content = content.replace("**", "").replace("__", "")
+    return re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", content)
+
+
+def _inline(text):
+    """Render inline Markdown: escapes, code, bold/italic, links, autolinks."""
+    tokens = {}
+
+    def stash(rendered):
+        key = f"\x00{len(tokens)}\x00"
+        tokens[key] = rendered
+        return key
+
+    # Inline code first (its contents must not be re-parsed).
+    def code_repl(match):
+        return stash(f"<code>{html.escape(match.group(1).strip())}</code>")
+
+    text = re.sub(r"`([^`]+)`", code_repl, text)
+
+    # Autolinks <https://...> and <mailto:...>.
+    def autolink(match):
+        url = match.group(1)
+        return stash(f'<a href="{html.escape(url, quote=True)}">{html.escape(url)}</a>')
+
+    text = re.sub(r"<((?:https?|mailto):[^>\s]+)>", autolink, text)
+
+    # Escape whatever is left as literal text.
+    text = html.escape(text, quote=False)
+
+    # Images ![alt](src) before links.
+    def image_repl(match):
+        alt, src = match.group(1), match.group(2)
+        return stash(f'<img alt="{html.escape(alt, quote=True)}" '
+                     f'src="{html.escape(src, quote=True)}">')
+
+    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)\)", image_repl, text)
+
+    # Links [text](href "title").
+    def link_repl(match):
+        label, href, title = match.group(1), match.group(2), match.group(3)
+        attr = f' title="{html.escape(title, quote=True)}"' if title else ""
+        return stash(f'<a href="{html.escape(href, quote=True)}"{attr}>'
+                     f"{_inline(label)}</a>")
+
+    text = re.sub(
+        r"\[([^\]]*)\]\(([^)\s]+?)(?:\s+\"([^\"]*)\")?\)", link_repl, text
+    )
+
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
+
+    for key, rendered in tokens.items():
+        text = text.replace(key, rendered)
+    return text
+
+
+def _is_table_sep(line):
+    return bool(re.fullmatch(r"\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?", line.strip()))
+
+
+def _split_row(line):
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|") and not line.endswith("\\|"):
+        line = line[:-1]
+    cells = []
+    current = []
+    escaped = False
+    for char in line:
+        if escaped:
+            current.append(char if char == "|" else "\\" + char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+    return cells
+
+
+def render_markdown(text):
+    """Render the Markdown subset used by docs/ to HTML (stdlib only)."""
+    lines = text.split("\n")
+    out = []
+    paragraph = []
+    i = 0
+    n = len(lines)
+
+    def flush_paragraph():
+        if paragraph:
+            out.append(f"<p>{_inline(' '.join(paragraph))}</p>\n")
+            paragraph.clear()
+
+    while i < n:
+        line = lines[i]
+
+        # Fenced code block.
+        if re.match(r"^```", line):
+            flush_paragraph()
+            lang = line[3:].strip()
+            i += 1
+            code = []
+            while i < n and not re.match(r"^```", lines[i]):
+                code.append(lines[i])
+                i += 1
+            i += 1  # closing fence
+            body = html.escape("\n".join(code))
+            cls = f' class="language-{html.escape(lang, quote=True)}"' if lang else ""
+            out.append(f"<pre><code{cls}>{body}\n</code></pre>\n")
+            continue
+
+        # Heading.
+        heading = re.match(r"^(#{1,6})\s+(.*?)\s*#*\s*$", line)
+        if heading:
+            flush_paragraph()
+            level = len(heading.group(1))
+            content = heading.group(2)
+            slug = slugify_unicode(heading_text(content))
+            out.append(f'<h{level} id="{html.escape(slug, quote=True)}">'
+                       f"{_inline(content)}</h{level}>\n")
+            i += 1
+            continue
+
+        # Horizontal rule.
+        if re.fullmatch(r"(-{3,}|\*{3,}|_{3,})", line.strip()):
+            flush_paragraph()
+            out.append("<hr>\n")
+            i += 1
+            continue
+
+        # Blockquote (contiguous lines).
+        if line.startswith(">"):
+            flush_paragraph()
+            quote = []
+            while i < n and lines[i].startswith(">"):
+                quote.append(lines[i][1:].lstrip() if lines[i][1:2] == " " else lines[i][1:])
+                i += 1
+            out.append(f"<blockquote>\n{render_markdown(chr(10).join(quote))}</blockquote>\n")
+            continue
+
+        # Table.
+        if "|" in line and i + 1 < n and _is_table_sep(lines[i + 1]):
+            flush_paragraph()
+            headers = _split_row(line)
+            i += 2
+            rows = []
+            while i < n and lines[i].strip() and "|" in lines[i]:
+                rows.append(_split_row(lines[i]))
+                i += 1
+            head = "".join(f"<th>{_inline(c)}</th>" for c in headers)
+            body_rows = []
+            for row in rows:
+                cells = "".join(f"<td>{_inline(c)}</td>" for c in row)
+                body_rows.append(f"<tr>{cells}</tr>")
+            table = [f"<table>\n<thead>\n<tr>{head}</tr>\n</thead>"]
+            if body_rows:
+                table.append("<tbody>\n" + "\n".join(body_rows) + "\n</tbody>")
+            table.append("</table>\n")
+            out.append("\n".join(table))
+            continue
+
+        # Lists (unordered / ordered).
+        list_match = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", line)
+        if list_match:
+            flush_paragraph()
+            ordered = bool(re.match(r"\d+\.", list_match.group(2)))
+            tag = "ol" if ordered else "ul"
+            items = []
+            while i < n:
+                m = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", lines[i])
+                if not m:
+                    break
+                marker_ordered = bool(re.match(r"\d+\.", m.group(2)))
+                if marker_ordered != ordered:
+                    break
+                item = [m.group(3)]
+                i += 1
+                # Fold indented continuation lines into the same item.
+                while i < n and lines[i].strip():
+                    if re.match(r"^(\s*)([-*]|\d+\.)\s+", lines[i]):
+                        break
+                    if not lines[i].startswith(("  ", "\t")):
+                        break
+                    item.append(lines[i].strip())
+                    i += 1
+                items.append(" ".join(item))
+            body = "".join(f"<li>{_inline(item)}</li>\n" for item in items)
+            out.append(f"<{tag}>\n{body}</{tag}>\n")
+            continue
+
+        # Blank line ends a paragraph.
+        if not line.strip():
+            flush_paragraph()
+            i += 1
+            continue
+
+        paragraph.append(line.strip())
+        i += 1
+
+    flush_paragraph()
+    return "".join(out)
+
+
+def render(md_files):
     if SITE.exists():
         shutil.rmtree(SITE)
     SITE.mkdir(parents=True)
 
-    from markdown.extensions.toc import slugify_unicode
-
     for md in md_files:
         text = md.read_text(encoding="utf-8")
         title = page_title(text) or md.name
-        body = markdown.markdown(
-            text,
-            extensions=["extra", "toc"],
-            extension_configs={"toc": {"slugify": slugify_unicode}},
-            output_format="html5",
-        )
+        body = render_markdown(text)
         page = TEMPLATE.format(
             title=html.escape(title),
             style=STYLE,
