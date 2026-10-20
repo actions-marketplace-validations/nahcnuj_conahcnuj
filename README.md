@@ -54,8 +54,8 @@ GitHub App「conahcnuj」のインストールトークンを発行し、それ�
 `docs/build.py`（リンク検証 + HTML 生成 → `_site/`）を実行してデプロイします。
 **初回のみ** Settings → Pages → Source = **GitHub Actions** を設定してください。
 CI の `Build docs site` ジョブが同じビルドを PR でも検証します。ローカルでは
-`pipenv sync && pipenv run python3 docs/build.py`（検証のみは
-`python3 docs/build.py --check`）で確認できます。
+`python3 docs/build.py`（検証のみは `python3 docs/build.py --check`）で確認できます。
+標準ライブラリだけで動くので、追加のインストールは不要です。
 
 ## 仕組み
 
