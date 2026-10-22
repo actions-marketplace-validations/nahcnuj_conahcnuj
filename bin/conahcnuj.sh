@@ -115,6 +115,13 @@ REVIEW_HANDOFF_CONFIRMED="true"
 # to every fresh prompt through implement().
 COLLECTED_CONTEXT=""
 
+# Why the last poll_conditions call failed: "conflict" when the PR branch has a
+# merge conflict with its base branch, "checks" for a failing CI check, empty
+# when the constraints pass or are still being waited on. The constraints phase
+# reads it to tell the agent what to fix: a conflict needs the base branch
+# merged and resolved, not a generic "fix CI" round (#355).
+CONSTRAINT_FAILURE=""
+
 # Where the driver remembers models a round proved to be permanently gone
 # (deprecated, removed, unavailable). The default is a file committed to the
 # repository so the knowledge survives across runs -- including a fresh CI
@@ -1153,6 +1160,7 @@ ${body}"
 # and polling on would only end in a spurious bug report.
 poll_conditions() {
   local owner="${1}" repo="${2}" pr="${3}"
+  CONSTRAINT_FAILURE=""
   while true; do
     check_timeout
     local cond state mergeable mss pr_state
@@ -1186,11 +1194,23 @@ poll_conditions() {
         ;;
     esac
     if [[ "${state}" == "SUCCESS" && "${mergeable}" == "MERGEABLE" ]]; then
+      CONSTRAINT_FAILURE=""
       echo "All non-reviewer constraints pass." >&2
       return 0
     fi
     if [[ "${state}" == "FAILURE" || "${state}" == "ERROR" || "${mergeable}" == "CONFLICTING" || "${mss}" == "DIRTY" ]]; then
-      echo "Constraints require changes (state=${state} mergeable=${mergeable})." >&2
+      # A conflict is not a CI failure: the branch has to take the base
+      # branch's changes and resolve them, so it gets its own reason and
+      # wording (see constraint_fix_context below). DIRTY means GitHub already
+      # knows the merge has conflicts, even when mergeable is not CONFLICTING
+      # yet.
+      if [[ "${mergeable}" == "CONFLICTING" || "${mss}" == "DIRTY" ]]; then
+        CONSTRAINT_FAILURE="conflict"
+        echo "PR #${pr} has a merge conflict with its base branch (mergeable=${mergeable} mergeState=${mss}); the branch must be merged with the base and the conflicts resolved." >&2
+      else
+        CONSTRAINT_FAILURE="checks"
+        echo "Constraints require changes (state=${state} mergeable=${mergeable})." >&2
+      fi
       return 1
     fi
     # Anything else (checks still running, mergeable UNKNOWN, or a mergeable
@@ -1200,6 +1220,40 @@ poll_conditions() {
     # later poll.
     rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
   done
+}
+
+# Refresh the base branch a conflicting PR must be merged with. The clone's
+# origin/<base> ref is a snapshot from checkout time and goes stale as the base
+# branch advances through merged PRs; merging that stale ref fails to pick up
+# the very changes the branch conflicts with, so the conflict looks "resolved"
+# while it is not. Fetching it here means the agent's `git merge origin/<base>`
+# resolves against the current base (best effort: without an origin remote, as
+# in the offline tests, there is nothing to refresh). Args: base
+refresh_base_branch() {
+  local base="${1}"
+  [[ -n "${base}" ]] || return 0
+  git remote get-url origin >/dev/null 2>&1 || return 0
+  if git fetch origin "${base}" >/dev/null 2>&1; then
+    echo "Fetched the latest base branch '${base}' so the conflict can be resolved against it." >&2
+  else
+    echo "WARNING: could not fetch the base branch '${base}'; the agent must fetch it before merging." >&2
+  fi
+  return 0
+}
+
+# The instruction handed to the coding agent when a poll found failing
+# constraints (reads CONSTRAINT_FAILURE). A merge conflict is not a CI failure:
+# the branch has to take the base branch's changes and resolve every conflict,
+# so say that explicitly and name both branches. A generic "fix the
+# constraints" round let models commit cosmetic edits (or "resolve conflicts"
+# messages) while the branch still could not merge (#355). Args: branch base
+constraint_fix_context() {
+  local branch="${1}" base="${2}"
+  if [[ "${CONSTRAINT_FAILURE}" == "conflict" ]]; then
+    printf '%s' "The pull request branch '${branch}' has merge conflicts with its base branch '${base}'. Merge the base branch into the working tree (git fetch origin ${base} && git merge origin/${base}), resolve every conflict, and remove all conflict markers. The resolution must actually contain the base branch's changes: an edit that leaves the branch unable to merge is not a resolution. Leave the resolved tree in the working tree and write .commit-msg."
+    return 0
+  fi
+  printf '%s' "The pull request's CI / merge constraints are currently failing. Fix whatever breaks them."
 }
 
 # Hand the PR over to a human: the repository owner is assigned as reviewer,
@@ -1521,12 +1575,19 @@ ${summary}" "${base}"; then
     # closed PR ends the run inside poll_conditions itself.
     if ! poll_conditions "${owner}" "${repo}" "${pr}"; then
       # CI failed or the branch conflicts: implement again with that context.
-      # When no model produces a change there is nothing new to push, so back
-      # off before re-checking instead of hammering every model in a tight loop
-      # (poll_conditions returns immediately on FAILURE).
-      echo "PR #${pr}: constraints failing; fixing with a new implementation round." >&2
-      local produced_change="false"
-      if implement "${title}" "${body}" "The pull request's CI / merge constraints are currently failing. Fix whatever breaks them."; then
+      # A conflict gets its own instruction (merge the base branch and resolve
+      # it) instead of the generic CI wording; otherwise models patched around
+      # it and the branch stayed unmergeable (#355). When no model produces a
+      # change there is nothing new to push, so back off before re-checking
+      # instead of hammering every model in a tight loop (poll_conditions
+      # returns immediately on FAILURE).
+      local produced_change="false" fix_context
+      if [[ "${CONSTRAINT_FAILURE}" == "conflict" ]]; then
+        refresh_base_branch "${base}"
+      fi
+      fix_context="$(constraint_fix_context "${branch}" "${base}")"
+      echo "PR #${pr}: constraints failing (${CONSTRAINT_FAILURE:-unknown}); fixing with a new implementation round." >&2
+      if implement "${title}" "${body}" "${fix_context}"; then
         produced_change="true"
       fi
       # Same rule as the feedback round: a dirty tree without a .commit-msg is
