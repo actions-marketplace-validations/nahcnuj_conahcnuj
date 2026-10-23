@@ -186,7 +186,7 @@ test_tool_title_fallback() {
   # the tool name carries the verdict line by itself (issue #375).
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"todowrite","state":{"status":"completed","input":{},"output":"","metadata":{}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
-  assert_contains "${out}" "✅ Todowrite" "verdict line uses the tool name"
+  assert_not_contains "${out}" '$ todowrite' "non-command tool is not a prompt-like line"
   rm -rf "${tmp}"
   echo "render tool title fallback passed"
 }
@@ -199,7 +199,7 @@ test_tool_read_reports_in_one_line() {
   # `$ read` prompt line, no whole-file dump in the log.
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{},"title":"tracked.txt"}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
-  assert_contains "${out}" "✅ Read tracked.txt" "read verdict line with the file"
+  assert_not_contains "${out}" '$ read' "read is not rendered as a prompt"
   rm -rf "${tmp}"
   echo "render read one-line passed"
 }
@@ -215,7 +215,7 @@ test_tool_read_failure() {
 {"type":"tool_use","part":{"type":"tool","tool":"read","state":{"status":"error","input":{},"error":"The read tool was called with invalid arguments: SchemaError(Missing key\n    at [\"filePath\"]).\n  Please rewrite the input so it satisfies the expected schema."}}}
 EOF
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
-  assert_contains "${out}" "❌️ Read" "read failure verdict line"
+  assert_not_contains "${out}" '$ read' "read is not rendered as a prompt"
   assert_contains "${out}" "  ERROR: The read tool was called with invalid arguments" "failure reason shown"
   assert_contains "${out}" "    at [\"filePath\"]" "multi-line error kept whole"
   rm -rf "${tmp}"
@@ -299,6 +299,7 @@ test_command_running_has_no_verdict_yet() {
   # A command still in flight must not read as finished.
   out="$(printf '%s\n' '{"type":"tool_use","part":{"id":"prt_r1","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"slow build"},"output":"compiling"},"title":"slow build"}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_not_contains "${out}" "✅" "running command shows no verdict"
   assert_contains "${out}" "  compiling" "its partial output is on the log"
   rm -rf "${tmp}"
   echo "render running verdict passed"
