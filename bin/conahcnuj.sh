@@ -221,6 +221,27 @@ driver_relaunch() {
     echo "WARNING: could not convert \${0} (${self}) to a Windows path; continuing under WSL." >&2
     return 1
   fi
+  # Forward driver-relevant environment variables across the WSL -> Git Bash
+  # boundary: WSL interop only passes variables listed in WSLENV, so without
+  # this the re-launched process loses overrides like CONAHCNUJ_REPO (issue
+  # #309-era env propagation).
+  local wslenv_add=""
+  local v
+  for v in $(compgen -v); do
+    case "${v}" in
+      CONAHCNUJ_*|GH_*|OPENCODE_*|MOCK_*) 
+        if [[ -n "${!v:-}" ]]; then
+          wslenv_add="${wslenv_add:+${wslenv_add}:}${v}"
+        fi
+        ;;
+    esac
+  done
+  # Preserve the caller's working directory across the WSL -> Git Bash boundary.
+  export CONAHCNUJ_ORIG_PWD_WIN="$(wslpath -m "${PWD}")"
+  wslenv_add="${wslenv_add:+${wslenv_add}:}CONAHCNUJ_ORIG_PWD_WIN"
+  if [[ -n "${wslenv_add}" ]]; then
+    export WSLENV="${WSLENV:+${WSLENV}:}${wslenv_add}"
+  fi
   echo "Re-launching under ${bash_exe} so the GitHub App paths resolve." >&2
   "${bash_mnt}" "${self_win}" "$@" &
   child=$!
@@ -1722,7 +1743,9 @@ main() {
   if driver_needs_relaunch; then
     driver_relaunch "$@" || true
   fi
-
+  if [[ -n "${CONAHCNUJ_ORIG_PWD_WIN:-}" ]]; then
+    cd "${CONAHCNUJ_ORIG_PWD_WIN}" 2>/dev/null || true
+  fi
   if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <issue-or-pr-number>" >&2
     exit 1

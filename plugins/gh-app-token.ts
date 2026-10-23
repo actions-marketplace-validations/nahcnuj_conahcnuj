@@ -343,7 +343,7 @@ const GITHUB_RULES = [
  * failures. State that concrete fact (and the tools to use instead) so a
  * model stops retrying them. Issue #369.
  */
-const shellPlatform =
+const SHELL_PLATFORM =
   process.platform === "win32"
     ? "Windows"
     : process.platform === "darwin"
@@ -352,13 +352,12 @@ const shellPlatform =
         ? "Linux"
         : process.platform
 const shellName = process.platform === "win32" ? "PowerShell" : "a Unix shell"
-const headTailGrepAvailability =
+const HEAD_TAIL_GREP_AVAILABLE =
   process.platform === "win32"
     ? "`head`, `tail`, and `grep` are not available as commands here, so do not use them in shell commands (they only cause repeated failures there)"
     : "`head`, `tail`, and `grep` are available as commands here"
 const SHELL_RULES = [
-  `Shell environment: this session runs on ${shellPlatform} (${process.platform}) in ${shellName}; ${headTailGrepAvailability}.`,
-  "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
+  `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${shellName}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
   "Never use head/tail/grep; prefer the read and grep tools.",
 ].join(" ")
