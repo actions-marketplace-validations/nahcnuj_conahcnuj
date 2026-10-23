@@ -665,6 +665,7 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
   const plugin = await freshHooks()
   const output = { system: ["existing rule"] }
   await plugin["experimental.chat.system.transform"]({}, output)
+  // 1 pre-existing rule + 3 injected rules (commit, GitHub-auth, shell) = 4.
   assert.strictEqual(output.system.length, 4)
   assert.strictEqual(output.system[0], "existing rule")
   const rules = output.system[1]
@@ -708,7 +709,7 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
     shellRules
   )
   await plugin["experimental.chat.system.transform"]({}, output)
-  assert.strictEqual(output.system.length, 4, "system rules injected more than once")
+  assert.strictEqual(output.system.length, 4, "system rules injected more than once (1 existing + 3 injected)")
 })
 
 // --- model label ------------------------------------------------------------
