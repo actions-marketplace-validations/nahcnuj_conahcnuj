@@ -346,11 +346,11 @@ const GITHUB_RULES = [
 const SHELL_PLATFORM = process.platform
 const SHELL_LABEL =
   SHELL_PLATFORM === "win32"
-    ? "Windows/PowerShell"
+    ? "Windows/PowerShell (win32)"
     : `${SHELL_PLATFORM} (${process.env.SHELL || "sh"})`
 const HEAD_TAIL_GREP_AVAILABLE = SHELL_PLATFORM !== "win32"
 const SHELL_RULES = [
-  `Shell portability: this environment is ${SHELL_LABEL}, where`,
+  `Shell portability: first determine the environment you are actually running in — this session runs on ${SHELL_LABEL}, where`,
   "`head`, `tail`, and `grep` are " +
     (HEAD_TAIL_GREP_AVAILABLE
       ? "available as commands."
