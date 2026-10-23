@@ -192,7 +192,7 @@ function resolvePrivateKeyPath(rawKeyPath: string): string {
   if (process.platform === "win32") {
     const msys = /^\/([a-zA-Z])\/(.*)$/.exec(resolved)
     if (msys) {
-      resolved = `${msys[1].toUpperCase()}:${msys[2]}`
+      resolved = `${msys[1].toUpperCase()}:/${msys[2]}`
     }
   }
   return resolved
