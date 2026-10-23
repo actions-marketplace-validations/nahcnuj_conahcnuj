@@ -336,18 +336,29 @@ const GITHUB_RULES = [
 ].join(" ")
 
 /**
- * Shell-portability rules appended to every system prompt. On Windows the
- * default shell is PowerShell, where `head`, `tail`, and `grep` do not exist,
- * so reaching for them there only produces repeated "command not found"
- * failures. State the fact (and the tools to use instead) so a model stops
- * retrying them. Issue #369.
+ * Shell-portability rules appended to every system prompt. The model must
+ * know which environment it is actually running in: on Windows the default
+ * shell is PowerShell, where `head`, `tail`, and `grep` do not exist, so
+ * reaching for them there only produces repeated "command not found"
+ * failures. State that concrete fact (and the tools to use instead) so a
+ * model stops retrying them. Issue #369.
  */
+const shellPlatform =
+  process.platform === "win32"
+    ? "Windows"
+    : process.platform === "darwin"
+      ? "macOS"
+      : process.platform === "linux"
+        ? "Linux"
+        : process.platform
+const shellName = process.platform === "win32" ? "PowerShell" : "a Unix shell"
+const headTailGrepAvailability =
+  process.platform === "win32"
+    ? "`head`, `tail`, and `grep` are not available as commands here, so do not use them in shell commands (they only cause repeated failures there)"
+    : "`head`, `tail`, and `grep` are available as commands here"
 const SHELL_RULES = [
-  "Shell portability: this environment may run on Windows/PowerShell, where",
-  "`head`, `tail`, and `grep` are not available as commands, so do not use",
-  "them in shell commands (they only cause repeated failures there). Read",
-  "files with the read tool and search with the grep/glob tools instead; if a",
-  "shell command is unavoidable, use PowerShell equivalents or node/python.",
+  `Shell environment: this session runs on ${shellPlatform} (${process.platform}) in ${shellName}; ${headTailGrepAvailability}.`,
+  "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
   "Never use head/tail/grep; prefer the read and grep tools.",
 ].join(" ")
 

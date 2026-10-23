@@ -38,11 +38,12 @@
   トークンを取り直す必要もない。** トークンはプラグインがシェルごとに（期限が
   切れていれば更新して）注入するので、自分で用意すると冗長で壊れやすい。
 
-## シェルの移植性（PowerShell）
+## シェルの移植性（まず環境を確認する）
 
-- **`head` / `tail` / `grep` をシェルコマンドとして使わないこと。** Windows の
-  デフォルトシェル (PowerShell) にはこれらのコマンドが無く、使うと
-  "command not found" のエラーが繰り返し発生する。ファイルの読み取りは read
-  ツール、検索は grep/glob ツールを使うこと。シェルコマンドが避けられない
-  場合は PowerShell の同等コマンドや node/python を使うこと。
-  Never use head/tail/grep; prefer the read and grep tools.
+- **まず自分がどの OS・シェルで動いているかを確認すること。** Windows の
+  デフォルトシェル (PowerShell) には `head` / `tail` / `grep` が無く、使うと
+  "command not found" のエラーが繰り返し発生する。Windows/PowerShell では
+  これらをシェルコマンドとして使わず、ファイルの読み取りは read ツール、検索は
+  grep/glob ツールを使うこと。シェルコマンドが避けられない場合は PowerShell の
+  同等コマンドや node/python を使うこと。
+  Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.

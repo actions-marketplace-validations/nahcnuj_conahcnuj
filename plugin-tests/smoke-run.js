@@ -83,7 +83,7 @@ async function main() {
   assert.strictEqual(
     sysOutput.system.length,
     3,
-    "commit rules and GitHub-auth rules were not injected into the system prompt"
+    "commit, GitHub-auth, and shell rules were not injected into the system prompt"
   )
   const rules = sysOutput.system[0]
   assert(!/[\r\n]/.test(rules), "commit rules must be a single line")
@@ -103,6 +103,14 @@ async function main() {
   assert(
     githubRules.includes("`GH_TOKEN`") && githubRules.includes("Do not export"),
     `rules must state GH_TOKEN is pre-set and must not be exported: ${githubRules}`
+  )
+  // The shell rule names the real platform (issue #369).
+  const shellRules = sysOutput.system[2]
+  assert(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
+  assert(shellRules.includes(process.platform), `rules must name the platform: ${shellRules}`)
+  assert(
+    shellRules.includes(process.platform === "win32" ? "not available" : "available"),
+    `rules must state whether head/tail/grep exist: ${shellRules}`
   )
   // Injecting twice must stay idempotent (the rules are pushed once).
   await plugin["experimental.chat.system.transform"]({}, sysOutput)

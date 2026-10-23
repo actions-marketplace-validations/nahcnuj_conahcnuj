@@ -660,7 +660,7 @@ test("app.env: CRLF line endings parse like LF", async () => {
 
 // --- system prompt ----------------------------------------------------------
 
-test("system prompt: the git vc and GitHub-auth rules are appended once and stay one line", async () => {
+test("system prompt: the git vc, GitHub-auth and shell rules are appended once and stay one line", async () => {
   stage()
   const plugin = await freshHooks()
   const output = { system: ["existing rule"] }
@@ -694,6 +694,19 @@ test("system prompt: the git vc and GitHub-auth rules are appended once and stay
   assert.ok(githubRules.includes("run `gh ...`"), githubRules)
   assert.ok(githubRules.includes("Do not export `GH_TOKEN`"), githubRules)
   assert.ok(githubRules.includes("do not run `gh-app/get-token.sh`"), githubRules)
+  // The shell rule states the actual environment instead of guessing; the
+  // model stops retrying commands that do not exist on this platform.
+  const shellRules = output.system[3]
+  assert.ok(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
+  assert.ok(shellRules.includes(process.platform), shellRules)
+  assert.ok(
+    shellRules.includes(process.platform === "win32" ? "not available" : "available"),
+    shellRules
+  )
+  assert.ok(
+    shellRules.includes("Never use head/tail/grep; prefer the read and grep tools."),
+    shellRules
+  )
   await plugin["experimental.chat.system.transform"]({}, output)
   assert.strictEqual(output.system.length, 4, "system rules injected more than once")
 })
