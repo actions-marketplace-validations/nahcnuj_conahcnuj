@@ -17,6 +17,19 @@
 #
 #   ✅ git status --short
 #
+# What the model does without executing a command is not typed at a prompt, so
+# it never renders as one: a `read` / `edit` / ... tool call reports in a single
+# verdict line, ✅ Read <filepath> / ❌️ Read <filepath>, and a successful edit
+# puts the diff it produced below the line (an editor rewrote the file, so show
+# the rewrite).
+#
+# Blocks stream as the events arrive: text, reasoning and the output of a
+# command line are printed as they are produced -- a part that grows (a
+# streaming answer, a command feeding its stdout) prints only the lines it has
+# not printed yet, and a command's verdict appears only when the command is
+# over, never as an early pass while it is still running. A part replaying an
+# older snapshot (session resumes, stream reconnects) prints nothing again.
+#
 # The header is re-read per block (SHA / branch / diff are queried again), so it
 # always describes the moment the block was produced. That only means anything
 # while the driver streams: render from a live pipe, not from a dump taken
@@ -163,14 +176,18 @@ function unescape(s,  out, i, n, c, e) {
   }
   return out
 }
-function emit(tag, raw,  v, n, a, i) {
+function emit(tag, raw,  v, n, a, i, ends_nl) {
   v = unescape(raw)
+  ends_nl = (length(v) > 0 && substr(v, length(v), 1) == "\n")
   n = split(v, a, "\n")
   # A payload that ends with a newline splits into a trailing empty element;
   # print() adds the newline back, so dropping it keeps one trailing blank
-  # line from being invented.
+  # line from being invented. But the newline is information too -- a part
+  # that streams glues its next chunk onto a line that did not end -- so an
+  # additional (empty) element remembers the break for the shell side.
   if (n > 0 && a[n] == "") n--
   for (i = 1; i <= n; i++) printf "%s%s%s\n", tag, sep, a[i]
+  if (ends_nl) printf "%s%s\n", tag, sep
 }
 {
   p = field($0, "part")
@@ -186,8 +203,18 @@ function emit(tag, raw,  v, n, a, i) {
   emit("status", field(s, "status"))
   emit("title", field(s, "title", after))
   emit("command", field(i, "command"))
+  # The file-oriented arguments the tool-specific captions name (✅ Read
+  # <path>); the field() start argument keeps state.output / state.title /
+  # state.metadata from being shadowed by the tool's own argument object.
+  emit("filepath", field(i, "filePath"))
+  emit("pattern", field(i, "pattern"))
+  emit("oldstr", field(i, "oldString"))
+  emit("newstr", field(i, "newString"))
   emit("output", field(s, "output", after))
   emit("exit", field(field(s, "metadata", after), "exit"))
+  # The diff an edit tool reports in its metadata, so a successful edit can
+  # show what it rewrote.
+  emit("diff", field(field(s, "metadata", after), "diff"))
   emit("toolerror", field(s, "error", after))
   emit("errmsg", field(field(e, "data"), "message"))
   emit("errname", field(e, "name"))
@@ -203,7 +230,8 @@ AWK
 # absent field apart from one whose first line is blank.
 declare -A F=(
   [type]="" [tool]="" [status]="" [title]="" [command]=""
-  [output]="" [exit]="" [toolerror]="" [errmsg]="" [errname]="" [text]=""
+  [filepath]="" [pattern]="" [oldstr]="" [newstr]=""
+  [output]="" [exit]="" [diff]="" [toolerror]="" [errmsg]="" [errname]="" [text]=""
   [id]=""
 )
 declare -A SEEN=()
@@ -211,11 +239,26 @@ declare -A SEEN=()
 # replay parts (session resumes, stream reconnects), and the same part must
 # never be printed twice in the run log or troubleshooting drowns in copies.
 declare -A SEEN_PARTS=()
+# What each part has already put in the log, so a part that streams (an answer
+# growing chunk by chunk, a command feeding its stdout) prints only what is
+# new instead of printing its block over from the top. Keyed by part id; an
+# event without one keeps the stateless one-shot rendering.
+declare -A PART_TEXT=()   # text / reasoning streamed so far
+declare -A PART_OUT=()    # command output streamed so far
+declare -A PART_ERR=()    # tool error message streamed so far
+declare -A PART_MODE=()   # tool shape: "true" executes commands, "false" does not
+declare -A PART_STATE=()  # the verdict has been printed for this part
+declare -A PART_FED=()    # the feed (output / error) has started for this part
+
+# Whether the log's last line is half-written: streamed parts keep growing one
+# and glue their continuation onto it instead of starting a new line.
+OPENLINE=0
 
 render_fields() {
   local tag value nl=$'\n'
   local -a keys=(
-    type tool status title command output exit toolerror errmsg errname text id
+    type tool status title command filepath pattern oldstr newstr output exit diff
+    toolerror errmsg errname text id
   )
   local key
   for key in "${keys[@]}"; do
@@ -316,10 +359,27 @@ render_diff() {
   printf '%s' "${stat}"
 }
 
+# Close a half-written line only when there is one, without inventing a blank.
+close_line() {
+  [[ "${OPENLINE}" == "1" ]] || return 0
+  print_newline
+}
+
 render_header() {
+  # A part that streams can leave its last line half-written; a header starts
+  # a new line of the log, so close the open one first.
+  close_line
   printf '%-*s  %s [%s] %s\n' 44 \
     "$(render_model_label)@$(render_repo):$(render_dir)" \
     "$(render_sha)" "$(render_branch)" "$(render_diff)"
+}
+
+# Start a fresh line of the log, closing a part's half-written line first.
+# Use this for the spacing the blocks put between their feed and their verdict
+# -- when the last line is half-written the closure doubles as the break.
+print_newline() {
+  printf '\n'
+  OPENLINE=0
 }
 
 # --- block bodies -----------------------------------------------------------
@@ -336,38 +396,302 @@ render_indent() {
   done <<< "${value}"
 }
 
-# Assistant text and reasoning read the same way: the header says which step
-# this is, the body is just the model's words, printed in full.
-render_block_text() {
-  [[ -n "${F[text]}" ]] || return 0
-  render_header
-  render_indent "${F[text]}"
+# Append a streaming part's next chunk to the log, keeping what has been
+# written so far exactly where it is. The first segment glues onto a
+# half-written line (a streamed answer grows token by token, mid-line); a
+# fresh line starts with the indent; the optional prefix is glued to the
+# first whole line, for the "ERROR: " the tool errors carry. A trailing chunk
+# without a newline leaves the line half-written for the next chunk (the
+# global OPENLINE tracks that).
+render_stream() {
+  local value="${1:-}" prefix="${2:-}" line rest first=1 more=0
+  local had_nl=1
+  [[ -n "${value}" ]] || return 0
+  if [[ "${value}" == *$'\n' ]]; then
+    value="${value%$'\n'}"
+  else
+    had_nl=0
+  fi
+  while :; do
+    line="${value%%$'\n'*}"
+    rest=""
+    more=0
+    if [[ "${value}" == *$'\n'* ]]; then
+      rest="${value#*$'\n'}"
+      more=1
+    fi
+    if [[ "${OPENLINE}" == "1" ]]; then
+      printf '%s' "${line}"
+      OPENLINE=0
+      prefix=""
+    elif [[ "${first}" == "1" ]]; then
+      printf '%s%s%s' "${INDENT}" "${prefix}" "${line}"
+    else
+      printf '%s%s' "${INDENT}" "${line}"
+    fi
+    if [[ "${more}" == "1" || "${had_nl}" == "1" ]]; then
+      printf '\n'
+    fi
+    first=0
+    [[ "${more}" == "0" ]] && break
+    value="${rest}"
+  done
+  if [[ "${had_nl}" == "0" ]]; then
+    OPENLINE=1
+  else
+    OPENLINE=0
+  fi
+  return 0
 }
 
-# A tool call: the command line, whatever it printed, and whether it worked.
-# opencode reports a non-zero command as a "completed" call carrying an exit
-# code, so the exit status decides the verdict, not state.status alone.
+# Print text indented, every line under a one-character marker ("-" / "+"),
+# for the diff fragments the renderer has to stitch itself.
+render_marked() {
+  local value="${1:-}" marker="${2:-}" line
+  [[ -n "${value}" ]] || return 0
+  while IFS= read -r line; do
+    printf '  %s %s\n' "${marker}" "${line}"
+  done <<< "${value}"
+}
+
+# Tell a streamed part's next snapshot apart from what was already printed,
+# and put the result in STREAM_KIND with the new text in STREAM_TAIL:
+#   append -- the snapshot grew past the printed text; STREAM_TAIL is the tail
+#   stale  -- the snapshot is an older, shorter copy of what was already shown
+#             (a replay from a resumed session), so nothing prints
+#   revise -- the content changed in place; the caller reprints it whole
+STREAM_KIND=""
+STREAM_TAIL=""
+stream_delta() {
+  local prev="${1:-}" next="${2:-}"
+  STREAM_KIND="append"
+  STREAM_TAIL=""
+  if [[ "${next}" == "${prev}"* ]]; then
+    STREAM_TAIL="${next#"${prev}"}"
+    return 0
+  fi
+  if [[ "${prev}" == "${next}"* ]]; then
+    STREAM_KIND="stale"
+    return 0
+  fi
+  STREAM_KIND="revise"
+}
+
+# Assistant text and reasoning read the same way: the header says which step
+# this is, the body is just the model's words, printed in full -- and, for a
+# part id that streams, printed only as the words arrive.
+render_block_text() {
+  local pid="${F[id]}" prev
+  if [[ -z "${pid}" ]]; then
+    render_header
+    render_stream "${F[text]}"
+    return 0
+  fi
+  prev="${PART_TEXT[${pid}]:-}"
+  if [[ -z "${prev}" ]]; then
+    [[ -n "${F[text]}" ]] || return 0
+    render_header
+    render_stream "${F[text]}"
+    PART_TEXT[${pid}]="${F[text]}"
+    return 0
+  fi
+  stream_delta "${prev}" "${F[text]}"
+  case "${STREAM_KIND}" in
+    append) render_stream "${STREAM_TAIL}" ;;
+    stale) return 0 ;;
+    revise)
+      # A revision reprints under a fresh header: the first lines already
+      # shown are in the log, and staying silent would drop what changed.
+      render_header
+      render_stream "${F[text]}"
+      ;;
+  esac
+  PART_TEXT[${pid}]="${F[text]}"
+}
+
+# A tool call. Command execution keeps the `$ <command>` shape and streams
+# whatever the command printed as it is produced; the verdict comes once the
+# command is over (a "running" update must never read as an early pass), and
+# a non-zero exit is still the failure, not state.status alone.
+#
+# Everything else is not something typed at a prompt, so it does not get one:
+# a read / edit / ... call reports in a single verdict line, ✅ Read <filepath>
+# / ❌️ Read <filepath> -- the reason it failed printed under the line -- and a
+# successful edit puts the diff it produced below its own line. The file path
+# and the diff come from the tool's own arguments (filePath) and metadata
+# (diff); an edit that reported neither is stitched from its oldString /
+# newString arguments.
 render_block_tool() {
-  local label status code
-  label="${F[title]}"
-  [[ -n "${label}" ]] || label="${F[command]}"
-  [[ -n "${label}" ]] || label="${F[tool]}"
-  [[ -n "${label}" ]] || label="tool"
-  status="${F[status]}"
+  local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false label
+  local prev_out="" prev_err="" prev_verdict="false" prev_fed="false" fed="false"
+  [[ -z "${tool:-}" ]] && tool="tool"
+  [[ "${tool}" == "bash" || -n "${F[command]}" ]] && is_cmd="true"
+  local status="${F[status]}"
   code="${F[exit]}"
   case "${code}" in
     ''|*[!0-9]*) code="" ;;
   esac
-  render_header
-  printf '$ %s\n' "${label}"
-  if [[ -n "${F[output]}" || -n "${F[toolerror]}" ]]; then
-    # Whatever the command printed, then the reason it failed if it did. Blank
-    # lines on both sides keep the result from melting into the verdict.
-    printf '\n'
-    [[ -n "${F[output]}" ]] && render_indent "${F[output]}"
-    [[ -n "${F[toolerror]}" ]] && render_indent "ERROR: ${F[toolerror]}"
-    printf '\n'
+  if [[ -n "${pid}" ]]; then
+    prev_out="${PART_OUT[${pid}]:-}"
+    prev_err="${PART_ERR[${pid}]:-}"
+    [[ "${PART_STATE[${pid}]:-}" == "1" ]] && prev_verdict="true"
+    [[ "${PART_FED[${pid}]:-}" == "1" ]] && prev_fed="true"
+    fed="${prev_fed}"
   fi
+
+  if [[ "${tool}" == "glob" ]]; then
+    if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
+      [[ -n "${pid}" ]] && PART_MODE[${pid}]="glob"
+      render_header
+      arg="${F[pattern]}"
+      [[ -n "${arg}" ]] || arg="${F[title]}"
+      [[ -n "${arg}" ]] || arg="${tool}"
+      if [[ "${status}" == "error" ]]; then
+        printf '❌️ Glob %s\n' "${arg}"
+      else
+        printf '🔎 Glob %s\n' "${arg}"
+      fi
+    fi
+    if [[ -n "${F[output]}" ]]; then
+      stream_delta "${prev_out}" "${F[output]}"
+      if [[ "${STREAM_KIND}" != "stale" ]]; then
+        if [[ "${fed}" == "false" ]]; then
+          print_newline
+          fed="true"
+        fi
+        if [[ "${STREAM_KIND}" == "revise" ]]; then
+          close_line
+          render_stream "${F[output]}"
+        else
+          render_stream "${STREAM_TAIL}"
+        fi
+        prev_out="${F[output]}"
+      fi
+    fi
+    if [[ -n "${F[toolerror]}" ]]; then
+      local err_prefix=""
+      [[ -z "${prev_err}" ]] && err_prefix="ERROR: "
+      stream_delta "${prev_err}" "${F[toolerror]}"
+      if [[ "${STREAM_KIND}" != "stale" ]]; then
+        if [[ "${fed}" == "false" ]]; then
+          print_newline
+          fed="true"
+        fi
+        close_line
+        if [[ "${STREAM_KIND}" == "revise" ]]; then
+          render_stream "${F[toolerror]}" "ERROR: "
+        else
+          render_stream "${STREAM_TAIL}" "${err_prefix}"
+        fi
+        prev_err="${F[toolerror]}"
+      fi
+    fi
+    if [[ -n "${pid}" ]]; then
+      PART_OUT[${pid}]="${prev_out}"
+      PART_ERR[${pid}]="${prev_err}"
+      [[ "${fed}" == "true" ]] && PART_FED[${pid}]=1
+      PART_STATE[${pid}]=1
+    fi
+    return 0
+  fi
+
+  # First sighting of the part: open the block. A command execution carries
+  # its `$` caption; anything else reports with the verdict line alone.
+  if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
+    [[ -n "${pid}" ]] && PART_MODE[${pid}]="${is_cmd}"
+    render_header
+    if [[ "${is_cmd}" == "true" ]]; then
+      label="${F[title]}"
+      [[ -n "${label}" ]] || label="${F[command]}"
+      [[ -n "${label}" ]] || label="${tool}"
+      printf '$ %s\n' "${label}"
+    fi
+  fi
+
+  if [[ "${is_cmd}" == "false" ]]; then
+    if [[ "${prev_verdict}" == "true" ]]; then
+      return 0
+    fi
+    if [[ "${status}" != "completed" && "${status}" != "error" ]]; then
+      return 0
+    fi
+    label="${tool^}"
+    local arg="${F[filepath]}"
+    [[ -n "${arg}" ]] || arg="${F[title]}"
+    if [[ -n "${arg}" ]]; then
+      label="${label} ${arg}"
+    fi
+    if [[ "${status}" == "error" ]]; then
+      printf '❌️ %s\n' "${label}"
+      if [[ -n "${F[toolerror]}" ]]; then
+        print_newline
+        render_stream "${F[toolerror]}" "ERROR: "
+      fi
+    else
+      printf '✅ %s\n' "${label}"
+      if [[ -n "${F[diff]}" ]]; then
+        render_stream "${F[diff]}"
+      elif [[ "${tool}" == "edit" && ( -n "${F[oldstr]}" || -n "${F[newstr]}" ) ]]; then
+        render_marked "${F[oldstr]}" "-"
+        render_marked "${F[newstr]}" "+"
+      fi
+    fi
+    [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
+    return 0
+  fi
+
+  # Command execution: stream the feed (whatever the command printed, then the
+  # reason it failed) as it arrives, one growing block for the whole call.
+  if [[ -n "${F[output]}" ]]; then
+    stream_delta "${prev_out}" "${F[output]}"
+    if [[ "${STREAM_KIND}" != "stale" ]]; then
+      if [[ "${fed}" == "false" ]]; then
+        print_newline
+        fed="true"
+      fi
+      if [[ "${STREAM_KIND}" == "revise" ]]; then
+        close_line
+        render_stream "${F[output]}"
+      else
+        render_stream "${STREAM_TAIL}"
+      fi
+      prev_out="${F[output]}"
+    fi
+  fi
+  if [[ -n "${F[toolerror]}" ]]; then
+    local err_prefix=""
+    [[ -z "${prev_err}" ]] && err_prefix="ERROR: "
+    stream_delta "${prev_err}" "${F[toolerror]}"
+    if [[ "${STREAM_KIND}" != "stale" ]]; then
+      if [[ "${fed}" == "false" ]]; then
+        print_newline
+        fed="true"
+      fi
+      # An error is its own line of the feed, never a continuation of output.
+      close_line
+      if [[ "${STREAM_KIND}" == "revise" ]]; then
+        render_stream "${F[toolerror]}" "ERROR: "
+      else
+        render_stream "${STREAM_TAIL}" "${err_prefix}"
+      fi
+      prev_err="${F[toolerror]}"
+    fi
+  fi
+  if [[ -n "${pid}" ]]; then
+    PART_OUT[${pid}]="${prev_out}"
+    PART_ERR[${pid}]="${prev_err}"
+    [[ "${fed}" == "true" ]] && PART_FED[${pid}]=1
+  fi
+
+  # The verdict: when the call is over, not while it is running.
+  [[ "${prev_verdict}" == "true" ]] && return 0
+  if [[ "${status}" != "completed" && "${status}" != "error" ]]; then
+    return 0
+  fi
+  label="${F[title]}"
+  [[ -n "${label}" ]] || label="${F[command]}"
+  [[ -n "${label}" ]] || label="${tool}"
+  [[ "${fed}" == "true" ]] && print_newline
   if [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
     if [[ -n "${code}" ]]; then
       printf '❌️ %s (exit %s)\n' "${label}" "${code}"
@@ -377,6 +701,8 @@ render_block_tool() {
   else
     printf '✅ %s\n' "${label}"
   fi
+  [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
+  return 0
 }
 
 # A session-level error (provider auth, rate limit, ...): no command ran, so
@@ -409,7 +735,7 @@ render_event() {
   # content still renders, the log must never drop a real update.
   local pid="${F[id]}"
   if [[ -n "${pid}" ]]; then
-    local fp="${F[type]}|${F[status]}|${F[title]}|${F[command]}|${F[output]}|${F[exit]}|${F[toolerror]}|${F[errmsg]}|${F[errname]}|${F[text]}"
+    local fp="${F[type]}|${F[status]}|${F[title]}|${F[command]}|${F[filepath]}|${F[pattern]}|${F[oldstr]}|${F[newstr]}|${F[output]}|${F[exit]}|${F[diff]}|${F[toolerror]}|${F[errmsg]}|${F[errname]}|${F[text]}"
     if [[ "${SEEN_PARTS[${pid}]:-}" == "${fp}" ]]; then
       return 0
     fi
