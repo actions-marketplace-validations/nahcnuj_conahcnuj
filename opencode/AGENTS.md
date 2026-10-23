@@ -37,3 +37,14 @@
 - **`GH_TOKEN` を自分で export しないこと。`gh-app/get-token.sh` を実行して
   トークンを取り直す必要もない。** トークンはプラグインがシェルごとに（期限が
   切れていれば更新して）注入するので、自分で用意すると冗長で壊れやすい。
+
+## シェルの移植性（まず環境を確認する）
+
+- **まず自分がどの OS・シェルで動いているかを確認すること。** 実際に動いている
+  環境を自分で把握してからコマンドを選ぶこと（Windows のデフォルトシェル
+  (PowerShell) には `head` / `tail` / `grep` が無く、使うと "command not found"
+  のエラーが繰り返し発生する）。Windows/PowerShell では これらをシェルコマンド
+  として使わず、ファイルの読み取りは read ツール、検索は grep/glob ツールを
+  使うこと。シェルコマンドが避けられない場合は PowerShell の同等コマンドや
+  node/python を使うこと。コマンドが存在するか分からないときは先に確認すること。
+  Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.
