@@ -207,6 +207,7 @@ function emit(tag, raw,  v, n, a, i, ends_nl) {
   # <path>); the field() start argument keeps state.output / state.title /
   # state.metadata from being shadowed by the tool's own argument object.
   emit("filepath", field(i, "filePath"))
+  emit("pattern", field(i, "pattern"))
   emit("oldstr", field(i, "oldString"))
   emit("newstr", field(i, "newString"))
   emit("output", field(s, "output", after))
@@ -229,7 +230,7 @@ AWK
 # absent field apart from one whose first line is blank.
 declare -A F=(
   [type]="" [tool]="" [status]="" [title]="" [command]=""
-  [filepath]="" [oldstr]="" [newstr]=""
+  [filepath]="" [pattern]="" [oldstr]="" [newstr]=""
   [output]="" [exit]="" [diff]="" [toolerror]="" [errmsg]="" [errname]="" [text]=""
   [id]=""
 )
@@ -521,10 +522,11 @@ render_block_text() {
 # (diff); an edit that reported neither is stitched from its oldString /
 # newString arguments.
 render_block_tool() {
-  local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false label
+  local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false is_glob=false label
   local prev_out="" prev_err="" prev_verdict="false" prev_fed="false" fed="false"
   [[ -z "${tool:-}" ]] && tool="tool"
   [[ "${tool}" == "bash" || -n "${F[command]}" ]] && is_cmd="true"
+  case "${tool}" in [Gg][Ll][Oo][Bb]) is_glob="true" ;; esac
   local status="${F[status]}"
   code="${F[exit]}"
   case "${code}" in
@@ -541,14 +543,79 @@ render_block_tool() {
   # First sighting of the part: open the block. A command execution carries
   # its `$` caption; anything else reports with the verdict line alone.
   if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
-    [[ -n "${pid}" ]] && PART_MODE[${pid}]="${is_cmd}"
+    if [[ -n "${pid}" ]]; then
+      if [[ "${is_glob}" == "true" ]]; then
+        PART_MODE[${pid}]="glob"
+      else
+        PART_MODE[${pid}]="${is_cmd}"
+      fi
+    fi
     render_header
     if [[ "${is_cmd}" == "true" ]]; then
       label="${F[title]}"
       [[ -n "${label}" ]] || label="${F[command]}"
       [[ -n "${label}" ]] || label="${tool}"
       printf '$ %s\n' "${label}"
+    elif [[ "${is_glob}" == "true" ]]; then
+      label="${F[pattern]}"
+      [[ -n "${label}" ]] || label="${F[title]}"
+      [[ -n "${label}" ]] || label="${F[filepath]}"
+      if [[ "${status}" == "error" ]]; then
+        printf '❌️ Glob'
+        [[ -n "${label}" ]] && printf ' %s' "${label}"
+        printf '\n'
+      else
+        printf '🔎 Glob'
+        [[ -n "${label}" ]] && printf ' %s' "${label}"
+        printf '\n'
+      fi
     fi
+  fi
+
+  if [[ "${is_glob}" == "true" ]]; then
+    if [[ -n "${F[output]}" ]]; then
+      stream_delta "${prev_out}" "${F[output]}"
+      if [[ "${STREAM_KIND}" != "stale" ]]; then
+        if [[ "${fed}" == "false" ]]; then
+          print_newline
+          fed="true"
+        fi
+        if [[ "${STREAM_KIND}" == "revise" ]]; then
+          close_line
+          render_stream "${F[output]}"
+        else
+          render_stream "${STREAM_TAIL}"
+        fi
+        prev_out="${F[output]}"
+      fi
+    fi
+    if [[ -n "${F[toolerror]}" ]]; then
+      local err_prefix=""
+      [[ -z "${prev_err}" ]] && err_prefix="ERROR: "
+      stream_delta "${prev_err}" "${F[toolerror]}"
+      if [[ "${STREAM_KIND}" != "stale" ]]; then
+        if [[ "${fed}" == "false" ]]; then
+          print_newline
+          fed="true"
+        fi
+        close_line
+        if [[ "${STREAM_KIND}" == "revise" ]]; then
+          render_stream "${F[toolerror]}" "ERROR: "
+        else
+          render_stream "${STREAM_TAIL}" "${err_prefix}"
+        fi
+        prev_err="${F[toolerror]}"
+      fi
+    fi
+    if [[ -n "${pid}" ]]; then
+      PART_OUT[${pid}]="${prev_out}"
+      PART_ERR[${pid}]="${prev_err}"
+      [[ "${fed}" == "true" ]] && PART_FED[${pid}]=1
+      if [[ "${status}" == "completed" || "${status}" == "error" ]]; then
+        PART_STATE[${pid}]=1
+      fi
+    fi
+    return 0
   fi
 
   if [[ "${is_cmd}" == "false" ]]; then
@@ -678,7 +745,7 @@ render_event() {
   # content still renders, the log must never drop a real update.
   local pid="${F[id]}"
   if [[ -n "${pid}" ]]; then
-    local fp="${F[type]}|${F[status]}|${F[title]}|${F[command]}|${F[filepath]}|${F[oldstr]}|${F[newstr]}|${F[output]}|${F[exit]}|${F[diff]}|${F[toolerror]}|${F[errmsg]}|${F[errname]}|${F[text]}"
+    local fp="${F[type]}|${F[status]}|${F[title]}|${F[command]}|${F[filepath]}|${F[pattern]}|${F[oldstr]}|${F[newstr]}|${F[output]}|${F[exit]}|${F[diff]}|${F[toolerror]}|${F[errmsg]}|${F[errname]}|${F[text]}"
     if [[ "${SEEN_PARTS[${pid}]:-}" == "${fp}" ]]; then
       return 0
     fi
