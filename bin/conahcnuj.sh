@@ -237,7 +237,9 @@ driver_relaunch() {
     esac
   done
   # Preserve the caller's working directory across the WSL -> Git Bash boundary.
-  export CONAHCNUJ_ORIG_PWD_WIN="$(wslpath -m "${PWD}")"
+  local orig_pwd_win
+  orig_pwd_win="$(wslpath -m "${PWD}")"
+  export CONAHCNUJ_ORIG_PWD_WIN="${orig_pwd_win}"
   wslenv_add="${wslenv_add:+${wslenv_add}:}CONAHCNUJ_ORIG_PWD_WIN"
   if [[ -n "${wslenv_add}" ]]; then
     export WSLENV="${WSLENV:+${WSLENV}:}${wslenv_add}"
