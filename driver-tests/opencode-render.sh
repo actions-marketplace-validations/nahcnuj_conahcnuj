@@ -257,6 +257,22 @@ test_tool_edit_stitched_diff() {
   echo "render edit stitched diff passed"
 }
 
+test_tool_glob_reports_pattern_and_results() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A glob is a search, not a command: no `$ glob` prompt line, the pattern is
+  # named on a 🔎 line and the matches are shown below it (#375).
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"glob","state":{"status":"completed","input":{"pattern":"*.txt"},"output":"/tmp/x/a.txt\n/tmp/x/b.txt\n","metadata":{"count":2,"truncated":false},"title":"tmp/x"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_not_contains "${out}" '$ glob' "glob is not rendered as a prompt"
+  assert_contains "${out}" "🔎 Glob *.txt" "glob verdict line with the pattern"
+  assert_contains "${out}" "  /tmp/x/a.txt" "glob results shown"
+  assert_contains "${out}" "  /tmp/x/b.txt" "glob results shown"
+  rm -rf "${tmp}"
+  echo "render glob passed"
+}
+
 test_command_streams_as_it_prints() {
   local tmp out ones headers
   tmp="$(mktemp -d)"
@@ -499,6 +515,7 @@ test_tool_read_reports_in_one_line
 test_tool_read_failure
 test_tool_edit_diff
 test_tool_edit_stitched_diff
+test_tool_glob_reports_pattern_and_results
 test_command_streams_as_it_prints
 test_command_running_has_no_verdict_yet
 test_streamed_text_prints_only_the_tail

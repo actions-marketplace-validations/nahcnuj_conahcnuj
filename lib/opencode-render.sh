@@ -257,7 +257,7 @@ OPENLINE=0
 render_fields() {
   local tag value nl=$'\n'
   local -a keys=(
-    type tool status title command filepath oldstr newstr output exit diff
+    type tool status title command filepath pattern oldstr newstr output exit diff
     toolerror errmsg errname text id
   )
   local key
@@ -522,11 +522,10 @@ render_block_text() {
 # (diff); an edit that reported neither is stitched from its oldString /
 # newString arguments.
 render_block_tool() {
-  local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false is_glob=false label
+  local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false label
   local prev_out="" prev_err="" prev_verdict="false" prev_fed="false" fed="false"
   [[ -z "${tool:-}" ]] && tool="tool"
   [[ "${tool}" == "bash" || -n "${F[command]}" ]] && is_cmd="true"
-  case "${tool}" in [Gg][Ll][Oo][Bb]) is_glob="true" ;; esac
   local status="${F[status]}"
   code="${F[exit]}"
   case "${code}" in
@@ -540,39 +539,19 @@ render_block_tool() {
     fed="${prev_fed}"
   fi
 
-  # First sighting of the part: open the block. A command execution carries
-  # its `$` caption; anything else reports with the verdict line alone.
-  if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
-    if [[ -n "${pid}" ]]; then
-      if [[ "${is_glob}" == "true" ]]; then
-        PART_MODE[${pid}]="glob"
-      else
-        PART_MODE[${pid}]="${is_cmd}"
-      fi
-    fi
-    render_header
-    if [[ "${is_cmd}" == "true" ]]; then
-      label="${F[title]}"
-      [[ -n "${label}" ]] || label="${F[command]}"
-      [[ -n "${label}" ]] || label="${tool}"
-      printf '$ %s\n' "${label}"
-    elif [[ "${is_glob}" == "true" ]]; then
-      label="${F[pattern]}"
-      [[ -n "${label}" ]] || label="${F[title]}"
-      [[ -n "${label}" ]] || label="${F[filepath]}"
+  if [[ "${tool}" == "glob" ]]; then
+    if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
+      [[ -n "${pid}" ]] && PART_MODE[${pid}]="glob"
+      render_header
+      arg="${F[pattern]}"
+      [[ -n "${arg}" ]] || arg="${F[title]}"
+      [[ -n "${arg}" ]] || arg="${tool}"
       if [[ "${status}" == "error" ]]; then
-        printf '❌️ Glob'
-        [[ -n "${label}" ]] && printf ' %s' "${label}"
-        printf '\n'
+        printf '❌️ Glob %s\n' "${arg}"
       else
-        printf '🔎 Glob'
-        [[ -n "${label}" ]] && printf ' %s' "${label}"
-        printf '\n'
+        printf '🔎 Glob %s\n' "${arg}"
       fi
     fi
-  fi
-
-  if [[ "${is_glob}" == "true" ]]; then
     if [[ -n "${F[output]}" ]]; then
       stream_delta "${prev_out}" "${F[output]}"
       if [[ "${STREAM_KIND}" != "stale" ]]; then
@@ -611,11 +590,22 @@ render_block_tool() {
       PART_OUT[${pid}]="${prev_out}"
       PART_ERR[${pid}]="${prev_err}"
       [[ "${fed}" == "true" ]] && PART_FED[${pid}]=1
-      if [[ "${status}" == "completed" || "${status}" == "error" ]]; then
-        PART_STATE[${pid}]=1
-      fi
+      PART_STATE[${pid}]=1
     fi
     return 0
+  fi
+
+  # First sighting of the part: open the block. A command execution carries
+  # its `$` caption; anything else reports with the verdict line alone.
+  if [[ -z "${pid}" || -z "${PART_MODE[${pid}]:-}" ]]; then
+    [[ -n "${pid}" ]] && PART_MODE[${pid}]="${is_cmd}"
+    render_header
+    if [[ "${is_cmd}" == "true" ]]; then
+      label="${F[title]}"
+      [[ -n "${label}" ]] || label="${F[command]}"
+      [[ -n "${label}" ]] || label="${tool}"
+      printf '$ %s\n' "${label}"
+    fi
   fi
 
   if [[ "${is_cmd}" == "false" ]]; then
