@@ -335,6 +335,22 @@ const GITHUB_RULES = [
   "obtain one; the token is provided for you and refreshed as needed.",
 ].join(" ")
 
+/**
+ * Shell-portability rules appended to every system prompt. On Windows the
+ * default shell is PowerShell, where `head`, `tail`, and `grep` do not exist,
+ * so reaching for them there only produces repeated "command not found"
+ * failures. State the fact (and the tools to use instead) so a model stops
+ * retrying them. Issue #369.
+ */
+const SHELL_RULES = [
+  "Shell portability: this environment may run on Windows/PowerShell, where",
+  "`head`, `tail`, and `grep` are not available as commands, so do not use",
+  "them in shell commands (they only cause repeated failures there). Read",
+  "files with the read tool and search with the grep/glob tools instead; if a",
+  "shell command is unavoidable, use PowerShell equivalents or node/python.",
+  "Never use head/tail/grep; prefer the read and grep tools.",
+].join(" ")
+
 import {
   API_COMMIT_SCRIPT,
   isDirectApiCommitCommand,
@@ -567,7 +583,7 @@ export const GhAppTokenPlugin: Plugin = async () => {
     // without having to trip the hook below first, and reaches for `gh`
     // directly without re-issuing `GH_TOKEN` by hand.
     "experimental.chat.system.transform": async (_input, output) => {
-      for (const rules of [COMMIT_RULES, GITHUB_RULES]) {
+      for (const rules of [COMMIT_RULES, GITHUB_RULES, SHELL_RULES]) {
         if (!output.system.includes(rules)) {
           output.system.push(rules)
         }

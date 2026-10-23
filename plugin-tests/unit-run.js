@@ -665,7 +665,7 @@ test("system prompt: the git vc and GitHub-auth rules are appended once and stay
   const plugin = await freshHooks()
   const output = { system: ["existing rule"] }
   await plugin["experimental.chat.system.transform"]({}, output)
-  assert.strictEqual(output.system.length, 3)
+  assert.strictEqual(output.system.length, 4)
   assert.strictEqual(output.system[0], "existing rule")
   const rules = output.system[1]
   assert.ok(!/[\r\n]/.test(rules), "commit rules must be a single line")
@@ -695,7 +695,7 @@ test("system prompt: the git vc and GitHub-auth rules are appended once and stay
   assert.ok(githubRules.includes("Do not export `GH_TOKEN`"), githubRules)
   assert.ok(githubRules.includes("do not run `gh-app/get-token.sh`"), githubRules)
   await plugin["experimental.chat.system.transform"]({}, output)
-  assert.strictEqual(output.system.length, 3, "system rules injected more than once")
+  assert.strictEqual(output.system.length, 4, "system rules injected more than once")
 })
 
 // --- model label ------------------------------------------------------------

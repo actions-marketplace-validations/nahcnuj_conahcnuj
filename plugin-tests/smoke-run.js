@@ -82,7 +82,7 @@ async function main() {
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
   assert.strictEqual(
     sysOutput.system.length,
-    2,
+    3,
     "commit rules and GitHub-auth rules were not injected into the system prompt"
   )
   const rules = sysOutput.system[0]
@@ -106,7 +106,7 @@ async function main() {
   )
   // Injecting twice must stay idempotent (the rules are pushed once).
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
-  assert.strictEqual(sysOutput.system.length, 2, "system rules injected more than once")
+  assert.strictEqual(sysOutput.system.length, 3, "system rules injected more than once")
 
   // OpenCode reports the effort variant on the user message and the model id
   // on chat.params. The shell that runs `git vc` must see one trailer value.
