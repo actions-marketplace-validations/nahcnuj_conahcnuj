@@ -40,10 +40,11 @@
 
 ## シェルの移植性（まず環境を確認する）
 
-- **まず自分がどの OS・シェルで動いているかを確認すること。** Windows の
-  デフォルトシェル (PowerShell) には `head` / `tail` / `grep` が無く、使うと
-  "command not found" のエラーが繰り返し発生する。Windows/PowerShell では
-  これらをシェルコマンドとして使わず、ファイルの読み取りは read ツール、検索は
-  grep/glob ツールを使うこと。シェルコマンドが避けられない場合は PowerShell の
-  同等コマンドや node/python を使うこと。
+- **まず自分がどの OS・シェルで動いているかを確認すること。** 実際に動いている
+  環境を自分で把握してからコマンドを選ぶこと（Windows のデフォルトシェル
+  (PowerShell) には `head` / `tail` / `grep` が無く、使うと "command not found"
+  のエラーが繰り返し発生する）。Windows/PowerShell では これらをシェルコマンド
+  として使わず、ファイルの読み取りは read ツール、検索は grep/glob ツールを
+  使うこと。シェルコマンドが避けられない場合は PowerShell の同等コマンドや
+  node/python を使うこと。コマンドが存在するか分からないときは先に確認すること。
   Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.
