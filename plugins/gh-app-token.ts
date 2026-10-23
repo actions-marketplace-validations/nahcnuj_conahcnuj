@@ -338,6 +338,34 @@ const GITHUB_RULES = [
   "gh login; do not run `gh auth login` or `gh auth status` to check it.",
 ].join(" ")
 
+/**
+ * Shell-portability rules appended to every system prompt. The model must
+ * know which environment it is actually running in: on Windows the default
+ * shell is PowerShell, where `head`, `tail`, and `grep` do not exist, so
+ * reaching for them there only produces repeated "command not found"
+ * failures. State that concrete fact (and the tools to use instead) so a
+ * model stops retrying them. Issue #369.
+ */
+const SHELL_PLATFORM =
+  process.platform === "win32"
+    ? "Windows"
+    : process.platform === "darwin"
+      ? "macOS"
+      : process.platform === "linux"
+        ? "Linux"
+        : process.platform
+const SHELL_NAME = process.platform === "win32" ? "PowerShell" : "a Unix shell"
+const HEAD_TAIL_GREP_AVAILABLE =
+  process.platform === "win32"
+    ? "`head`, `tail`, and `grep` are not available as commands here, so do not use them in shell commands (they only cause repeated failures there)"
+    : "`head`, `tail`, and `grep` are available as commands here"
+const SHELL_RULES = [
+  `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
+  "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
+  "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
+  "Never use head/tail/grep; prefer the read and grep tools.",
+].join(" ")
+
 import {
   API_COMMIT_SCRIPT,
   isDirectApiCommitCommand,
@@ -570,7 +598,7 @@ export const GhAppTokenPlugin: Plugin = async () => {
     // without having to trip the hook below first, and reaches for `gh`
     // directly without re-issuing `GH_TOKEN` by hand.
     "experimental.chat.system.transform": async (_input, output) => {
-      for (const rules of [COMMIT_RULES, GITHUB_RULES]) {
+      for (const rules of [COMMIT_RULES, GITHUB_RULES, SHELL_RULES]) {
         if (!output.system.includes(rules)) {
           output.system.push(rules)
         }

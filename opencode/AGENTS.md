@@ -41,3 +41,14 @@
   認証はシェルに注入された `GH_TOKEN` 環境変数で行われ、保存済みの `gh` ログイン
   ではない。認証状態を確認したい場合も `gh auth status` ではなく、実際の
   `gh ...` コマンド（または `GH_TOKEN` を使った API 呼び出し）で確認すること。
+
+## シェルの移植性（まず環境を確認する）
+
+- **まず自分がどの OS・シェルで動いているかを確認すること。** 実際に動いている
+  環境を自分で把握してからコマンドを選ぶこと（Windows のデフォルトシェル
+  (PowerShell) には `head` / `tail` / `grep` が無く、使うと "command not found"
+  のエラーが繰り返し発生する）。Windows/PowerShell では これらをシェルコマンド
+  として使わず、ファイルの読み取りは read ツール、検索は grep/glob ツールを
+  使うこと。シェルコマンドが避けられない場合は PowerShell の同等コマンドや
+  node/python を使うこと。コマンドが存在するか分からないときは先に確認すること。
+  Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.

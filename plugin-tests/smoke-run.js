@@ -80,10 +80,11 @@ async function main() {
   // gh-app scripts.
   const sysOutput = { system: [] }
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
+  // 3 injected rules: commit rules (git vc), GitHub-auth rules, shell-portability rules.
   assert.strictEqual(
     sysOutput.system.length,
-    2,
-    "commit rules and GitHub-auth rules were not injected into the system prompt"
+    3,
+    "commit, GitHub-auth, and shell rules were not injected into the system prompt"
   )
   const rules = sysOutput.system[0]
   assert(!/[\r\n]/.test(rules), "commit rules must be a single line")
@@ -108,9 +109,17 @@ async function main() {
     githubRules.includes("gh auth"),
     `rules must tell the agent not to use gh auth: ${githubRules}`
   )
+  // The shell rule names the real platform (issue #369).
+  const shellRules = sysOutput.system[2]
+  assert(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
+  assert(shellRules.includes(process.platform), `rules must name the platform: ${shellRules}`)
+  assert(
+    shellRules.includes(process.platform === "win32" ? "not available" : "available"),
+    `rules must state whether head/tail/grep exist: ${shellRules}`
+  )
   // Injecting twice must stay idempotent (the rules are pushed once).
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
-  assert.strictEqual(sysOutput.system.length, 2, "system rules injected more than once")
+  assert.strictEqual(sysOutput.system.length, 3, "system rules injected more than once (3 = commit + GitHub-auth + shell)")
 
   // OpenCode reports the effort variant on the user message and the model id
   // on chat.params. The shell that runs `git vc` must see one trailer value.
