@@ -182,11 +182,155 @@ test_tool_title_fallback() {
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ make check' "falls back to the command"
   assert_contains "${out}" "✅ make check" "verdict uses the command"
+  # A tool that is not a command execution is not a prompt: no `$` line at all,
+  # the tool name carries the verdict line by itself (issue #375).
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"todowrite","state":{"status":"completed","input":{},"output":"","metadata":{}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
-  assert_contains "${out}" '$ todowrite' "falls back to the tool name"
+  assert_not_contains "${out}" '$ todowrite' "non-command tool is not a prompt-like line"
+  assert_contains "${out}" "✅ Todowrite" "verdict line uses the tool name"
   rm -rf "${tmp}"
   echo "render tool title fallback passed"
+}
+
+test_tool_read_reports_in_one_line() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A successful read names the file it read and stops there (#375): not a
+  # `$ read` prompt line, no whole-file dump in the log.
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{},"title":"tracked.txt"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_not_contains "${out}" '$ read' "read is not rendered as a prompt"
+  assert_contains "${out}" "✅ Read tracked.txt" "read verdict line with the file"
+  assert_not_contains "${out}" "  one" "the file body is not dumped into the log"
+  rm -rf "${tmp}"
+  echo "render read one-line passed"
+}
+
+test_tool_read_failure() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # The shape that opened the issue: a read with invalid arguments. The
+  # reason it failed is the only thing worth recording, under a ❌️ line that
+  # is a tool call, not a prompt.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"type":"tool","tool":"read","state":{"status":"error","input":{},"error":"The read tool was called with invalid arguments: SchemaError(Missing key\n    at [\"filePath\"]).\n  Please rewrite the input so it satisfies the expected schema."}}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_not_contains "${out}" '$ read' "read is not rendered as a prompt"
+  assert_contains "${out}" "❌️ Read" "read failure verdict line"
+  assert_contains "${out}" "  ERROR: The read tool was called with invalid arguments" "failure reason shown"
+  assert_contains "${out}" "    at [\"filePath\"]" "multi-line error kept whole"
+  rm -rf "${tmp}"
+  echo "render read failure passed"
+}
+
+test_tool_edit_diff() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A successful edit shows what it rewrote: the diff the tool reported in its
+  # metadata.
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"one","newString":"ONE"},"output":"edited","metadata":{"diff":"@ -1 +1 @@\n-one\n+ONE"}}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line with the file"
+  assert_contains "${out}" "  @ -1 +1 @@" "the diff is under the verdict line"
+  assert_contains "${out}" "  -one" "removed line in the diff"
+  assert_contains "${out}" "  +ONE" "added line in the diff"
+  rm -rf "${tmp}"
+  echo "render edit diff passed"
+}
+
+test_tool_edit_stitched_diff() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # No metadata diff: an edit is still legible from its own arguments.
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"two","newString":"TWO\nmore"},"output":"edited","metadata":{"exit":0}}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line"
+  assert_contains "${out}" "  - two" "the old text shows as removed"
+  assert_contains "${out}" "  + TWO" "the new text shows as added"
+  assert_contains "${out}" "  + more" "the second line of the new text"
+  rm -rf "${tmp}"
+  echo "render edit stitched diff passed"
+}
+
+test_command_streams_as_it_prints() {
+  local tmp out ones headers
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command that prints as it runs: partial output while it is running (no
+  # verdict yet), the tail and the verdict once it is done (#375).
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_s1","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"cat tracked.txt"},"output":"one\ntwo\n"},"title":"cat tracked.txt"}}
+{"type":"tool_use","part":{"id":"prt_s1","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" '$ cat tracked.txt' "the command line opens the block"
+  assert_contains "${out}" "  one" "the first chunk is on the log"
+  assert_contains "${out}" "  three" "the tail is appended"
+  ones="$(printf '%s\n' "${out}" | grep -c '  one' || true)"
+  [[ "${ones}" == "1" ]] || fail "running output printed again (${ones} copies)" "${out}"
+  [[ "$(printf '%s\n' "${out}" | grep -c '✅ cat tracked.txt')" == "1" ]] || fail "verdict printed twice" "${out}"
+  headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
+  [[ "${headers}" == "1" ]] || fail "a streaming tool block re-opened (${headers} headers)" "${out}"
+  rm -rf "${tmp}"
+  echo "render command streaming passed"
+}
+
+test_command_running_has_no_verdict_yet() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command still in flight must not read as finished.
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"id":"prt_r1","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"slow build"},"output":"compiling"},"title":"slow build"}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_not_contains "${out}" "✅" "running command shows no verdict"
+  assert_not_contains "${out}" "❌️" "running command shows no failure"
+  assert_contains "${out}" "  compiling" "its partial output is on the log"
+  rm -rf "${tmp}"
+  echo "render running verdict passed"
+}
+
+test_streamed_text_prints_only_the_tail() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # An answer streaming in chunks is appended to its block, not printed over
+  # from the top every chunk (#375).
+  out="$(cat <<'EOF' |
+{"type":"text","part":{"id":"prt_t1","type":"text","text":"hello world"}}
+{"type":"text","part":{"id":"prt_t1","type":"text","text":"hello world\nsecond line"}}
+{"type":"text","part":{"id":"prt_t1","type":"text","text":"hello world\nsecond line\nthird line"}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  for needle in "hello world" "second line" "third line"; do
+    [[ "$(printf '%s\n' "${out}" | grep -c "  ${needle}")" == "1" ]] || fail "${needle} printed twice" "${out}"
+  done
+  headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
+  [[ "${headers}" == "1" ]] || fail "a streamed text block re-opened (${headers} headers)" "${out}"
+  rm -rf "${tmp}"
+  echo "render streamed text passed"
+}
+
+test_stream_snapshot_older_than_printed() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A resumed session replays parts, sometimes as older, shorter snapshots:
+  # what is already printed must not print again.
+  out="$(cat <<'EOF' |
+{"type":"reasoning","part":{"id":"prt_o1","type":"reasoning","text":"thought\nmore thought"}}
+{"type":"reasoning","part":{"id":"prt_o1","type":"reasoning","text":"thought"}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  [[ "$(printf '%s\n' "${out}" | grep -c 'thought')" == "2" ]] || fail "stale snapshot reprinted lines" "${out}"
+  headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
+  [[ "${headers}" == "1" ]] || fail "a stale snapshot re-opened the block (${headers} headers)" "${out}"
+  rm -rf "${tmp}"
+  echo "render stale snapshot passed"
 }
 
 test_tool_input_does_not_shadow_state() {
@@ -327,6 +471,8 @@ test_distinct_parts_and_updates_still_render() {
   fixture_repo "${tmp}/repo"
   # Same content under a *different* part id is a real new event, and the
   # same id carrying *changed* content is a real update: neither is a replay.
+  # An update to a part that streams prints inside its block (the part grew),
+  # so only the genuinely new part opens a new header.
   out="$(cat <<'EOF' |
 {"type":"text","part":{"id":"prt_c1","type":"text","text":"same words"}}
 {"type":"text","part":{"id":"prt_c2","type":"text","text":"same words"}}
@@ -334,7 +480,7 @@ test_distinct_parts_and_updates_still_render() {
 EOF
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
-  [[ "${headers}" == "3" ]] || fail "distinct/updated parts were deduplicated (${headers} headers)" "${out}"
+  [[ "${headers}" == "2" ]] || fail "distinct/updated parts were deduplicated (${headers} headers)" "${out}"
   assert_contains "${out}" "  same words but revised" "updated content rendered"
   rm -rf "${tmp}"
   echo "render distinct parts and updates passed"
@@ -349,6 +495,14 @@ test_tool_success
 test_tool_failure_exit_code
 test_tool_error_status
 test_tool_title_fallback
+test_tool_read_reports_in_one_line
+test_tool_read_failure
+test_tool_edit_diff
+test_tool_edit_stitched_diff
+test_command_streams_as_it_prints
+test_command_running_has_no_verdict_yet
+test_streamed_text_prints_only_the_tail
+test_stream_snapshot_older_than_printed
 test_tool_input_does_not_shadow_state
 test_session_error
 test_escapes_are_decoded
