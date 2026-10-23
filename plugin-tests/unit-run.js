@@ -694,6 +694,7 @@ test("system prompt: the git vc and GitHub-auth rules are appended once and stay
   assert.ok(githubRules.includes("run `gh ...`"), githubRules)
   assert.ok(githubRules.includes("Do not export `GH_TOKEN`"), githubRules)
   assert.ok(githubRules.includes("do not run `gh-app/get-token.sh`"), githubRules)
+  assert.ok(githubRules.includes("gh auth"), githubRules)
   await plugin["experimental.chat.system.transform"]({}, output)
   assert.strictEqual(output.system.length, 3, "system rules injected more than once")
 })

@@ -39,6 +39,8 @@ unsigned コミットを塞ぐプラグインです。ファイルは `plugins/g
 - **GitHub 認証規則**: `GH_TOKEN` は各シェルへ注入済みなので `gh` をそのまま
   使えばよい。エージェントが `GH_TOKEN` を自分で export したり
   `gh-app/get-token.sh` を実行してトークンを取り直したりしない。
+  `gh auth`（`gh auth login` / `gh auth status`）も実行しない。認証は
+  `GH_TOKEN` 環境変数で行われ、保存済みの `gh` ログインではない。
 
 ### `tool.execute.before` - `git commit` のブロック
 

@@ -333,6 +333,9 @@ const GITHUB_RULES = [
   "(or call `https://api.github.com` with that token) directly.",
   "Do not export `GH_TOKEN` yourself and do not run `gh-app/get-token.sh` to",
   "obtain one; the token is provided for you and refreshed as needed.",
+  "Do not run `gh auth` (including `gh auth login` and `gh auth status`):",
+  "authentication comes from the `GH_TOKEN` environment variable, not a stored",
+  "gh login; do not run `gh auth login` or `gh auth status` to check it.",
 ].join(" ")
 
 import {

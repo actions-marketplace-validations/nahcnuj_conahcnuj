@@ -104,6 +104,10 @@ async function main() {
     githubRules.includes("`GH_TOKEN`") && githubRules.includes("Do not export"),
     `rules must state GH_TOKEN is pre-set and must not be exported: ${githubRules}`
   )
+  assert(
+    githubRules.includes("gh auth"),
+    `rules must tell the agent not to use gh auth: ${githubRules}`
+  )
   // Injecting twice must stay idempotent (the rules are pushed once).
   await plugin["experimental.chat.system.transform"]({}, sysOutput)
   assert.strictEqual(sysOutput.system.length, 2, "system rules injected more than once")
