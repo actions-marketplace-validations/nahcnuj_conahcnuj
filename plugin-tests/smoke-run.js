@@ -105,10 +105,6 @@ async function main() {
     githubRules.includes("`GH_TOKEN`") && githubRules.includes("Do not export"),
     `rules must state GH_TOKEN is pre-set and must not be exported: ${githubRules}`
   )
-  assert(
-    githubRules.includes("gh auth"),
-    `rules must tell the agent not to use gh auth: ${githubRules}`
-  )
   // The shell rule names the real platform (issue #369).
   const shellRules = sysOutput.system[2]
   assert(!/[\r\n]/.test(shellRules), "shell rules must be a single line")

@@ -67,7 +67,7 @@ CI の `Build docs site` ジョブが同じビルドを PR でも検証します
    commit.gpgsign / alias.vc）を注入。
 3. `experimental.chat.system.transform` フックで「コミットは `git vc`」と
    「GitHub は `GH_TOKEN` で認証済みなので `gh` をそのまま使う（自分で export
-   しない、`gh auth` も使わない）」という規則を全セッションのシステムプロンプトへ常時注入し、
+   しない）」という規則を全セッションのシステムプロンプトへ常時注入し、
    `tool.execute.before` で `git commit` と `api-commit.sh` の直接実行を検知して
    `git vc` へ誘導する。
 4. `install.ps1` は `opencode/AGENTS.md` を `~/.config/opencode/AGENTS.md` へ

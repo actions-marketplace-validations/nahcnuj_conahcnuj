@@ -184,6 +184,20 @@ function readTokenCache(cacheFile: string): string | null {
   return match[2]
 }
 
+function resolvePrivateKeyPath(rawKeyPath: string): string {
+  let resolved = rawKeyPath
+  if (resolved.startsWith("~")) {
+    resolved = path.join(os.homedir(), resolved.slice(1))
+  }
+  if (process.platform === "win32") {
+    const msys = /^\/([a-zA-Z])\/(.*)$/.exec(resolved)
+    if (msys) {
+      resolved = `${msys[1].toUpperCase()}:${msys[2]}`
+    }
+  }
+  return resolved
+}
+
 /**
  * Fetch a fresh installation token: RS256-sign a JWT with the App private
  * key and exchange it at the installations endpoint. Same wire behavior
@@ -208,9 +222,7 @@ async function fetchInstallationToken(
       `Invalid INSTALLATION_ID for token exchange: ${installationId}`
     )
   }
-  if (keyPath.startsWith("~")) {
-    keyPath = path.join(os.homedir(), keyPath.slice(1))
-  }
+  keyPath = resolvePrivateKeyPath(keyPath)
   const now = Math.floor(Date.now() / 1000)
   const signingInput =
     b64url('{"alg":"RS256","typ":"JWT"}') +
@@ -333,9 +345,6 @@ const GITHUB_RULES = [
   "(or call `https://api.github.com` with that token) directly.",
   "Do not export `GH_TOKEN` yourself and do not run `gh-app/get-token.sh` to",
   "obtain one; the token is provided for you and refreshed as needed.",
-  "Do not run `gh auth` (including `gh auth login` and `gh auth status`):",
-  "authentication comes from the `GH_TOKEN` environment variable, not a stored",
-  "gh login; do not run `gh auth login` or `gh auth status` to check it.",
 ].join(" ")
 
 /**
