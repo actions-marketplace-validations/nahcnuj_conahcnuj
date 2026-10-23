@@ -1,0 +1,51 @@
+name: Windows install (opencode + install.ps1)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-install:
+    name: Windows install opencode and install.ps1
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP_ID: ${{ secrets.APP_ID }}
+      INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install opencode
+        uses: ./.github/actions/install-opencode
+
+      - name: Install plugin via install.ps1
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./install.ps1
+
+      - name: Stage app.env for gh auth
+        shell: bash
+        run: |
+          set -e
+          dest="$HOME/.config/opencode"
+          mkdir -p "$dest/gh-app"
+          cat > "$dest/gh-app/app.env" <<EOF
+          APP_ID=${APP_ID}
+          INSTALLATION_ID=${INSTALLATION_ID}
+          APP_SLUG=conahcnuj
+          PRIVATE_KEY_PATH=/tmp/nonexistent.pem
+          EOF
+          printf '331119074' > "$dest/gh-app/bot-id.cache"
+
+      - name: Verify gh auth status with GH_TOKEN
+        shell: bash
+        run: |
+          set -e
+          export GH_TOKEN="$(bash "$HOME/.config/opencode/gh-app/get-token.sh" 2>/dev/null || echo '')"
+          gh auth status
