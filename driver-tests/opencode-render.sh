@@ -476,7 +476,7 @@ EOF
 }
 
 test_distinct_parts_and_updates_still_render() {
-  local tmp out headers
+  local tmp out
   tmp="$(mktemp -d)"
   fixture_repo "${tmp}/repo"
   # Same content under a *different* part id is a real new event, and the
@@ -489,7 +489,6 @@ test_distinct_parts_and_updates_still_render() {
 {"type":"text","part":{"id":"prt_c1","type":"text","text":"same words but revised"}}
 EOF
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
-  headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
   assert_contains "${out}" "  same words but revised" "updated content rendered"
   rm -rf "${tmp}"
   echo "render distinct parts and updates passed"
