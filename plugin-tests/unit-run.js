@@ -458,6 +458,25 @@ test("shell.env: issues a signed token, caches it and never sends the key twice"
   assert.strictEqual(fetchCalls.length, 1)
 })
 
+test("shell.env: resolves the MSYS-style private key path install.ps1 deploys", async () => {
+  if (process.platform !== "win32") {
+    return
+  }
+  const { keyPath } = signingKeys()
+  const normalized = keyPath.split("\\").join("/")
+  const msysKeyPath = normalized.replace(/^([A-Za-z]):/, (m, drive) => `/${drive.toLowerCase()}/`)
+  stage({ APP_ID: "54321", INSTALLATION_ID: "12345", PRIVATE_KEY_PATH: msysKeyPath })
+  fetchHandler = async () => ({
+    ok: true,
+    status: 201,
+    json: async () => ({ token: TOKEN, expires_at: new Date((Math.floor(Date.now() / 1000) + 3600) * 1000).toISOString() }),
+  })
+  const plugin = await freshHooks()
+  const output = { env: {} }
+  await plugin["shell.env"]({ cwd: ".", sessionID: "s1" }, output)
+  assert.strictEqual(output.env.GH_TOKEN, TOKEN)
+})
+
 test("shell.env: a failed exchange degrades to no GH_TOKEN", async () => {
   const { keyPath } = signingKeys()
   const cases = [
