@@ -259,7 +259,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
-        shell: bash
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -283,7 +283,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
-        shell: bash
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
     env:
       APP_ID: ${{ secrets.APP_ID }}
       INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
@@ -335,7 +335,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
-        shell: bash
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -363,7 +363,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     defaults:
       run:
-        shell: bash
+        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
     # Real IDs when the repo defines them, else fakes. No private key needed.
     env:
       APP_ID: ${{ secrets.APP_ID }}
