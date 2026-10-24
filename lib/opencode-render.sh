@@ -531,6 +531,15 @@ render_block_tool() {
   case "${code}" in
     ''|*[!0-9]*) code="" ;;
   esac
+  # opencode kills a command that hits its timeout and still reports the call as
+  # "completed" with no exit code: the only tell is the <shell_metadata> block
+  # it appends to the output ("shell tool terminated command after exceeding
+  # timeout ..."). A timed-out command did not succeed, so it must not get a ✅
+  # (#420).
+  local timed_out="false"
+  case "${F[output]}${F[toolerror]}" in
+    *"terminated command after exceeding timeout"*) timed_out="true" ;;
+  esac
   if [[ -n "${pid}" ]]; then
     prev_out="${PART_OUT[${pid}]:-}"
     prev_err="${PART_ERR[${pid}]:-}"
@@ -692,7 +701,9 @@ render_block_tool() {
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
   [[ "${fed}" == "true" ]] && print_newline
-  if [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
+  if [[ "${timed_out}" == "true" ]]; then
+    printf '❌️ %s (timed out)\n' "${label}"
+  elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
     if [[ -n "${code}" ]]; then
       printf '❌️ %s (exit %s)\n' "${label}" "${code}"
     else
