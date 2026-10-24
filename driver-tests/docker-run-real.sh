@@ -54,11 +54,12 @@ BASH_EXE="C:/Program Files/Git/bin/bash.exe"
 EOF
 else
   REAL_ENV=0
+  APP_SLUG_VAL="conahcnuj"
   printf 'dummy-pem-%s\n' "$$" > "${PEM}"
   cat > "${APP_ENV}" <<EOF
 APP_ID="1"
 INSTALLATION_ID="2"
-APP_SLUG="conahcnuj"
+APP_SLUG="${APP_SLUG_VAL}"
 PRIVATE_KEY_PATH="${PEM}"
 BASH_EXE="C:/Program Files/Git/bin/bash.exe"
 EOF
@@ -93,6 +94,7 @@ out="$(
     test -f /opt/conahcnuj/gh-app/app.env
     grep -qx 'PRIVATE_KEY_PATH=/run/secrets/app.pem' /opt/conahcnuj/gh-app/app.env
     grep -qx 'BASH_EXE=/usr/bin/bash' /opt/conahcnuj/gh-app/app.env
+    grep -qx \"APP_SLUG=${APP_SLUG_VAL}\" /opt/conahcnuj/gh-app/app.env
     test -r /run/secrets/app.pem
     test ! -w /run/secrets/app.pem
     test ! -w /opt/conahcnuj/gh-app/app.env
