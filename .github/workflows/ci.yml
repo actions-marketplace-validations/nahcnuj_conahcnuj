@@ -188,7 +188,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     env:
       APP_ID: ${{ secrets.APP_ID }}
       INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
@@ -220,22 +220,18 @@ jobs:
           EOF
 
       - name: Verify gh auth through opencode
-        shell: bash
+        shell: pwsh
         run: |
-          set -e
-          out="${RUNNER_TEMP}/opencode-gh-auth.jsonl"
-          err="${RUNNER_TEMP}/opencode-gh-auth.err"
-          opencode run --format json --model opencode/mimo-v2.5-free --dir "$GITHUB_WORKSPACE" \
-            "Run the command \`gh auth status\` and report whether it succeeded." \
-            > "$out" 2> "$err" || true
-          echo "=== stdout ==="
-          cat "$out" 2>/dev/null || true
-          echo "=== stderr ==="
-          cat "$err" 2>/dev/null || true
-          if grep -qi "Logged in" "$out" 2>/dev/null || grep -qi "conahcnuj\[bot\]" "$out" 2>/dev/null; then
-            echo "opencode gh auth OK"
+          $out = Join-Path $env:RUNNER_TEMP "opencode-gh-auth.jsonl"
+          $err = Join-Path $env:RUNNER_TEMP "opencode-gh-auth.err"
+          opencode run --format json --model opencode/mimo-v2.5-free --dir "$env:GITHUB_WORKSPACE" "Run the command gh auth status and report whether it succeeded." > $out 2> $err
+          if (Test-Path -LiteralPath $out) { Get-Content -LiteralPath $out }
+          if (Test-Path -LiteralPath $err) { Get-Content -LiteralPath $err }
+          $content = if (Test-Path -LiteralPath $out) { Get-Content -LiteralPath $out -Raw } else { "" }
+          if ($content -match "Logged in" -or $content -match "conahcnuj\[bot\]") {
+            Write-Host "opencode gh auth OK"
             exit 0
-          fi
+          }
           # Treat a run that produced no session events as an inconclusive
           # service problem rather than a plugin regression, mirroring
           # e2e-opencode. The shared free-model service occasionally answers
@@ -243,15 +239,15 @@ jobs:
           # the session starts; that file is non-empty but says nothing about
           # the plugin. A genuine plugin failure would instead surface as a
           # completed session where `gh auth status` reports no login.
-          if grep -qE '"name":"UnknownError"|Unexpected server error' "$out" 2>/dev/null; then
-            echo "opencode gh auth INCONCLUSIVE (model service error); treating as pass"
+          if ($content -match '"name":"UnknownError"' -or $content -match "Unexpected server error") {
+            Write-Host "opencode gh auth INCONCLUSIVE (model service error); treating as pass"
             exit 0
-          fi
-          if ! grep -qE '"type":"(text|tool_use|reasoning|step_start|step_finish)"' "$out" 2>/dev/null; then
-            echo "opencode gh auth INCONCLUSIVE (no session events); treating as pass"
+          }
+          if ($content -notmatch '"type":"(text|tool_use|reasoning|step_start|step_finish)"') {
+            Write-Host "opencode gh auth INCONCLUSIVE (no session events); treating as pass"
             exit 0
-          fi
-          echo "opencode gh auth FAILED"
+          }
+          Write-Host "opencode gh auth FAILED"
           exit 1
 
   mock-test:
@@ -274,13 +270,14 @@ jobs:
 
       # Driver suite: conahcnuj end-to-end flow tests driven by a mocked
       # API tape + mocked opencode (bin/, lib/, driver-tests/, no secrets,
-      # no network). driver-tests/docker-run-real.sh skips here; the
-      # docker-runner job runs it against a real daemon.
+      # no network).
       - name: Run driver test suite
         run: bash driver-tests/run.sh
 
   docker-runner:
     name: docker-run.sh with real Docker
+    # The wrapper builds a Linux image, which hosted Windows runners cannot
+    # run; Windows path/WSL behavior is covered by driver-tests/docker-run.sh.
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -288,12 +285,12 @@ jobs:
     # The operator-reported failures came from real Docker Desktop / WSL, not
     # from the arguments the offline test mocks. Build the real image and run
     # the wrapper through a real daemon, then inspect the container mounts.
-    env:
-      CONAHCNUJ_DOCKER_REAL: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build image and exercise the wrapper
+        env:
+          CONAHCNUJ_DOCKER_REAL: "1"
         run: bash driver-tests/docker-run-real.sh
 
   lint-ts:
