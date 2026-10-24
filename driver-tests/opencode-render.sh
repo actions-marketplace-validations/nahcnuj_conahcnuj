@@ -160,6 +160,24 @@ test_tool_failure_exit_code() {
   echo "render tool failure passed"
 }
 
+test_tool_timeout_is_failure() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # opencode kills a command at its timeout and reports the call as completed
+  # with no exit code; the <shell_metadata> block it appends to the output is
+  # the only tell. A timed-out command is not a success (#420).
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"bash driver-tests/run.sh"},"output":"(no output)\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 120000 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n","metadata":{"output":"(no output)\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 120000 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n","truncated":false},"title":"bash driver-tests/run.sh"}}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "shell tool terminated command after exceeding timeout" "timeout reason kept in the feed"
+  assert_contains "${out}" "❌️ bash driver-tests/run.sh (timed out)" "timed-out command is a failure"
+  assert_not_contains "${out}" "✅ bash driver-tests/run.sh" "timed-out command is not a success"
+  rm -rf "${tmp}"
+  echo "render tool timeout passed"
+}
+
 test_tool_error_status() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -501,6 +519,7 @@ test_model_label_file_wins
 test_text_and_reasoning
 test_tool_success
 test_tool_failure_exit_code
+test_tool_timeout_is_failure
 test_tool_error_status
 test_tool_title_fallback
 test_tool_read_reports_in_one_line
