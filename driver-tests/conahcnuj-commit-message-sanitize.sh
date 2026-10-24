@@ -38,10 +38,15 @@ printf '\377\376f\000i\000x\000:\000 \000k\000e\000e\000p\000 \000i\000t\000\n\0
 
 (
   cd "${WORK}"
+  # The wrapping session (the conahcnuj opencode plugin) exports these for the
+  # real driver runs; the exact-message check below must not see a trailer.
+  # They have to go before source: the driver snapshots CONAHCNUJ_COMMIT_MODEL
+  # into USER_COMMIT_MODEL while being sourced.
+  unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE OPENCODE_LAST_MODEL \
+    CONAHCNUJ_SESSION_MODEL
   # shellcheck source=bin/conahcnuj.sh
   source "${DRIVER}"
   TEST_MODE=1
-  unset CONAHCNUJ_COMMIT_MODEL || true
   commit_changes 2> "${ROOT}/commit.log"
 )
 
