@@ -137,11 +137,15 @@ run_args=(
   -v "$(host_path "${TARGET}"):/work"
   -v "$(host_path "${RUN_DIR}/app.env"):/opt/conahcnuj/gh-app/app.env:ro"
   -v "$(host_path "${PEM_HOST}"):/run/secrets/app.pem:ro"
-  "${oc_args[@]}"
-  "${env_args[@]}"
-  -w /work
-  "${IMAGE}" "$@"
 )
+
+if (( ${#oc_args[@]} > 0 )); then
+  run_args+=("${oc_args[@]}")
+fi
+if (( ${#env_args[@]} > 0 )); then
+  run_args+=("${env_args[@]}")
+fi
+run_args+=(-w /work "${IMAGE}" "$@")
 
 # Daemon mode: run detached with a stable name so the caller (or an agent) can
 # follow progress with `docker logs -f <name>`. The container is intentionally
@@ -162,6 +166,13 @@ if [[ "${CONAHCNUJ_DAEMON:-0}" == "1" ]]; then
   exit 0
 fi
 
-exec env MSYS_NO_PATHCONV=1 docker run --rm \
-  "${tty_args[@]}" \
-  "${run_args[@]}"
+# Foreground (attached) run. NOT exec: the EXIT trap must still fire to remove
+# RUN_DIR, whose container app.env would otherwise leak on every run. A failing
+# docker still propagates its status through set -e, and signals reach both the
+# wrapper and docker, which shares this foreground process group.
+docker_args=(env MSYS_NO_PATHCONV=1 docker run --rm)
+if (( ${#tty_args[@]} > 0 )); then
+  docker_args+=("${tty_args[@]}")
+fi
+docker_args+=("${run_args[@]}")
+"${docker_args[@]}"

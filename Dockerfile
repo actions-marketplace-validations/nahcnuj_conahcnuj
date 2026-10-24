@@ -42,6 +42,10 @@ COPY bin/ /opt/conahcnuj/bin/
 COPY lib/ /opt/conahcnuj/lib/
 COPY gh-app/ /opt/conahcnuj/gh-app/
 
+# Scripts are stored without the executable bit in git, so restore it for the
+# entrypoint and any helper invoked directly.
+RUN chmod +x /opt/conahcnuj/bin/*.sh /opt/conahcnuj/gh-app/*.sh
+
 # The work tree is bind-mounted from the host; git would otherwise refuse it
 # as "dubious ownership". The container is disposable, so trust everything.
 RUN git config --global --add safe.directory '*'
