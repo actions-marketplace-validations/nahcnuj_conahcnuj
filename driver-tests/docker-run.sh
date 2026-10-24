@@ -33,16 +33,20 @@ EOF
 chmod +x "${MOCKBIN}/docker"
 
 # Mock wslpath: -u resolves the configured Git Bash, -m prefixes Windows-form
-# paths with W so the test can assert that the target was converted. Keep it as
-# an exported shell function (not a script on PATH): Git Bash's `command -v`
-# reliably sees it, matching driver-tests/driver-relaunch.sh.
-wslpath() {
-  case "${1}" in
-    -u) printf '%s\n' "${WSLPATH_U_OUT}" ;;
-    -m) printf 'W%s\n' "${2}" ;;
-  esac
-}
-export -f wslpath
+# paths with W so the test can assert that the target was converted. It must be
+# a script on PATH, not an exported shell function: the wrapper calls it from a
+# child `bash`, and on Git Bash (MSYS) exported functions travel as environment
+# variables whose names contain `%`, which Windows drops, so `command -v
+# wslpath` would not see the mock and the relaunch would be skipped (Windows CI
+# only; Linux passed with the function).
+cat > "${MOCKBIN}/wslpath" <<'EOF'
+#!/usr/bin/env bash
+case "${1}" in
+  -u) printf '%s\n' "${WSLPATH_U_OUT}" ;;
+  -m) printf 'W%s\n' "${2}" ;;
+esac
+EOF
+chmod +x "${MOCKBIN}/wslpath"
 
 # The "Git Bash" the relaunch runs: record its arguments and the forwarded
 # environment, then exit.
