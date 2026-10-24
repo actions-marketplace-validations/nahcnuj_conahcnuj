@@ -110,9 +110,15 @@ docker_relaunch() {
   local bash_exe bash_mnt self self_win child rc
   bash_exe="$(docker_bash_exe)"
   bash_mnt="$(wslpath -u "${bash_exe}")"
+  # Resolve the wrapper to an absolute path first. Invoking it as
+  # `bash ../conahcnuj/docker-run.sh` (the reported PowerShell case) leaves a
+  # relative BASH_SOURCE[0], and wslpath cannot turn that into a Windows path.
   self="${BASH_SOURCE[0]}"
-  if [[ "${self}" != /* && "${self}" != */* ]]; then
+  if [[ "${self}" != */* ]]; then
     self="$(command -v "${self}" 2>/dev/null || true)"
+  fi
+  if [[ -n "${self}" && "${self}" != /* ]]; then
+    self="$(cd "$(dirname "${self}")" 2>/dev/null && pwd)/$(basename "${self}")"
   fi
   if [[ -z "${self}" ]]; then
     echo "WARNING: could not resolve ${BASH_SOURCE[0]} to relaunch; continuing under WSL." >&2

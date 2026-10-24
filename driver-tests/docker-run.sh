@@ -83,7 +83,7 @@ run_wrapper() {
     GITBASH_LOG="${GITBASH_LOG}" \
     WSLPATH_U_OUT="${GITBASH}" \
     "$@" \
-    bash "${WRAPPER}" 42
+    bash "${WRAPPER_PATH:-${WRAPPER}}" 42
 }
 
 # --- normal (non-WSL) run ---------------------------------------------------
@@ -116,6 +116,23 @@ grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not p
 grep -q 'TARGET=<W' "${GITBASH_LOG}" || { echo "FAIL: target repo was not converted to a Windows path" >&2; exit 1; }
 [[ ! -s "${DOCKER_LOG}" ]] || { echo "FAIL: WSL shell must not call the WSL docker before relaunching" >&2; exit 1; }
 echo "docker-run.sh (WSL -> Git Bash relaunch) passed"
+
+# --- WSL invoked via a relative script path: resolve it before conversion ----
+# Regression for the reported `bash ../conahcnuj/docker-run.sh` invocation: a
+# relative BASH_SOURCE[0] cannot be converted by wslpath, so the wrapper must
+# make it absolute first or Docker Desktop is still unreachable.
+DOCKER_LOG="${ROOT}/docker-relative.log"
+GITBASH_LOG="${ROOT}/gitbash-relative.log"
+: > "${DOCKER_LOG}"
+: > "${GITBASH_LOG}"
+( cd "${REPO}" && WRAPPER_PATH="./docker-run.sh" run_wrapper \
+    WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' ) >/dev/null 2>&1
+
+[[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: relative-path WSL run did not re-launch" >&2; exit 1; }
+grep -q 'W/' "${GITBASH_LOG}" || { echo "FAIL: relative wrapper path was not made absolute" >&2; exit 1; }
+grep -q 'W\.\.' "${GITBASH_LOG}" && { echo "FAIL: relative wrapper path reached wslpath" >&2; exit 1; }
+grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not passed to the relaunch" >&2; exit 1; }
+echo "docker-run.sh (WSL relative path -> Git Bash relaunch) passed"
 
 # --- WSL but the configured Git Bash is unreachable: no relaunch ------------
 DOCKER_LOG="${ROOT}/docker-unreachable.log"
