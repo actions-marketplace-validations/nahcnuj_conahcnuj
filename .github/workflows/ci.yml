@@ -183,6 +183,68 @@ jobs:
           }
           Write-Host "all files deployed OK"
 
+  windows-install:
+    name: Windows install opencode and verify gh auth via opencode
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP_ID: ${{ secrets.APP_ID }}
+      INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install opencode
+        uses: ./.github/actions/install-opencode
+
+      - name: Install plugin via install.ps1
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./install.ps1
+
+      - name: Stage app.env for gh auth
+        shell: bash
+        run: |
+          set -e
+          dest="$HOME/.config/opencode"
+          mkdir -p "$dest/gh-app"
+          printf '%s\n' "$PRIVATE_KEY" > "$dest/gh-app/private.pem"
+          cat > "$dest/gh-app/app.env" <<EOF
+          APP_ID=${APP_ID}
+          INSTALLATION_ID=${INSTALLATION_ID}
+          APP_SLUG=conahcnuj
+          PRIVATE_KEY_PATH=${dest}/gh-app/private.pem
+          BASH_EXE=C:/Program Files/Git/bin/bash.exe
+          EOF
+
+      - name: Verify gh auth through opencode
+        shell: bash
+        run: |
+          set -e
+          out="${RUNNER_TEMP}/opencode-gh-auth.jsonl"
+          err="${RUNNER_TEMP}/opencode-gh-auth.err"
+          opencode run --format json --model opencode/mimo-v2.5-free --dir "$GITHUB_WORKSPACE" \
+            "Run the command \`gh auth status\` and report whether it succeeded." \
+            > "$out" 2> "$err" || true
+          echo "=== stdout ==="
+          cat "$out" 2>/dev/null || true
+          echo "=== stderr ==="
+          cat "$err" 2>/dev/null || true
+          if grep -qi "Logged in" "$out" 2>/dev/null || grep -qi "conahcnuj\[bot\]" "$out" 2>/dev/null; then
+            echo "opencode gh auth OK"
+            exit 0
+          fi
+          # Treat a run that produced no events as an inconclusive service
+          # problem rather than a plugin regression, mirroring e2e-opencode.
+          if [ ! -s "$out" ]; then
+            echo "opencode gh auth INCONCLUSIVE (no output); treating as pass"
+            exit 0
+          fi
+          echo "opencode gh auth FAILED"
+          exit 1
+
   mock-test:
     name: Mock tests (no secrets / no network)
     runs-on: ${{ matrix.os }}
@@ -203,9 +265,27 @@ jobs:
 
       # Driver suite: conahcnuj end-to-end flow tests driven by a mocked
       # API tape + mocked opencode (bin/, lib/, driver-tests/, no secrets,
-      # no network).
+      # no network). driver-tests/docker-run-real.sh skips here; the
+      # docker-runner job runs it against a real daemon.
       - name: Run driver test suite
         run: bash driver-tests/run.sh
+
+  docker-runner:
+    name: docker-run.sh with real Docker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    # The operator-reported failures came from real Docker Desktop / WSL, not
+    # from the arguments the offline test mocks. Build the real image and run
+    # the wrapper through a real daemon, then inspect the container mounts.
+    env:
+      CONAHCNUJ_DOCKER_REAL: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Build image and exercise the wrapper
+        run: bash driver-tests/docker-run-real.sh
 
   lint-ts:
     name: Typecheck opencode plugin

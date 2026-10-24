@@ -29,6 +29,9 @@
 #   CONAHCNUJ_BUILD=1      force a rebuild of the image
 #   CONAHCNUJ_DAEMON=1     run detached (container name below), poll via `docker logs`
 #   CONAHCNUJ_NAME         container name to use in daemon mode (default: conahcnuj-<epoch>)
+#   CONAHCNUJ_ENTRYPOINT   override the image ENTRYPOINT (default: the driver). Used
+#                          by the real-Docker test to inspect the container without
+#                          contacting GitHub; container args follow it as usual.
 #   OPENCODE_CONFIG_DIR    host opencode config dir (default: ~/.config/opencode)
 #   OPENCODE_DATA_DIR      host opencode data/auth dir (default: ~/.local/share/opencode)
 #   CONAHCNUJ_REPO, CONAHCNUJ_MAX_SECONDS, CONAHCNUJ_POLL_* are passed through.
@@ -280,6 +283,12 @@ if (( ${#oc_args[@]} > 0 )); then
 fi
 if (( ${#env_args[@]} > 0 )); then
   run_args+=("${env_args[@]}")
+fi
+
+# Optional entrypoint override (the real-Docker test supplies /bin/bash to
+# exercise the mounts without running the driver against GitHub).
+if [[ -n "${CONAHCNUJ_ENTRYPOINT:-}" ]]; then
+  run_args+=(--entrypoint "${CONAHCNUJ_ENTRYPOINT}")
 fi
 run_args+=(-w /work "${IMAGE}" "$@")
 
