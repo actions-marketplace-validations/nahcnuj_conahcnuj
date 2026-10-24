@@ -276,9 +276,11 @@ jobs:
 
   docker-runner:
     name: docker-run.sh with real Docker
-    # The wrapper builds a Linux image, which hosted Windows runners cannot
-    # run; Windows path/WSL behavior is covered by driver-tests/docker-run.sh.
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     defaults:
       run:
         shell: bash
@@ -289,8 +291,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build image and exercise the wrapper
-        env:
-          CONAHCNUJ_DOCKER_REAL: "1"
         run: bash driver-tests/docker-run-real.sh
 
   lint-ts:

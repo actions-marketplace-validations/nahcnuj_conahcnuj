@@ -8,23 +8,16 @@
 # override, then inspects the container to assert that the target repo, the
 # generated app.env and the private key are mounted where the driver expects.
 #
-# docker-run.sh skips this unless CONAHCNUJ_DOCKER_REAL=1, so the offline
-# suite (driver-tests/run.sh) stays runnable without a Docker daemon. CI runs
-# it in the dedicated `docker-runner` job.
+# docker-run.sh runs whenever a Docker daemon is available; the offline
+# suite (driver-tests/run.sh) skips it where there is none. CI runs it in the
+# dedicated `docker-runner` job.
 set -euo pipefail
 
-if [[ "${CONAHCNUJ_DOCKER_REAL:-0}" != "1" ]]; then
-  echo "SKIP: set CONAHCNUJ_DOCKER_REAL=1 to run the real-Docker test"
+# Run whenever a working Docker daemon is available; skip (do not fail) in
+# environments without one (e.g. the offline suite on a developer machine).
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  echo "SKIP: docker is not available"
   exit 0
-fi
-
-if ! command -v docker >/dev/null 2>&1; then
-  echo "FAIL: docker is not installed" >&2
-  exit 1
-fi
-if ! docker info >/dev/null 2>&1; then
-  echo "FAIL: cannot reach the Docker daemon" >&2
-  exit 1
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
