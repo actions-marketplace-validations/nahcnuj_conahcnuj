@@ -9,6 +9,13 @@
 # Usage:
 #   cd <target-repo>
 #   bash <path-to>/docker-run.sh <issue-or-pr-number>
+#   "C:/Program Files/Git/bin/bash.exe" <path-to>/docker-run.sh <issue-or-pr-number>   # Windows
+#
+# On Windows a bare `bash` from PowerShell can resolve to WSL bash, where
+# `docker` only knows unix:///var/run/docker.sock and cannot reach Docker
+# Desktop, even though `docker ps` works in PowerShell. The wrapper detects
+# that case and re-launches itself under the configured Git Bash (BASH_EXE),
+# the same way the driver does for the GitHub App paths.
 #
 # By default the container runs in the foreground and stops as soon as the
 # driver exits. Set CONAHCNUJ_DAEMON=1 (with an optional CONAHCNUJ_NAME) to
@@ -42,8 +49,131 @@ else
 fi
 docker_() { MSYS_NO_PATHCONV=1 docker "$@"; }
 
+# --- Windows / WSL relaunch -------------------------------------------------
+
+# The configured Git Bash: environment override > app.env > the committed
+# app.env.example. A placeholder means "not configured", so fall back to the
+# standard Git for Windows location (issue #417: PowerShell's `bash` is WSL
+# bash, whose docker cannot reach Docker Desktop).
+docker_bash_exe() {
+  local env_file line
+  if [[ -n "${BASH_EXE:-}" ]]; then
+    printf '%s\n' "${BASH_EXE}"
+    return 0
+  fi
+  env_file="${CONAHCNUJ_APP_ENV:-${HERE}/gh-app/app.env}"
+  if [[ ! -f "${env_file}" ]]; then
+    env_file="${HERE}/gh-app/app.env.example"
+  fi
+  if [[ -f "${env_file}" ]]; then
+    line="$(sed -n 's/^[[:space:]]*BASH_EXE[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' "${env_file}" | head -1)"
+    if [[ -n "${line}" && "${line}" != "<your-bash-exe>" ]]; then
+      printf '%s\n' "${line}"
+      return 0
+    fi
+  fi
+  printf '%s\n' "C:/Program Files/Git/bin/bash.exe"
+}
+
+# True when the wrapper must re-launch itself under Git Bash. Only under WSL
+# (a bare Windows `bash`) and only when the configured Git Bash is reachable.
+docker_needs_relaunch() {
+  [[ -z "${MSYSTEM:-}" ]] || return 1
+  [[ -n "${WSL_DISTRO_NAME:-}" ]] || return 1
+  command -v wslpath >/dev/null 2>&1 || return 1
+  local bash_exe bash_mnt
+  bash_exe="$(docker_bash_exe)"
+  bash_mnt="$(wslpath -u "${bash_exe}" 2>/dev/null || true)"
+  if [[ -z "${bash_mnt}" || ! -x "${bash_mnt}" ]]; then
+    echo "WARNING: BASH_EXE ${bash_exe} is not reachable from WSL; continuing (docker may not reach Docker Desktop)." >&2
+    return 1
+  fi
+  return 0
+}
+
+# Convert a WSL path to the Windows form Git Bash understands. Windows paths
+# and relative paths are passed through untouched.
+wsl_win_path() {
+  local path="${1}"
+  if [[ "${path}" == /* ]]; then
+    wslpath -m "${path}" 2>/dev/null || printf '%s\n' "${path}"
+  else
+    printf '%s\n' "${path}"
+  fi
+}
+
+# Re-run the wrapper under the configured Git Bash, preserving the target repo,
+# app.env location and CONAHCNUJ_* / OPENCODE_* / DOCKER_* overrides (WSL
+# interop only forwards variables listed in WSLENV). Git Bash runs as a child
+# and an interrupt is forwarded as TERM, matching bin/conahcnuj.sh.
+docker_relaunch() {
+  local bash_exe bash_mnt self self_win child rc
+  bash_exe="$(docker_bash_exe)"
+  bash_mnt="$(wslpath -u "${bash_exe}")"
+  self="${BASH_SOURCE[0]}"
+  if [[ "${self}" != /* && "${self}" != */* ]]; then
+    self="$(command -v "${self}" 2>/dev/null || true)"
+  fi
+  if [[ -z "${self}" ]]; then
+    echo "WARNING: could not resolve ${BASH_SOURCE[0]} to relaunch; continuing under WSL." >&2
+    return 1
+  fi
+  self_win="$(wslpath -m "${self}" 2>/dev/null || true)"
+  if [[ -z "${self_win}" ]]; then
+    echo "WARNING: could not convert ${self} to a Windows path; continuing under WSL." >&2
+    return 1
+  fi
+
+  CONAHCNUJ_TARGET="$(wsl_win_path "${TARGET}")"
+  export CONAHCNUJ_TARGET
+  if [[ -n "${CONAHCNUJ_APP_ENV:-}" ]]; then
+    CONAHCNUJ_APP_ENV="$(wsl_win_path "${CONAHCNUJ_APP_ENV}")"
+    export CONAHCNUJ_APP_ENV
+  fi
+
+  local wslenv_add="" name
+  for name in $(compgen -v); do
+    case "${name}" in
+      CONAHCNUJ_*|OPENCODE_*|DOCKER_*|BASH_EXE)
+        if [[ -n "${!name:-}" ]]; then
+          wslenv_add="${wslenv_add:+${wslenv_add}:}${name}"
+        fi
+        ;;
+    esac
+  done
+  if [[ -n "${wslenv_add}" ]]; then
+    export WSLENV="${WSLENV:+${WSLENV}:}${wslenv_add}"
+  fi
+
+  echo "Re-launching under ${bash_exe} so Docker Desktop is reachable." >&2
+  "${bash_mnt}" "${self_win}" "$@" &
+  child=$!
+  trap 'kill -TERM "${child}" 2>/dev/null || true' INT TERM
+  rc=0
+  wait "${child}" || rc=$?
+  wait "${child}" 2>/dev/null || true
+  trap - INT TERM
+  exit "${rc}"
+}
+
+if docker_needs_relaunch; then
+  docker_relaunch "$@"
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "ERROR: docker is not installed or not on PATH." >&2
+  exit 1
+fi
+
+# Fail with the daemon's own message (and a Windows hint) instead of letting
+# `docker build` surface a raw "failed to connect" error. The WSL case is the
+# common one: PowerShell's docker works but the WSL one has no daemon.
+if ! docker_ info >/dev/null 2>&1; then
+  echo "ERROR: cannot reach the Docker daemon with $(command -v docker)." >&2
+  docker_ info >&2 || true
+  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+    echo "HINT: run this script with Git Bash (BASH_EXE), not WSL bash, so it uses Docker Desktop." >&2
+  fi
   exit 1
 fi
 
