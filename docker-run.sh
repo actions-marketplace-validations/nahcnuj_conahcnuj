@@ -81,7 +81,11 @@ docker_bash_exe() {
 # True when the wrapper must re-launch itself under Git Bash. Only under WSL
 # (a bare Windows `bash`) and only when the configured Git Bash is reachable.
 docker_needs_relaunch() {
-  [[ -z "${MSYSTEM:-}" ]] || return 1
+  # WSL sets WSL_DISTRO_NAME; Git Bash (MSYS) does not. Do not also require
+  # MSYSTEM to be empty: on Windows, Git Bash forces MSYSTEM into the
+  # environment and it cannot reliably be unset (issue #417), which made the
+  # WSL simulation in the tests (and real invocations under a WSL bash that
+  # inherited MSYSTEM) skip the relaunch.
   [[ -n "${WSL_DISTRO_NAME:-}" ]] || return 1
   command -v wslpath >/dev/null 2>&1 || return 1
   local bash_exe bash_mnt
