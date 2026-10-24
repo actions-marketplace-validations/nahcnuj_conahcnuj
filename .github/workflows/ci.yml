@@ -284,9 +284,16 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      APP_ID: ${{ secrets.APP_ID }}
+      INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+      APP_SLUG: conahcnuj
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
     # The operator-reported failures came from real Docker Desktop / WSL, not
     # from the arguments the offline test mocks. Build the real image and run
     # the wrapper through a real daemon, then inspect the container mounts.
+    # Real App env is forwarded so the wrapper is exercised the way it is in
+    # regular usage (not with dummy values).
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 

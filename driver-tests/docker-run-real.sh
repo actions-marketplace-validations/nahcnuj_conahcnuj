@@ -37,15 +37,32 @@ git init -q "${TARGET}"
 printf 'hello\n' > "${TARGET}/hello.txt"
 
 PEM="${ROOT}/app.pem"
-printf 'dummy-pem-%s\n' "$$" > "${PEM}"
 APP_ENV="${ROOT}/app.env"
-cat > "${APP_ENV}" <<EOF
+# Use the real GitHub App env when it is provided (CI passes the repo secrets),
+# so the wrapper is exercised the way it is in regular usage; fall back to
+# dummy values for local runs without secrets.
+if [[ -n "${APP_ID:-}" && -n "${INSTALLATION_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+  REAL_ENV=1
+  printf '%s\n' "${PRIVATE_KEY}" > "${PEM}"
+  APP_SLUG_VAL="${APP_SLUG:-conahcnuj}"
+  cat > "${APP_ENV}" <<EOF
+APP_ID="${APP_ID}"
+INSTALLATION_ID="${INSTALLATION_ID}"
+APP_SLUG="${APP_SLUG_VAL}"
+PRIVATE_KEY_PATH="${PEM}"
+BASH_EXE="C:/Program Files/Git/bin/bash.exe"
+EOF
+else
+  REAL_ENV=0
+  printf 'dummy-pem-%s\n' "$$" > "${PEM}"
+  cat > "${APP_ENV}" <<EOF
 APP_ID="1"
 INSTALLATION_ID="2"
 APP_SLUG="conahcnuj"
 PRIVATE_KEY_PATH="${PEM}"
 BASH_EXE="C:/Program Files/Git/bin/bash.exe"
 EOF
+fi
 
 export OPENCODE_CONFIG_DIR="${ROOT}/no-config"
 export OPENCODE_DATA_DIR="${ROOT}/no-data"
@@ -53,32 +70,36 @@ export OPENCODE_DATA_DIR="${ROOT}/no-data"
 # Build the real image and run the wrapper through real Docker. The override
 # entrypoint lets us inspect the container instead of launching the driver
 # (which would need live GitHub credentials).
+if (( REAL_ENV == 1 )); then
+  TOKEN_CHECK='bash /opt/conahcnuj/gh-app/get-token.sh >/dev/null && echo "TOKEN_OK"'
+else
+  TOKEN_CHECK='echo "TOKEN_SKIP (no real env)"'
+fi
 out="$(
   CONAHCNUJ_BUILD=1 \
   CONAHCNUJ_IMAGE="${IMAGE}" \
   CONAHCNUJ_TARGET="${TARGET}" \
   CONAHCNUJ_APP_ENV="${APP_ENV}" \
   CONAHCNUJ_ENTRYPOINT=/bin/bash \
-  bash "${WRAPPER}" -c '
+  bash "${WRAPPER}" -c "
     set -e
     test -d /work/.git
     test -f /work/hello.txt
     test -x /opt/conahcnuj/bin/conahcnuj.sh
     test -f /opt/conahcnuj/lib/gh-api.sh
     test -f /opt/conahcnuj/gh-app/get-token.sh
-    # The plugin tells the agent that `gh` is authenticated, so the image
-    # must actually provide it.
     command -v gh >/dev/null
     command -v opencode >/dev/null
     test -f /opt/conahcnuj/gh-app/app.env
-    grep -qx "PRIVATE_KEY_PATH=/run/secrets/app.pem" /opt/conahcnuj/gh-app/app.env
-    grep -qx "BASH_EXE=/usr/bin/bash" /opt/conahcnuj/gh-app/app.env
+    grep -qx 'PRIVATE_KEY_PATH=/run/secrets/app.pem' /opt/conahcnuj/gh-app/app.env
+    grep -qx 'BASH_EXE=/usr/bin/bash' /opt/conahcnuj/gh-app/app.env
     test -r /run/secrets/app.pem
     test ! -w /run/secrets/app.pem
     test ! -w /opt/conahcnuj/gh-app/app.env
-    printf "PWD=%s\n" "$(pwd)"
-    printf "PEM=%s\n" "$(cat /run/secrets/app.pem)"
-  ' 2>&1
+    ${TOKEN_CHECK}
+    printf 'PWD=%s\\n' \"\$(pwd)\"
+    printf 'PEM=%s\\n' \"\$(cat /run/secrets/app.pem)\"
+  " 2>&1
 )"
 
 grep -q 'PWD=/work' <<<"${out}" || {
@@ -86,8 +107,21 @@ grep -q 'PWD=/work' <<<"${out}" || {
   printf '%s\n' "${out}" >&2
   exit 1
 }
-grep -q "PEM=dummy-pem-$$" <<<"${out}" || {
-  echo "FAIL: private key was not mounted read-only at /run/secrets/app.pem; output:" >&2
+if (( REAL_ENV == 1 )); then
+  grep -q "TOKEN_OK" <<<"${out}" || {
+    echo "FAIL: get-token.sh did not succeed with the real env; output:" >&2
+    printf '%s\n' "${out}" >&2
+    exit 1
+  }
+else
+  grep -q "PEM=dummy-pem-$$" <<<"${out}" || {
+    echo "FAIL: private key was not mounted read-only at /run/secrets/app.pem; output:" >&2
+    printf '%s\n' "${out}" >&2
+    exit 1
+  }
+fi
+grep -q 'PEM=' <<<"${out}" || {
+  echo "FAIL: private key was not mounted at /run/secrets/app.pem; output:" >&2
   printf '%s\n' "${out}" >&2
   exit 1
 }
