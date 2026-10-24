@@ -33,15 +33,16 @@ EOF
 chmod +x "${MOCKBIN}/docker"
 
 # Mock wslpath: -u resolves the configured Git Bash, -m prefixes Windows-form
-# paths with W so the test can assert that the target was converted.
-cat > "${MOCKBIN}/wslpath" <<'EOF'
-#!/usr/bin/env bash
-case "${1}" in
-  -u) printf '%s\n' "${WSLPATH_U_OUT}" ;;
-  -m) printf 'W%s\n' "${2}" ;;
-esac
-EOF
-chmod +x "${MOCKBIN}/wslpath"
+# paths with W so the test can assert that the target was converted. Keep it as
+# an exported shell function (not a script on PATH): Git Bash's `command -v`
+# reliably sees it, matching driver-tests/driver-relaunch.sh.
+wslpath() {
+  case "${1}" in
+    -u) printf '%s\n' "${WSLPATH_U_OUT}" ;;
+    -m) printf 'W%s\n' "${2}" ;;
+  esac
+}
+export -f wslpath
 
 # The "Git Bash" the relaunch runs: record its arguments and the forwarded
 # environment, then exit.
@@ -74,16 +75,25 @@ export OPENCODE_CONFIG_DIR="${ROOT}/no-config"
 export OPENCODE_DATA_DIR="${ROOT}/no-data"
 
 # Run the wrapper with a clean WSL/Git Bash baseline plus the given overrides.
+# Use the shell's `unset` rather than `env -u`: on Git Bash `env` does not
+# reliably clear MSYSTEM for the child, which made the simulated WSL run look
+# like it was already running under Git Bash and skip the relaunch (Windows
+# CI only; Linux passed). Exported variables are inherited by the wrapper.
 run_wrapper() {
-  env -u MSYSTEM -u WSL_DISTRO_NAME -u BASH_EXE \
-    CONAHCNUJ_IMAGE=test-image \
-    CONAHCNUJ_TARGET="${TARGET_REPO}" \
-    CONAHCNUJ_APP_ENV="${APP_ENV}" \
-    DOCKER_LOG="${DOCKER_LOG}" \
-    GITBASH_LOG="${GITBASH_LOG}" \
-    WSLPATH_U_OUT="${GITBASH}" \
-    "$@" \
+  local assignment
+  (
+    unset MSYSTEM WSL_DISTRO_NAME BASH_EXE
+    export CONAHCNUJ_IMAGE=test-image
+    export CONAHCNUJ_TARGET="${TARGET_REPO}"
+    export CONAHCNUJ_APP_ENV="${APP_ENV}"
+    export DOCKER_LOG GITBASH_LOG
+    export WSLPATH_U_OUT="${GITBASH}"
+    for assignment in "$@"; do
+      # shellcheck disable=SC2163  # the value is a NAME=VALUE assignment
+      export "${assignment}"
+    done
     bash "${WRAPPER_PATH:-${WRAPPER}}" 42
+  )
 }
 
 # --- normal (non-WSL) run ---------------------------------------------------

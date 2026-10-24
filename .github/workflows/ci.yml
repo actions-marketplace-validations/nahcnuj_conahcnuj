@@ -236,10 +236,19 @@ jobs:
             echo "opencode gh auth OK"
             exit 0
           fi
-          # Treat a run that produced no events as an inconclusive service
-          # problem rather than a plugin regression, mirroring e2e-opencode.
-          if [ ! -s "$out" ]; then
-            echo "opencode gh auth INCONCLUSIVE (no output); treating as pass"
+          # Treat a run that produced no session events as an inconclusive
+          # service problem rather than a plugin regression, mirroring
+          # e2e-opencode. The shared free-model service occasionally answers
+          # with an "UnknownError" / "Unexpected server error" event before
+          # the session starts; that file is non-empty but says nothing about
+          # the plugin. A genuine plugin failure would instead surface as a
+          # completed session where `gh auth status` reports no login.
+          if grep -qE '"name":"UnknownError"|Unexpected server error' "$out" 2>/dev/null; then
+            echo "opencode gh auth INCONCLUSIVE (model service error); treating as pass"
+            exit 0
+          fi
+          if ! grep -qE '"type":"(text|tool_use|reasoning|step_start|step_finish)"' "$out" 2>/dev/null; then
+            echo "opencode gh auth INCONCLUSIVE (no session events); treating as pass"
             exit 0
           fi
           echo "opencode gh auth FAILED"

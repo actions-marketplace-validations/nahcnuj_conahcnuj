@@ -73,6 +73,10 @@ out="$(
     test -x /opt/conahcnuj/bin/conahcnuj.sh
     test -f /opt/conahcnuj/lib/gh-api.sh
     test -f /opt/conahcnuj/gh-app/get-token.sh
+    # The plugin tells the agent that `gh` is authenticated, so the image
+    # must actually provide it.
+    command -v gh >/dev/null
+    command -v opencode >/dev/null
     test -f /opt/conahcnuj/gh-app/app.env
     grep -qx "PRIVATE_KEY_PATH=/run/secrets/app.pem" /opt/conahcnuj/gh-app/app.env
     grep -qx "BASH_EXE=/usr/bin/bash" /opt/conahcnuj/gh-app/app.env
