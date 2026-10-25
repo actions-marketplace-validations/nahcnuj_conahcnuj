@@ -420,16 +420,21 @@ async function injectShellEnv(
 
   // PowerShell has no head/tail/grep of its own; Git for Windows ships them
   // in usr/bin, so put that directory on PATH there. No-op when absent.
+  //
+  // Only `PATH` is touched: Node treats environment variables case-
+  // insensitively on Windows (process.env) and, when spawning a child,
+  // keeps the first key that case-insensitively matches `PATH` (see the
+  // Node.js child_process docs), so a single `PATH` entry is sufficient
+  // and `Path`/`process.env.Path` need not be handled separately.
   const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
   const usrBin = path.join(gitRoot, "usr", "bin")
   if (fs.existsSync(usrBin)) {
-    const current = env.PATH || env.Path || process.env.PATH || process.env.Path || ""
+    const current = env.PATH || env.Path || process.env.PATH || ""
     const norm = (v: string) => v.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
     const present = current.split(path.delimiter).some((e) => norm(e) === norm(usrBin))
     if (!present) {
       const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
       env.PATH = next
-      env.Path = next
     }
   }
 }

@@ -377,7 +377,7 @@ test("shell.env: publishes the App identity, the alias.vc wrapper and nothing el
   assert.strictEqual(fetchCalls.length, 0)
   for (const key of Object.keys(output.env)) {
     assert.ok(
-      /^(GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)|PATH|Path)$/.test(key),
+      /^(GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)|PATH)$/.test(key),
       `unexpected shell env key: ${key}`
     )
   }
@@ -410,16 +410,8 @@ test("shell.env: head/tail/grep run in the real PowerShell with the injected PAT
   }
   const injectedUsrBin = usrBin
   const savedPath = process.env.PATH
-  const savedP = process.env.Path
   try {
     process.env.PATH = path.join(os.tmpdir(), "conahcnuj-no-such-dir")
-    // On Windows, process.env is case-insensitive, so deleting `Path` would
-    // also remove `PATH`. Keep the (single) variable there instead.
-    if (process.platform !== "win32") {
-      delete process.env.Path
-    } else {
-      process.env.Path = process.env.PATH
-    }
     stage({ BASH_EXE: forward(realBash) })
     const plugin = await freshHooks()
     const output = { env: {} }
@@ -431,7 +423,6 @@ test("shell.env: head/tail/grep run in the real PowerShell with the injected PAT
     )
     // The platform-appropriate separator is used (not a hard-coded one).
     assert.ok(output.env.PATH.includes(path.delimiter), output.env.PATH)
-    assert.strictEqual(output.env.Path, output.env.PATH)
 
     // Now actually run them through the real shell, with exactly the env
     // opencode would hand the tool: process.env merged with the hook output.
@@ -492,8 +483,6 @@ test("shell.env: head/tail/grep run in the real PowerShell with the injected PAT
   } finally {
     if (savedPath === undefined) delete process.env.PATH
     else process.env.PATH = savedPath
-    if (savedP === undefined) delete process.env.Path
-    else process.env.Path = savedP
   }
 })
 
