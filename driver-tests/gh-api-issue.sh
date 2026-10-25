@@ -85,6 +85,8 @@ MOCK_REPO_ID='{"data":{"repository":{"id":"R_kgDOXmplR3p"}}}'
 
 MOCK_CREATE_PR='{"data":{"createPullRequest":{"pullRequest":{"number":123}}}}'
 
+MOCK_COMMENT='{"id":777}'
+
 test_fetch_issue() {
   local out title body labels is_pr
   out="$(printf '%s\n' "${MOCK_ISSUE}" | gh_api_fetch_issue "nahcnuj" "conahcnuj" 10)"
@@ -457,6 +459,13 @@ unreadable" ]]
   echo "gh_api_requested_reviewers (pretty-printed payload) passed"
 }
 
+test_post_comment() {
+  local out
+  out="$(printf '%s\n' "${MOCK_COMMENT}" | gh_api_post_comment "nahcnuj" "conahcnuj" 15 "Addressed feedback")"
+  [[ "${out}" == "777" ]]
+  echo "gh_api_post_comment passed"
+}
+
 test_create_issue() {
   local out
   out="$(printf '%s\n' '{"number":25}' | gh_api_create_issue "nahcnuj" "conahcnuj" "Bug report" "details")"
@@ -551,6 +560,7 @@ test_graphql_http_status
 test_fetch_pr_conditions_read_failure
 test_requested_reviewers
 test_requested_reviewers_pretty
+test_post_comment
 test_create_issue
 test_escape_control_chars
 test_create_issue_control_chars

@@ -783,6 +783,16 @@ gh_api_requested_reviewers() {
   return 0
 }
 
+# Post a PR/issue comment. Args: owner repo number body  (output: comment id)
+gh_api_post_comment() {
+  local owner="${1}" repo="${2}" number="${3}" body="${4}"
+  local payload
+  payload="{\"body\":\"$(gh_api_escape "${body}")\"}"
+  local json
+  json="$(gh_api_call POST "https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments" "${payload}")"
+  gh_api_json_num "${json}" "id"
+}
+
 # Create an issue. Args: owner repo title body. Output: issue number.
 gh_api_create_issue() {
   local owner="${1}" repo="${2}" title="${3}" body="${4}"
