@@ -92,6 +92,11 @@ jobs:
         run: |
           pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./plugin-tests/install-agents-md.ps1
 
+      - name: Verify head/tail/grep work in real PowerShell
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ./plugin-tests/head-tail-grep.ps1
+
       - name: Install into temp dir for deployment verification
         shell: pwsh
         run: |
