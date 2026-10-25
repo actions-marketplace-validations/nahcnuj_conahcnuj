@@ -1,4 +1,6 @@
-// Unit tests for the opencode plugin, driven entirely through the hooks
+// Unit tests for the opencode plugin, driven entirely through the hooks.
+// This file IS the test suite (unit.sh compiles the real plugin, then runs it);
+// it is not a separate test runner.
 // opencode calls (tool.execute.before, shell.env, the system-prompt
 // transform, chat.message / chat.params). plugin-tests/unit.sh compiles the real
 // plugins/gh-app-token.ts unchanged into ./.unit/out/, so the code under
