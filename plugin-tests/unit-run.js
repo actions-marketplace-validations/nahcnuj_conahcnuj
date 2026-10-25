@@ -380,6 +380,41 @@ test("shell.env: publishes the App identity, the alias.vc wrapper and nothing el
   }
 })
 
+test("shell.env: Git for Windows usr/bin is put on PATH so head/tail/grep resolve", async () => {
+  const fakeGit = path.join(STAGE_DIR, "fakegit")
+  fs.rmSync(fakeGit, { recursive: true, force: true })
+  const usrBin = path.join(fakeGit, "usr", "bin")
+  fs.mkdirSync(usrBin, { recursive: true })
+  fs.writeFileSync(path.join(usrBin, "head"), "")
+  const bashExe = path.join(fakeGit, "bin", "bash.exe")
+  fs.mkdirSync(path.dirname(bashExe), { recursive: true })
+  fs.writeFileSync(bashExe, "")
+  const savedPath = process.env.PATH
+  const savedP = process.env.Path
+  try {
+    process.env.PATH = "/usr/local/bin:/usr/bin"
+    delete process.env.Path
+    stage({ BASH_EXE: forward(bashExe) })
+    const plugin = await freshHooks()
+    const output = { env: {} }
+    await plugin["shell.env"]({ cwd: ".", sessionID: "s1" }, output)
+    assert.ok(output.env.PATH, "PATH was not injected")
+    assert.ok(
+      output.env.PATH.toLowerCase().includes(usrBin.replace(/\\/g, "/").toLowerCase()),
+      `usr/bin missing from PATH: ${output.env.PATH}`
+    )
+    // The original PATH entries are preserved, not clobbered.
+    assert.ok(output.env.PATH.includes("/usr/bin"), output.env.PATH)
+    assert.strictEqual(output.env.Path, output.env.PATH)
+  } finally {
+    if (savedPath === undefined) delete process.env.PATH
+    else process.env.PATH = savedPath
+    if (savedP === undefined) delete process.env.Path
+    else process.env.Path = savedP
+    fs.rmSync(fakeGit, { recursive: true, force: true })
+  }
+})
+
 // --- installation token -----------------------------------------------------
 
 test("shell.env: a cached installation token is published without any network", async () => {
