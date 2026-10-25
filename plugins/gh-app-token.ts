@@ -430,25 +430,21 @@ async function injectShellEnv(
   // usual slash spelling on Unix.
   const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
   const usrBin = path.join(gitRoot, "usr", "bin")
-  if (fs.existsSync(usrBin)) {
-    const current =
-      env.PATH || env.Path || process.env.PATH || process.env.Path || ""
-    // Compare paths with a single slash convention and case (and ignore a
-    // trailing separator), so an entry already present in a different
-    // spelling does not get duplicated.
-    const norm = (value: string) =>
-      value
-        .replace(/\\/g, "/")
-        .toLowerCase()
-        .replace(/\/+$/, "")
-    const entries = current
+  const current =
+    env.PATH || env.Path || process.env.PATH || process.env.Path || ""
+  // Compare entries ignoring slash direction, case and a trailing separator,
+  // so an already-present usr/bin in another spelling is not duplicated.
+  const normalize = (value: string) =>
+    value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+  if (
+    fs.existsSync(usrBin) &&
+    !current
       .split(path.delimiter)
-      .map((entry) => entry.replace(/\\/g, "/").toLowerCase().replace(/\/+$/, ""))
-    if (!entries.includes(norm(usrBin))) {
-      const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
-      env.PATH = next
-      env.Path = next
-    }
+      .some((entry) => normalize(entry) === normalize(usrBin))
+  ) {
+    const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
+    env.PATH = next
+    env.Path = next
   }
 }
 

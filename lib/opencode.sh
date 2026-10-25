@@ -299,6 +299,21 @@ opencode_run() {
     else
       echo "opencode: mock no-op for ${model} (produces no changes)" >&2
     fi
+    # MOCK_OPENCODE_SHELL_CHECK lists the models whose round proves that the
+    # coding agent can pipe through head/tail/grep during an issue-drive. The
+    # commands are the real binaries in the round shell; the round fails if one
+    # is missing or returns the wrong output (#446 / PR #447 review).
+    if [[ " ${MOCK_OPENCODE_SHELL_CHECK:-} " == *" ${model} "* && -d "${workdir}" && -w "${workdir}" ]]; then
+      local head_out tail_out grep_out
+      head_out="$(printf 'alpha\nbeta\ngamma\n' | head -n 1)"
+      tail_out="$(printf 'alpha\nbeta\ngamma\n' | tail -n 1)"
+      grep_out="$(printf 'alpha\nbeta\ngamma\n' | grep beta)"
+      if [[ "${head_out}" != "alpha" || "${tail_out}" != "gamma" || "${grep_out}" != "beta" ]]; then
+        echo "opencode: head/tail/grep are not usable in the round shell (head=${head_out} tail=${tail_out} grep=${grep_out})" >&2
+        return 1
+      fi
+      echo "opencode: head/tail/grep usable in the round shell" >&2
+    fi
     # MOCK_OPENCODE_TODO lists the models that simulate the per-issue progress
     # file. The first round of such a model creates TODO.md (and remembers it in
     # MOCK_OPENCODE_STATE_DIR); the next round deletes it, standing in for an

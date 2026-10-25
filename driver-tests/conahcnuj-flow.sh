@@ -83,6 +83,9 @@ export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first
 opencode/second"
 export MOCK_OPENCODE_ERROR="opencode/first"
+# The round that completes the work must be able to pipe through the real
+# head/tail/grep in the shell an issue-drive runs in (#446 / PR #447 review).
+export MOCK_OPENCODE_SHELL_CHECK="opencode/second"
 export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
 
 # A wrapping agent session (the conahcnuj opencode plugin) exports these for
@@ -132,6 +135,7 @@ grep -q "Model opencode/first failed before completing the work; handing off to 
 grep -q "Handing off session ses_mock from opencode/first to opencode/second" "${LOG}" || { echo "FAIL: session was not handed to the second model"; exit 1; }
 grep -q -- "--session ses_mock" "${LOG}" || { echo "FAIL: continuation command omitted --session"; exit 1; }
 grep -q "Model opencode/second completed the work" "${LOG}" || { echo "FAIL: second model was not adopted"; exit 1; }
+grep -q "head/tail/grep usable in the round shell" "${LOG}" || { echo "FAIL: head/tail/grep were not usable during the issue-drive round"; exit 1; }
 # The first prompt already carries the checkout's README (an issue has no
 # PR yet, so the collected context is the files alone).
 grep -q "Collected context:" "${LOG}" || { echo "FAIL: the prompt has no collected context block"; exit 1; }
