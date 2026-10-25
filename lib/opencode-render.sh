@@ -662,10 +662,9 @@ render_block_tool() {
       # markers, so wrap each command block in one there and keep the plain
       # `$ <command>` caption everywhere else.
       if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-        printf '::group::$ %s\n' "${label}"
-      else
-        printf '$ %s\n' "${label}"
+        echo -n '::group::'
       fi
+      echo "\$ ${label}"
     fi
   fi
 
@@ -765,7 +764,7 @@ render_block_tool() {
     printf '✅ %s\n' "${label}"
   fi
   if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-    printf '::endgroup::\n'
+    echo '::endgroup::'
   fi
   [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
   return 0
