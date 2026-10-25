@@ -1572,7 +1572,7 @@ drive() {
       # "Addressed the review feedback" comment: the in-thread replies are how
       # the reviewer learns what happened. Because the fingerprint drops
       # bot-authored comments, those replies never look like fresh feedback.
-      local reply_help="Address the pull request review feedback. First make the code changes and push them with git vc, then confirm CI passes and there is no merge conflict (CI status is unreliable while the branch conflicts, so resolve any conflict before trusting it). Only after that, reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass)."
+      local reply_help="Address the pull request review feedback. First make the code changes and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers), leaving the result in the working tree and writing .commit-msg; the driver commits and pushes it and then CI runs. Only after that, reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass)."
       if ! implement "${title}" "${body}" "${reply_help}
 
 ${summary}" "${base}"; then
