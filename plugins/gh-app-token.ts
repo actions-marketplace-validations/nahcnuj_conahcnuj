@@ -429,7 +429,10 @@ async function injectShellEnv(
   if (fs.existsSync(usrBin)) {
     const current =
       env.PATH || env.Path || process.env.PATH || process.env.Path || ""
-    if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
+    // Compare paths with a single slash convention and case, so an entry
+    // already present in a different spelling does not get duplicated.
+    const norm = (value: string) => value.replace(/\\/g, "/").toLowerCase()
+    if (!norm(current).includes(norm(usrBin))) {
       const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
       env.PATH = next
       env.Path = next
