@@ -274,36 +274,46 @@ render_fields() {
       SEEN["${tag}"]=1
     fi
   done < <(printf '%s\n' "${1}" | awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
-  # opencode's "(no output)" sentinel marks a command that printed nothing.
-  # It is NOT a real command output, so drop it -- but only when it really is
-  # the sentinel. opencode sends the sentinel with NO trailing newline
-  # ("(no output)"), or as the leading "(no output)" of a timed-out command
-  # followed by blank lines and a <shell_metadata> block. A command that
-  # genuinely printed "(no output)" (trailing newline, no metadata) is real
-  # output and must be kept, otherwise its output would vanish from the log.
-  local _raw="${F[output]}" _result="${F[output]}"
-  if [[ "${_raw}" == "(no output)" ]]; then
-    _result=""
-  elif [[ "${_raw}" == *"<shell_metadata>"* ]]; then
-    # Timed-out command: drop the sentinel line and the blank lines it leaves,
-    # keep the <shell_metadata> block.
-    _result=""
-    local _line _first=1
-    while IFS= read -r _line || [[ -n "${_line}" ]]; do
-      [[ "${_line}" == "(no output)" ]] && continue
-      if [[ "${_first}" == "1" ]]; then
-        _result="${_line}"
-        _first=0
-      else
-        _result="${_result}"$'\n'"${_line}"
+  # opencode's "(no output)" sentinel is not a real command output: drop it (and
+  # any blank lines it leaves behind) so a command that printed nothing shows
+  # nothing. Keep a genuine "(no output)" print (trailing newline present).
+  local _raw="${F[output]}" _result="" _line _first=1
+  local -a _lines=() _keep=()
+  while IFS= read -r _line || [[ -n "${_line}" ]]; do
+    _lines+=("${_line}")
+  done <<< "${_raw}"
+  local _n="${#_lines[@]}" _i _j
+  for ((_i = 0; _i < _n; _i++)); do
+    if [[ "${_lines[$_i]}" == "(no output)" ]]; then
+      _j=$((_i + 1))
+      while ((_j < _n)) && [[ -z "${_lines[$_j]// }" ]]; do
+        _j=$((_j + 1))
+      done
+      if ((_j >= _n)); then
+        # Sentinel only if "(no output)" is the final line (no trailing newline).
+        if ((_i == _n - 1)); then
+          continue
+        fi
+      elif [[ "${_lines[$_j]}" == "<shell_metadata>"* ]]; then
+        continue
       fi
-    done <<< "${_raw}"
-    while [[ "${_result}" == $'\n'* ]]; do
-      _result="${_result#?}"
-    done
-    if [[ -z "${_result//[$'\n' ]/}" ]]; then
-      _result=""
     fi
+    _keep+=("${_lines[$_i]}")
+  done
+  _first=1
+  for _line in "${_keep[@]}"; do
+    if [[ "${_first}" == "1" ]]; then
+      _result="${_line}"
+      _first=0
+    else
+      _result="${_result}"$'\n'"${_line}"
+    fi
+  done
+  while [[ "${_result}" == $'\n'* ]]; do
+    _result="${_result#?}"
+  done
+  if [[ -z "${_result//[$'\n' ]/}" ]]; then
+    _result=""
   fi
   F["output"]="${_result}"
 }
