@@ -392,14 +392,13 @@ test("shell.env: head/tail/grep run in the real PowerShell with the injected PAT
       ? "C:/Program Files/Git/bin/bash.exe"
       : "/bin/bash"
   if (!fs.existsSync(realBash)) {
-    // Nothing to verify on a platform without the expected bash layout.
-    return
+    assert.fail(`expected bash layout missing: ${realBash}`)
   }
   const gitRoot = path.dirname(path.dirname(realBash))
   // Native spelling on the test host, matching what the plugin injects.
   const usrBin = path.join(gitRoot, "usr", "bin")
   if (!fs.existsSync(usrBin)) {
-    return
+    assert.fail(`expected usr/bin missing: ${usrBin}`)
   }
   // The injected directory must actually carry head/tail/grep for the shell
   // to resolve them.
