@@ -70,7 +70,7 @@ opencode_get_models() {
 # labour and stops there: telling the coding agent how to work gets in its way.
 opencode_agent_contract() {
   cat <<'EOF'
-This run takes the issue (or the pull request being resumed) to the owner's approval. Your part is the change in the working tree: implement it and run the repository's own validation. The driver names the branch and creates the commit, the push, the pull request and the review request once you are done.
+This run takes the issue (or the pull request being resumed) to the owner's approval. Your part is the change in the working tree and the commit: implement it, run the repository's own validation, and commit with `git vc`. The driver names the branch, creates the pull request and the review request once you are done.
 EOF
 }
 
@@ -106,7 +106,7 @@ ${extra_context}"
 
 $(opencode_agent_contract)
 
-Do NOT create any commits; just edit files in the working tree. The outer driver commits and pushes for you.
+Commit your changes with \`git vc\` (do not use \`git commit\`); the driver creates the pull request and the review request once you are done.
 
 When you are done, write a short, descriptive commit message (one line, no more than 72 characters) to the file .commit-msg in the repository root. The driver uses that line as the commit message it makes for you."
   if [[ -z "${extra_context}" ]]; then
@@ -119,7 +119,7 @@ If you want to choose the feature branch name, write your preferred branch name 
 
 opencode_build_handoff_prompt() {
   local previous_model="${1}"
-  printf 'You are taking over unfinished work from model %s because it could not complete the task. Continue this same session and preserve all work already present in the working tree. Inspect the current progress, finish every remaining requirement, and run the relevant validation. Do not restart from scratch, discard existing work, or create commits.\n\n%s\n\nWhen the work is complete, write a short descriptive commit message (one line, no more than 72 characters) to .commit-msg in the repository root.\n' "${previous_model}" "$(opencode_agent_contract)"
+  printf 'You are taking over unfinished work from model %s because it could not complete the task. Continue this same session and preserve all work already present in the working tree. Inspect the current progress, finish every remaining requirement, and run the relevant validation. Do not restart from scratch or discard existing work.\n\n%s\n\nWhen the work is complete, write a short descriptive commit message (one line, no more than 72 characters) to .commit-msg in the repository root.\n' "${previous_model}" "$(opencode_agent_contract)"
 }
 
 # True when the round's JSON event stream carries an environment error
