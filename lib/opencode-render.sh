@@ -274,6 +274,26 @@ render_fields() {
       SEEN["${tag}"]=1
     fi
   done < <(printf '%s\n' "${1}" | awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
+  # opencode's "(no output)" sentinel is not a real command output: drop it (and
+  # any blank lines it leaves behind) so a command that printed nothing shows
+  # nothing.
+  local _raw="${F[output]}" _result="" _line _first=1
+  while IFS= read -r _line || [[ -n "${_line}" ]]; do
+    [[ "${_line}" == "(no output)" ]] && continue
+    if [[ "${_first}" == "1" ]]; then
+      _result="${_line}"
+      _first=0
+    else
+      _result="${_result}"$'\n'"${_line}"
+    fi
+  done <<< "${_raw}"
+  while [[ "${_result}" == $'\n'* ]]; do
+    _result="${_result#?}"
+  done
+  if [[ -z "${_result//[$'\n' ]/}" ]]; then
+    _result=""
+  fi
+  F["output"]="${_result}"
 }
 
 # --- context header ---------------------------------------------------------
