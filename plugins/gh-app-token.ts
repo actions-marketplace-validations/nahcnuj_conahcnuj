@@ -424,8 +424,12 @@ async function injectShellEnv(
   // so put that directory on PATH to make them usable there (issue: make
   // head/tail/grep available in PowerShell too). The usr/bin directory is
   // only added when it actually exists, so this is a no-op elsewhere.
+  //
+  // PATH is a platform-native value: path.join gives the backslash spelling
+  // on Windows (PowerShell/cmd only resolve native paths reliably) and the
+  // usual slash spelling on Unix.
   const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
-  const usrBin = `${gitRoot}/usr/bin`
+  const usrBin = path.join(gitRoot, "usr", "bin")
   if (fs.existsSync(usrBin)) {
     const current =
       env.PATH || env.Path || process.env.PATH || process.env.Path || ""
