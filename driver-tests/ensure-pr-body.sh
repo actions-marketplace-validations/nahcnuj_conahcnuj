@@ -97,5 +97,3 @@ out="$(ensure_pr "nahcnuj" "conahcnuj" "15" "feature/fix-10" "main" "Fix somethi
 [[ "${out}" == "15" ]] || { echo "FAIL: no-issue resume output was '${out}' (expected 15)"; exit 1; }
 [[ "$(grep -c '^UPDATE|' "${REPORT}")" == "0" ]] || { echo "FAIL: no-issue resume must not PATCH the PR body"; exit 1; }
 echo "ensure_pr keeps no-issue PR body verbatim (no bogus 'Closes #'): passed"
-
-echo "All ensure_pr body tests passed"

@@ -36,7 +36,7 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_reviews
 #   (collection: nothing open), update_pr (body sync), post_comment (the
-#   continuation comment), fetch_reviews (REVIEW_REQUIRED, no feedback),
+#   fetch_reviews (REVIEW_REQUIRED, no feedback),
 #   conditions (empty line -> the read failed, must be retried, never read as
 #   "no checks, mergeable"), conditions (checks SUCCESS, mergeable MERGEABLE
 #   -> passes), request_review, fetch_reviews (APPROVED -> the run ends on the

@@ -8,7 +8,7 @@
 # instead of polling until its time budget runs out and it files a bug report.
 #
 #   PR #15 state read -> head branch checked out -> collected context
-#   (nothing open) -> PR body sync -> continuation comment -> conditions
+#   (nothing open) -> PR body sync -> conditions
 #   (PR already merged) -> stop, exit 0
 #
 # No secrets, no network.
@@ -33,7 +33,7 @@ git -C "${WORK}" commit -qm init
 
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_reviews
-#   (collection: nothing open), update_pr (body sync), continuation comment,
+#   (collection: nothing open), update_pr (body sync),
 #   fetch_reviews (nothing actionable), conditions (PR merged). Reviews are read
 #   before the constraints poll (#219), so the review phase sees no feedback and
 #   falls through to the poll that recognises the merge.

@@ -53,7 +53,7 @@ git -C "${WORK}" commit -qm init
 # told apart from real CI.
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue
 #   (stub body -> real issue body), fetch_reviews (collection: nothing open),
-#   update_pr (body sync), continuation comment, fetch_reviews
+#   update_pr (body sync), fetch_reviews
 #   (CHANGES_REQUESTED -> feedback round), conditions (own run
 #   SUCCESS + real CI running -> PENDING), conditions (own run CANCELLED +
 #   auto-merge FAILED + real CI SUCCESS -> SUCCESS), request_review,

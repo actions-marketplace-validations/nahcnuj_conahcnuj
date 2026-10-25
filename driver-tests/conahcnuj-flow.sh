@@ -45,7 +45,7 @@ git -C "${WORK}" commit -qm init
 
 # Mocked response tape. One JSON document per GitHub API call, in call order:
 #   fetch_issue, get_repo, find_pr_by_head (empty), repo id lookup, create_pr
-#   (123), continuation comment, fetch_reviews (REVIEW_REQUIRED, nothing to act
+#   (123), fetch_reviews (REVIEW_REQUIRED, nothing to act
 #   on), conditions (PENDING|MERGEABLE), conditions (SUCCESS|MERGEABLE),
 #   request_review, then the wait loop: PR body sync, fetch_reviews
 #   (REVIEW_REQUIRED, still waiting), fetch_reviews (APPROVED -> ready to
