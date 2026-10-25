@@ -381,37 +381,49 @@ test("shell.env: publishes the App identity, the alias.vc wrapper and nothing el
 })
 
 test("shell.env: Git for Windows usr/bin is put on PATH so head/tail/grep resolve", async () => {
-  const fakeGit = path.join(STAGE_DIR, "fakegit")
-  fs.rmSync(fakeGit, { recursive: true, force: true })
-  const usrBin = path.join(fakeGit, "usr", "bin")
-  fs.mkdirSync(usrBin, { recursive: true })
-  fs.writeFileSync(path.join(usrBin, "head"), "")
-  const bashExe = path.join(fakeGit, "bin", "bash.exe")
-  fs.mkdirSync(path.dirname(bashExe), { recursive: true })
-  fs.writeFileSync(bashExe, "")
+  // Verify against the real bash on this platform instead of a test double:
+  // on Windows that is Git for Windows' bash.exe, elsewhere /usr/bin/bash.
+  const realBash =
+    process.platform === "win32"
+      ? "C:/Program Files/Git/bin/bash.exe"
+      : "/usr/bin/bash"
+  if (!fs.existsSync(realBash)) {
+    // Nothing to verify on a platform without the expected bash layout.
+    return
+  }
+  const gitRoot = path.dirname(path.dirname(realBash))
+  const usrBin = `${gitRoot}/usr/bin`
+  if (!fs.existsSync(usrBin)) {
+    return
+  }
+  // The injected directory must actually carry head/tail/grep for the
+  // PowerShell side to resolve them.
+  for (const cmd of ["head", "tail", "grep"]) {
+    const exe = path.join(usrBin, process.platform === "win32" ? `${cmd}.exe` : cmd)
+    assert.ok(fs.existsSync(exe), `missing ${cmd} in ${usrBin}`)
+  }
   const savedPath = process.env.PATH
   const savedP = process.env.Path
   try {
-    process.env.PATH = "/usr/local/bin:/usr/bin"
+    process.env.PATH = path.join(os.tmpdir(), "conahcnuj-no-such-dir")
     delete process.env.Path
-    stage({ BASH_EXE: forward(bashExe) })
+    stage({ BASH_EXE: forward(realBash) })
     const plugin = await freshHooks()
     const output = { env: {} }
     await plugin["shell.env"]({ cwd: ".", sessionID: "s1" }, output)
     assert.ok(output.env.PATH, "PATH was not injected")
     assert.ok(
-      output.env.PATH.toLowerCase().includes(usrBin.replace(/\\/g, "/").toLowerCase()),
+      output.env.PATH.toLowerCase().includes(usrBin.toLowerCase()),
       `usr/bin missing from PATH: ${output.env.PATH}`
     )
-    // The original PATH entries are preserved, not clobbered.
-    assert.ok(output.env.PATH.includes("/usr/bin"), output.env.PATH)
+    // The platform-appropriate separator is used (not a hard-coded one).
+    assert.ok(output.env.PATH.includes(path.delimiter), output.env.PATH)
     assert.strictEqual(output.env.Path, output.env.PATH)
   } finally {
     if (savedPath === undefined) delete process.env.PATH
     else process.env.PATH = savedPath
     if (savedP === undefined) delete process.env.Path
     else process.env.Path = savedP
-    fs.rmSync(fakeGit, { recursive: true, force: true })
   }
 })
 
@@ -760,7 +772,7 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
     shellRules
   )
   assert.ok(
-    shellRules.includes("Never use head/tail/grep; prefer the read and grep tools."),
+    shellRules.includes("head, tail, and grep are available, but prefer the read and grep tools."),
     shellRules
   )
   await plugin["experimental.chat.system.transform"]({}, output)

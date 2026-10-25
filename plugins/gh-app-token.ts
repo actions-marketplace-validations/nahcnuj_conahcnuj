@@ -350,10 +350,9 @@ const GITHUB_RULES = [
 /**
  * Shell-portability rules appended to every system prompt. The model must
  * know which environment it is actually running in: on Windows the default
- * shell is PowerShell, where `head`, `tail`, and `grep` do not exist, so
- * reaching for them there only produces repeated "command not found"
- * failures. State that concrete fact (and the tools to use instead) so a
- * model stops retrying them. Issue #369.
+ * shell is PowerShell, where `head`, `tail`, and `grep` are provided by Git
+ * for Windows (injected onto PATH), so they may be used there. Still prefer
+ * the read and grep tools. Issue #369 / #446.
  */
 const SHELL_PLATFORM =
   process.platform === "win32"
@@ -372,7 +371,7 @@ const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
-  "Never use head/tail/grep; prefer the read and grep tools.",
+  "head, tail, and grep are available, but prefer the read and grep tools.",
 ].join(" ")
 
 import {
@@ -420,22 +419,20 @@ async function injectShellEnv(
     env[`GIT_CONFIG_VALUE_${i}`] = value
   })
 
-  // On Windows the default shell is PowerShell, which has no `head`/`tail`/
+  // The default shell on Windows is PowerShell, which has no `head`/`tail`/
   // `grep` of its own. Git for Windows ships them in its usr/bin directory,
   // so put that directory on PATH to make them usable there (issue: make
-  // head/tail/grep available in PowerShell too).
-  if (process.platform === "win32") {
-    const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/"))).replace(/\/+$/, "")
-    const usrBin = gitRoot ? `${gitRoot}/usr/bin` : "/usr/bin"
-    if (fs.existsSync(usrBin)) {
-      const current = env.PATH || env.Path || ""
-      if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
-        const next = current ? `${usrBin};${current}` : usrBin
-        env.PATH = next
-        if (env.Path !== undefined) {
-          env.Path = next
-        }
-      }
+  // head/tail/grep available in PowerShell too). The usr/bin directory is
+  // only added when it actually exists, so this is a no-op elsewhere.
+  const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
+  const usrBin = `${gitRoot}/usr/bin`
+  if (fs.existsSync(usrBin)) {
+    const current =
+      env.PATH || env.Path || process.env.PATH || process.env.Path || ""
+    if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
+      const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
+      env.PATH = next
+      env.Path = next
     }
   }
 }
