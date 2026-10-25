@@ -387,6 +387,7 @@ fi
 if [[ -f "$(git rev-parse --git-path MERGE_HEAD 2>/dev/null)" ]]; then
   git merge --quit
 fi
-git pull origin "${BRANCH}"
+git fetch origin "${BRANCH}" >/dev/null 2>&1 || true
+git reset --hard "origin/${BRANCH}" >/dev/null 2>&1 || true
 
 printf '%s' "${COMMIT_SHA}"
