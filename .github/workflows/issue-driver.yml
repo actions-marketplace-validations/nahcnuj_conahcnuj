@@ -93,37 +93,11 @@ jobs:
     name: Attempt to resolve issue
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # The caller's environment wins for a cross-repository call: the
-    # environment resolves in the run's (caller's) repository, so the caller
-    # names its own environment holding the App secrets. `inputs.environment`
-    # is only populated for `workflow_call` (its default) and is empty for the
-    # repository's own events (issues, pull_request_review, workflow_run,
-    # workflow_dispatch), where an empty `environment:` drops the job's
-    # environment secrets - PRIVATE_KEY included - and the staging step fails
-    # with "cannot sign an App JWT" (#281). Fall back to `conahcnuj` for those.
     environment: ${{ inputs.environment || 'conahcnuj' }}
-    # Do not chase the driver's own outputs: its tracking issue and bug-report
-    # issues are bot-authored and carry no `self-improvement` label, so they
-    # stay skipped and the loop cannot recurse. The weekly findings issue is
-    # bot-authored too but labelled, and that label is the one exception that
-    # lets the self-improvement loop start the driver by itself. A job-level
-    # `if` cannot read the `secrets` context (and APP_SLUG is not needed here),
-    # so the check keys off the label, not a secret. Missing secrets are not
-    # pre-checked either: the run fails loudly and the driver files its own bug
-    # report (no silent skip).
-    # `inputs.number` covers both hand dispatch and `workflow_call`: a called
-    # run's `github` context belongs to the caller, so only the passed number
-    # reliably identifies a reusable call.
     if: >-
       inputs.number ||
       github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issues' &&
-        (
-          github.event.issue.user.type != 'Bot' ||
-          contains(github.event.issue.labels.*.name, 'self-improvement')
-        )
-      ) ||
+      github.event_name == 'issues' ||
       (
         github.event_name == 'pull_request_review' &&
         github.event.pull_request.state == 'open' &&
