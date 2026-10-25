@@ -40,7 +40,7 @@ git -C "${WORK}" commit -qm init
 
 # Mocked response tape, in call order (same shape as the resume fixture):
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue (real body),
-#   fetch_reviews (collection), update_pr, post_comment, fetch_reviews
+#   fetch_reviews (collection), update_pr, fetch_reviews
 #   (CHANGES_REQUESTED with an open thread), conditions, request_review,
 #   fetch_reviews (APPROVED -> ready to merge). The run does not stop at the
 #   review request; it keeps polling and ends on the approval.

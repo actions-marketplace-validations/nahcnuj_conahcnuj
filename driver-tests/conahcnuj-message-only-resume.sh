@@ -46,8 +46,8 @@ git -C "${WORK}" commit -qm "mock commit from opencode/original"
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue (stub
 #   body -> real issue body), fetch_reviews (collection: one open thread),
-#   update_pr (body sync on the reuse path), post_comment (the PR continuation
-#   comment), fetch_reviews (CHANGES_REQUESTED with an open thread),
+#   update_pr (body sync on the reuse path), fetch_reviews
+#   (CHANGES_REQUESTED with an open thread),
 #   request_review, conditions.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'

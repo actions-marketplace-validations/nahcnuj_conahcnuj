@@ -33,8 +33,8 @@ git -C "${WORK}" commit -qm init
 
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_reviews
-#   (collection: nothing open), update_pr (body sync),
-#   fetch_reviews (nothing actionable), conditions (PR merged). Reviews are read
+#   (collection: nothing open), update_pr (body sync), fetch_reviews
+#   (nothing actionable), conditions (PR merged). Reviews are read
 #   before the constraints poll (#219), so the review phase sees no feedback and
 #   falls through to the poll that recognises the merge.
 TAPE="${ROOT}/tape.txt"

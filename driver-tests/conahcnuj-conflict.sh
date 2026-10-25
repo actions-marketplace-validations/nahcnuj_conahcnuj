@@ -60,8 +60,8 @@ git -C "${ROOT}/other" push -q origin main
 
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_reviews
-#   (collection: nothing open), update_pr (body sync), post_comment (the
-#   fetch_reviews (REVIEW_REQUIRED, no feedback),
+#   (collection: nothing open), update_pr (body sync), fetch_reviews
+#   (REVIEW_REQUIRED, no feedback),
 #   conditions (CONFLICTING/DIRTY -> the conflict fix round), fetch_reviews
 #   (still REVIEW_REQUIRED), conditions (MERGEABLE/CLEAN -> passes),
 #   request_review, fetch_reviews (APPROVED -> the run ends on the approval).

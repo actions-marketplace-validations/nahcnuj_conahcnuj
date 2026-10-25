@@ -44,8 +44,8 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue (stub
 #   body -> real issue body), fetch_reviews (collection: one open thread, one
-#   resolved), update_pr (body sync on the reuse path), post_comment (the PR
-#   fetch_reviews (CHANGES_REQUESTED with an open
+#   resolved), update_pr (body sync on the reuse path), fetch_reviews
+#   (CHANGES_REQUESTED with an open
 #   thread), conditions, request_review, fetch_reviews (APPROVED -> the run
 #   ends on the approval, not the request). The feedback is read (and
 #   addressed) before the constraints poll: known feedback must not wait on CI

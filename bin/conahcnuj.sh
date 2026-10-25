@@ -102,7 +102,6 @@ fi
 # up by `git add -A`.
 PR_BODY_SYNCED_FILE="${PR_BODY_SYNCED_FILE:-$(mktemp)}"
 
-
 # Whether the last request_review_from_owner call could confirm the reviewer
 # assignment. log_review_handoff words its final line after it, so the run log
 # never claims a review request the run could not verify.
