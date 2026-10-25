@@ -91,7 +91,6 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | `MOCK_OPENCODE_QUOTA` | 指定モデルを provider の quota/billing 枯渇で失敗させる（`conahcnuj-env-failure` の scenario 3 再現。provider ごと落とす） |
 | `MOCK_OPENCODE_MESSAGE_ONLY` | 作業ツリー無変更 + `.commit-msg` のみのラウンドを再現 |
 | `MOCK_OPENCODE_NOOP` | 指定モデルを no-op（実装を省略した振る舞い）にする |
-| `MOCK_OPENCODE_SHELL_CHECK` | 指定モデルのラウンドで実際に `head` / `tail` / `grep` を実行し、使えなければ失敗させる（`conahcnuj-flow` で issue-drive 中の可用性を検証） |
 | `MOCK_OPENCODE_SESSION_ID` | モックが返す `sessionID` |
 
 ## 内部変数（実装詳細・上書きしない）
