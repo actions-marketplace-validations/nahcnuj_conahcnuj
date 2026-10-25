@@ -406,7 +406,13 @@ test("shell.env: Git for Windows usr/bin is put on PATH so head/tail/grep resolv
   const savedP = process.env.Path
   try {
     process.env.PATH = path.join(os.tmpdir(), "conahcnuj-no-such-dir")
-    delete process.env.Path
+    // On Windows, process.env is case-insensitive, so deleting `Path` would
+    // also remove `PATH`. Keep the (single) variable there instead.
+    if (process.platform !== "win32") {
+      delete process.env.Path
+    } else {
+      process.env.Path = process.env.PATH
+    }
     stage({ BASH_EXE: forward(realBash) })
     const plugin = await freshHooks()
     const output = { env: {} }

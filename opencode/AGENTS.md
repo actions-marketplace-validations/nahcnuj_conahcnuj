@@ -47,4 +47,4 @@
   read ツール、検索は grep/glob ツールを優先すること。シェルコマンドが
   避けられない場合は PowerShell の同等コマンドや node/python を使うこと。
   コマンドが存在するか分からないときは先に確認すること。
-  Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.
+  head, tail, and grep are available (via Git for Windows on PowerShell), but prefer the read and grep tools.
