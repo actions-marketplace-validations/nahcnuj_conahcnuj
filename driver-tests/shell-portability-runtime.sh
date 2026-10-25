@@ -18,7 +18,7 @@ fi
 # The platform the plugin's node process would report.
 node_platform="$(node -e 'process.stdout.write(process.platform)')"
 
-echo "measured: head/tail/grep all available = ${have_all} (platform=${node_platform})"
+echo "measured: head/tail/grep all available = ${have_all} (platform=${node_platform})" >&2
 
 # Sanity: on a Unix platform the tools must be present. On Windows the
 # conahcnuj plugin puts Git for Windows' usr/bin on PATH precisely so the
@@ -40,4 +40,4 @@ grep -q "process.platform" "${REPO}/plugins/gh-app-token.ts" || {
   exit 1
 }
 
-echo "shell-portability runtime measurement done"
+echo "shell-portability runtime measurement done" >&2
