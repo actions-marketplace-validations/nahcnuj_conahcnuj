@@ -28,7 +28,7 @@ test_opencode_build_prompt() {
   [[ "${prompt}" == *"Issue: Issue title"* ]]
   [[ "${prompt}" == *"Issue body"* ]]
   [[ "${prompt}" == *"extra ctx"* ]]
-  [[ "${prompt}" == *"Commit your changes with `git vc`"* ]]
+  [[ "${prompt}" == *"Do NOT create any commits"* ]]
   [[ "${prompt}" == *".commit-msg"* ]]
   # Follow-up rounds keep the existing branch: no branch-name instruction.
   [[ "${prompt}" != *".branch-name"* ]]
@@ -38,7 +38,7 @@ test_opencode_build_prompt() {
   # the task itself and answered with a commit message instead of code.
   [[ "${prompt}" == *"to the owner's approval"* ]] || { echo "FAIL: the prompt does not state what the run is for"; exit 1; }
   [[ "${prompt}" == *"Your part is the change in the working tree"* ]] || { echo "FAIL: the prompt does not name the working-tree change as the agent's part"; exit 1; }
-  [[ "${prompt}" == *"The driver names the branch, creates the pull request and the review request"* ]] || { echo "FAIL: the prompt does not say the driver owns everything that needs GitHub"; exit 1; }
+  [[ "${prompt}" == *"The driver names the branch and creates the commit, the push, the pull request and the review request"* ]] || { echo "FAIL: the prompt does not say the driver owns everything that needs GitHub"; exit 1; }
   [[ "${prompt}" == *"gh pr create"* ]] && { echo "FAIL: the prompt enumerates commands the agent must not run"; exit 1; }
   [[ "${prompt}" == *"counts as no work"* ]] && { echo "FAIL: the prompt lectures the agent about what it may not answer with"; exit 1; }
   echo "opencode_build_prompt passed"
@@ -85,7 +85,7 @@ test_opencode_build_handoff_prompt() {
   [[ "${prompt}" == *".commit-msg"* ]]
   # The handoff carries the same short statement of the division of labour.
   [[ "${prompt}" == *"Your part is the change in the working tree"* ]] || { echo "FAIL: the handoff prompt does not name the working-tree change as the agent's part"; exit 1; }
-  [[ "${prompt}" == *"The driver names the branch, creates the pull request and the review request"* ]] || { echo "FAIL: the handoff prompt does not say the driver owns everything that needs GitHub"; exit 1; }
+  [[ "${prompt}" == *"The driver names the branch and creates the commit"* ]] || { echo "FAIL: the handoff prompt does not say the driver owns everything that needs GitHub"; exit 1; }
   echo "opencode_build_handoff_prompt passed"
 }
 
