@@ -376,6 +376,28 @@ EOF
   echo "render command grouped in github actions passed"
 }
 
+test_command_grouped_streaming_in_github_actions() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command that streams under GitHub Actions: the group opens on the first
+  # sighting (running) and closes once the command finishes, so the partial
+  # output and the verdict stay inside the collapsible group.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_gs","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"cat tracked.txt"},"output":"one\ntwo\n"},"title":"cat tracked.txt"}}
+{"type":"tool_use","part":{"id":"prt_gs","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker opens on first sighting"
+  assert_contains "${out}" "  one" "partial output is inside the group"
+  assert_contains "${out}" "  three" "tail is inside the group"
+  assert_contains "${out}" "✅ cat tracked.txt" "verdict is inside the group"
+  assert_contains "${out}" "::endgroup::" "group is closed at the verdict"
+  [[ "$(printf '%s\n' "${out}" | grep -c '::group::')" == "1" ]] || fail "group opened more than once" "${out}"
+  rm -rf "${tmp}"
+  echo "render command grouped streaming in github actions passed"
+}
+
 test_command_not_grouped_outside_github_actions() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -604,6 +626,7 @@ test_tool_glob_reports_pattern_and_results
 test_command_streams_as_it_prints
 test_command_running_has_no_verdict_yet
 test_command_grouped_in_github_actions
+test_command_grouped_streaming_in_github_actions
 test_command_not_grouped_outside_github_actions
 test_streamed_text_prints_only_the_tail
 test_stream_snapshot_older_than_printed
