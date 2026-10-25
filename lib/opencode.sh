@@ -219,13 +219,18 @@ opencode_round_is_rate_limited() {
 # A session handoff reuses the conversation the first prompt already carried
 # the collected context in, so only the fresh-prompt branch below gets it.
 opencode_run() {
-  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}" collected_context="${8:-}"
+  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}" collected_context="${8:-}" prompt_override="${9:-}"
   local prompt
   OPENCODE_ROUND_ENVIRONMENT="false"
   OPENCODE_ROUND_MODEL_GONE="false"
   OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
   OPENCODE_ROUND_RATE_LIMITED="false"
-  if [[ -n "${session_id}" ]]; then
+  # A caller may supply the whole prompt (the feedback reply round does): it
+  # then takes precedence over both the hand-off and the implementation prompt
+  # so the reply instructions and thread ids actually reach the model.
+  if [[ -n "${prompt_override}" ]]; then
+    prompt="${prompt_override}"
+  elif [[ -n "${session_id}" ]]; then
     prompt="$(opencode_build_handoff_prompt "${previous_model:-unknown}")"
   else
     prompt="$(opencode_build_prompt "${issue_title}" "${issue_body}" "${extra_context}" "${collected_context}")"
