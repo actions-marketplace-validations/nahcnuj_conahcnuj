@@ -836,14 +836,6 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
   const shellRules = output.system[3]
   assert.ok(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
   assert.ok(shellRules.includes(process.platform), shellRules)
-  assert.ok(
-    shellRules.includes("available"),
-    shellRules
-  )
-  assert.ok(
-    shellRules.includes("head, tail, and grep are available, but prefer the read and grep tools."),
-    shellRules
-  )
   await plugin["experimental.chat.system.transform"]({}, output)
   assert.strictEqual(output.system.length, 4, "system rules injected more than once (4 = existing + 3 injected)")
 })

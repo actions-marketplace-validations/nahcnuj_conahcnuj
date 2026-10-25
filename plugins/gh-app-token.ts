@@ -419,32 +419,19 @@ async function injectShellEnv(
     env[`GIT_CONFIG_VALUE_${i}`] = value
   })
 
-  // The default shell on Windows is PowerShell, which has no `head`/`tail`/
-  // `grep` of its own. Git for Windows ships them in its usr/bin directory,
-  // so put that directory on PATH to make them usable there (issue: make
-  // head/tail/grep available in PowerShell too). The usr/bin directory is
-  // only added when it actually exists, so this is a no-op elsewhere.
-  //
-  // PATH is a platform-native value: path.join gives the backslash spelling
-  // on Windows (PowerShell/cmd only resolve native paths reliably) and the
-  // usual slash spelling on Unix.
+  // PowerShell has no head/tail/grep of its own; Git for Windows ships them
+  // in usr/bin, so put that directory on PATH there. No-op when absent.
   const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
   const usrBin = path.join(gitRoot, "usr", "bin")
-  const current =
-    env.PATH || env.Path || process.env.PATH || process.env.Path || ""
-  // Compare entries ignoring slash direction, case and a trailing separator,
-  // so an already-present usr/bin in another spelling is not duplicated.
-  const normalize = (value: string) =>
-    value.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
-  if (
-    fs.existsSync(usrBin) &&
-    !current
-      .split(path.delimiter)
-      .some((entry) => normalize(entry) === normalize(usrBin))
-  ) {
-    const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
-    env.PATH = next
-    env.Path = next
+  if (fs.existsSync(usrBin)) {
+    const current = env.PATH || env.Path || process.env.PATH || process.env.Path || ""
+    const norm = (v: string) => v.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+    const present = current.split(path.delimiter).some((e) => norm(e) === norm(usrBin))
+    if (!present) {
+      const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
+      env.PATH = next
+      env.Path = next
+    }
   }
 }
 
