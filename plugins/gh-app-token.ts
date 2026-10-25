@@ -371,7 +371,6 @@ const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
-  "head, tail, and grep are available, but prefer the read and grep tools.",
 ].join(" ")
 
 import {

@@ -29,7 +29,8 @@ case "${node_platform}" in
     [ "${have_all}" = "1" ] || { echo "FAIL: head/tail/grep missing on ${node_platform}" >&2; exit 1; }
     ;;
   *)
-    echo "SKIP: unsupported platform ${node_platform}"
+    echo "FAIL: unsupported platform ${node_platform}" >&2
+    exit 1
     ;;
 esac
 

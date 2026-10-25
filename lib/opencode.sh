@@ -308,8 +308,16 @@ opencode_run() {
       head_out="$(printf 'alpha\nbeta\ngamma\n' | head -n 1)"
       tail_out="$(printf 'alpha\nbeta\ngamma\n' | tail -n 1)"
       grep_out="$(printf 'alpha\nbeta\ngamma\n' | grep beta)"
-      if [[ "${head_out}" != "alpha" || "${tail_out}" != "gamma" || "${grep_out}" != "beta" ]]; then
-        echo "opencode: head/tail/grep are not usable in the round shell (head=${head_out} tail=${tail_out} grep=${grep_out})" >&2
+      if [[ "${head_out}" != "alpha" ]]; then
+        echo "opencode: head is not usable in the round shell (head=${head_out})" >&2
+        return 1
+      fi
+      if [[ "${tail_out}" != "gamma" ]]; then
+        echo "opencode: tail is not usable in the round shell (tail=${tail_out})" >&2
+        return 1
+      fi
+      if [[ "${grep_out}" != "beta" ]]; then
+        echo "opencode: grep is not usable in the round shell (grep=${grep_out})" >&2
         return 1
       fi
       echo "opencode: head/tail/grep usable in the round shell" >&2
