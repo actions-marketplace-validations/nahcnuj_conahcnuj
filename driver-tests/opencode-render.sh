@@ -178,6 +178,29 @@ EOF
   echo "render tool timeout passed"
 }
 
+test_tool_no_output_sentinel_suppressed() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"true"},"output":"(no output)","metadata":{"exit":0},"title":"true"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+  assert_not_contains "${out}" "(no output)" "sentinel is not a real no-op output"
+  assert_contains "${out}" "✅ true" "empty command still succeeds"
+  rm -rf "${tmp}"
+  echo "render tool no-output sentinel passed"
+}
+
+test_tool_no_output_real_print_kept() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"echo"},"output":"(no output)\n","metadata":{"exit":0},"title":"echo"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+  assert_contains "${out}" "  (no output)" "real (no output) print is kept"
+  rm -rf "${tmp}"
+  echo "render tool real no-output kept"
+}
+
 test_tool_error_status() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -520,6 +543,8 @@ test_text_and_reasoning
 test_tool_success
 test_tool_failure_exit_code
 test_tool_timeout_is_failure
+test_tool_no_output_sentinel_suppressed
+test_tool_no_output_real_print_kept
 test_tool_error_status
 test_tool_title_fallback
 test_tool_read_reports_in_one_line
