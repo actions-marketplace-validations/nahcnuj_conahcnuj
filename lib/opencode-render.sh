@@ -276,7 +276,10 @@ render_fields() {
   done < <(printf '%s\n' "${1}" | awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
   # opencode's "(no output)" sentinel is not a real command output: drop it (and
   # any blank lines it leaves behind) so a command that printed nothing shows
-  # nothing. Keep a genuine "(no output)" print (trailing newline present).
+  # nothing. Only the first line can be the sentinel -- either the whole output
+  # (no trailing newline) or the opener of a timed-out command's
+  # <shell_metadata> block. A genuine "(no output)" -- printed with its own
+  # trailing newline, or appearing after other real output -- is kept.
   local _raw="${F[output]}" _result="" _line _first=1
   local -a _lines=() _keep=()
   while IFS= read -r _line || [[ -n "${_line}" ]]; do
@@ -284,7 +287,7 @@ render_fields() {
   done <<< "${_raw}"
   local _n="${#_lines[@]}" _i _j
   for ((_i = 0; _i < _n; _i++)); do
-    if [[ "${_lines[$_i]}" == "(no output)" ]]; then
+    if [[ "${_i}" -eq 0 && "${_lines[$_i]}" == "(no output)" ]]; then
       _j=$((_i + 1))
       while ((_j < _n)) && [[ -z "${_lines[$_j]// }" ]]; do
         _j=$((_j + 1))
