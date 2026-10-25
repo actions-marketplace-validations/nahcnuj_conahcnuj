@@ -420,20 +420,22 @@ async function injectShellEnv(
     env[`GIT_CONFIG_VALUE_${i}`] = value
   })
 
-  // The default shell on Windows is PowerShell, which has no `head`/`tail`/
+  // On Windows the default shell is PowerShell, which has no `head`/`tail`/
   // `grep` of its own. Git for Windows ships them in its usr/bin directory,
   // so put that directory on PATH to make them usable there (issue: make
-  // head/tail/grep available in PowerShell too). The usr/bin directory is
-  // only added when it actually exists, so this is a no-op elsewhere.
-  const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
-  const usrBin = `${gitRoot}/usr/bin`
-  if (fs.existsSync(usrBin)) {
-    const current =
-      env.PATH || env.Path || process.env.PATH || process.env.Path || ""
-    if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
-      const next = current ? `${usrBin};${current}` : usrBin
-      env.PATH = next
-      env.Path = next
+  // head/tail/grep available in PowerShell too).
+  if (process.platform === "win32") {
+    const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/"))).replace(/\/+$/, "")
+    const usrBin = gitRoot ? `${gitRoot}/usr/bin` : "/usr/bin"
+    if (fs.existsSync(usrBin)) {
+      const current = env.PATH || env.Path || ""
+      if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
+        const next = current ? `${usrBin};${current}` : usrBin
+        env.PATH = next
+        if (env.Path !== undefined) {
+          env.Path = next
+        }
+      }
     }
   }
 }
