@@ -1555,10 +1555,13 @@ drive() {
       # "Addressed the review feedback" comment: the in-thread replies are how
       # the reviewer learns what happened. Because the fingerprint drops
       # bot-authored comments, those replies never look like fresh feedback.
-      local code_help="Address the pull request review feedback. Make the code changes, commit them with \`git vc\`, and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers). Then reply in each unresolved review thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass).
+      local phase1_ok="false"
+      local code_help="Address the pull request review feedback. Make the code changes, commit them with \`git vc\`, and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers). Do NOT reply to the review threads yet: the driver commits and pushes this fix first and only then runs a separate step that asks you to post the replies, so replying now would comment before the fix is pushed. Do not request review yourself (the driver does that after the checks pass).
 
 ${summary}"
-      if ! implement "${title}" "${body}" "${code_help}" "${base}"; then
+      if implement "${title}" "${body}" "${code_help}" "${base}"; then
+        phase1_ok="true"
+      else
         echo "No working-tree change was produced for this feedback; not posting thread replies because there is no pushed fix to report." >&2
       fi
       # The agent is asked to commit with `git vc` itself; the driver keeps
@@ -1570,6 +1573,22 @@ ${summary}"
       # run.
       if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
+      fi
+      # Phase 2: post the thread replies now that the fix (if any) is pushed.
+      # Only when phase 1 completed (a failed round has nothing to report) and
+      # there is at least one unresolved thread to answer. A single model (the
+      # one that did phase 1) posts the replies: continuing its session keeps
+      # the context, and if it fails the fix is still on the branch, so the
+      # driver moves on instead of retrying other models (which would post the
+      # same replies again).
+      if [[ "${phase1_ok}" == "true" && -n "${OPENCODE_LAST_MODEL:-}" && "${summary}" == *"REVIEW THREADS (unresolved):"* ]]; then
+        local reply_prompt reply_timeout
+        reply_prompt="The fix for this review feedback has been committed and pushed. Now reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not change code, do not write .commit-msg, and do not request review yourself (the driver does that after the checks pass).
+
+${summary}"
+        reply_timeout=$((MAX_DURATION - ($(date +%s) - START_TIME) - 30))
+        (( reply_timeout > 0 )) || reply_timeout=1
+        CONAHCNUJ_RUN_TIMEOUT_SECONDS="${reply_timeout}" opencode_run "${title}" "${body}" "$(pwd)" "${OPENCODE_LAST_MODEL}" "" "${OPENCODE_SESSION_ID:-}" "" "" "${reply_prompt}" || true
       fi
       rm -f .commit-msg
       # Verify the non-reviewer constraints again before handing the PR back:
