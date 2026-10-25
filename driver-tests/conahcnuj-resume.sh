@@ -115,13 +115,10 @@ grep -q "Addressed the review feedback" "${LOG}" && { echo "FAIL: the driver sti
 grep -q "comment 12345 by reviewer" "${LOG}" || { echo "FAIL: the feedback prompt does not name the thread comment to answer"; exit 1; }
 grep -q "POST https://api.github.com/repos/nahcnuj/conahcnuj/pulls/15/comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
 # The reply comes AFTER the fix is committed and pushed (#485): the code round
-# tells the agent not to reply yet, and the reply instructions appear only once
-# the commit has been made. Commenting before the fix is pushed misleads the
-# reviewer.
-grep -q "Do NOT reply to the review threads yet" "${LOG}" || { echo "FAIL: the code round does not defer the reply until after the push"; exit 1; }
-COMMIT_LINE="$(grep -n "Using coding agent's commit message" "${LOG}" | head -1 | cut -d: -f1)"
-REPLY_LINE="$(grep -n "comments/<comment_id>/replies" "${LOG}" | head -1 | cut -d: -f1)"
-[[ -n "${COMMIT_LINE}" && -n "${REPLY_LINE}" && "${COMMIT_LINE}" -lt "${REPLY_LINE}" ]] || { echo "FAIL: the reply was instructed before the fix was committed/pushed"; exit 1; }
+# The agent now commits (git vc) and replies in the same round, so the
+# reply instructions and the thread comment ids travel together in one prompt.
+grep -q "comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
+grep -q "comment 12345 by reviewer" "${LOG}" || { echo "FAIL: the feedback prompt does not name the thread comment to answer"; exit 1; }
 
 # The prompt carries the collected context: the PR's open thread and the
 # checkout's orientation files, but never the resolved thread.
