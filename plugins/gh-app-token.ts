@@ -366,7 +366,7 @@ const SHELL_PLATFORM =
 const SHELL_NAME = process.platform === "win32" ? "PowerShell" : "a Unix shell"
 const HEAD_TAIL_GREP_AVAILABLE =
   process.platform === "win32"
-    ? "`head`, `tail`, and `grep` are not available as commands here, so do not use them in shell commands (they only cause repeated failures there)"
+    ? "`head`, `tail`, and `grep` are available as commands here (provided by Git for Windows), so you may use them in shell commands"
     : "`head`, `tail`, and `grep` are available as commands here"
 const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
@@ -419,6 +419,25 @@ async function injectShellEnv(
     env[`GIT_CONFIG_KEY_${i}`] = key
     env[`GIT_CONFIG_VALUE_${i}`] = value
   })
+
+  // On Windows the default shell is PowerShell, which has no `head`/`tail`/
+  // `grep` of its own. Git for Windows ships them in its usr/bin directory,
+  // so put that directory on PATH to make them usable there (issue: make
+  // head/tail/grep available in PowerShell too).
+  if (process.platform === "win32") {
+    const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
+    const usrBin = `${gitRoot}/usr/bin`
+    if (fs.existsSync(usrBin)) {
+      const current = env.PATH || env.Path || ""
+      if (!current.toLowerCase().includes(usrBin.toLowerCase())) {
+        const next = current ? `${usrBin};${current}` : usrBin
+        env.PATH = next
+        if (env.Path !== undefined) {
+          env.Path = next
+        }
+      }
+    }
+  }
 }
 
 interface SeenModel {

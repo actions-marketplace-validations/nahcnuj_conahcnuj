@@ -110,7 +110,7 @@ async function main() {
   assert(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
   assert(shellRules.includes(process.platform), `rules must name the platform: ${shellRules}`)
   assert(
-    shellRules.includes(process.platform === "win32" ? "not available" : "available"),
+    shellRules.includes("available"),
     `rules must state whether head/tail/grep exist: ${shellRules}`
   )
   // Injecting twice must stay idempotent (the rules are pushed once).

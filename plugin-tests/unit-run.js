@@ -374,7 +374,7 @@ test("shell.env: publishes the App identity, the alias.vc wrapper and nothing el
   assert.strictEqual(fetchCalls.length, 0)
   for (const key of Object.keys(output.env)) {
     assert.ok(
-      /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/.test(key),
+      /^(GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)|PATH|Path)$/.test(key),
       `unexpected shell env key: ${key}`
     )
   }
@@ -721,7 +721,7 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
   assert.ok(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
   assert.ok(shellRules.includes(process.platform), shellRules)
   assert.ok(
-    shellRules.includes(process.platform === "win32" ? "not available" : "available"),
+    shellRules.includes("available"),
     shellRules
   )
   assert.ok(
