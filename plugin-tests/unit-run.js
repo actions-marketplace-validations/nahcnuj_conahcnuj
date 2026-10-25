@@ -436,21 +436,14 @@ test("shell.env: head/tail/grep run in the real PowerShell with the injected PAT
     // opencode would hand the tool: process.env merged with the hook output.
     const childEnv = { ...process.env, ...output.env }
     if (process.platform === "win32") {
-      const powershell = [
-        path.join(
-          process.env.ProgramFiles || "C:\\Program Files",
-          "PowerShell",
-          "7",
-          "pwsh.exe"
-        ),
-        path.join(
-          process.env.SystemRoot || "C:\\Windows",
-          "System32",
-          "WindowsPowerShell",
-          "v1.0",
-          "powershell.exe"
-        ),
-      ].find((candidate) => fs.existsSync(candidate))
+      // Fixed, trusted install locations only: deriving these from
+      // process.env would make the path depend on untrusted input (CodeQL).
+      let powershell = null
+      if (fs.existsSync("C:\\Program Files\\PowerShell\\7\\pwsh.exe")) {
+        powershell = "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+      } else if (fs.existsSync("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")) {
+        powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      }
       assert.ok(powershell, "no real PowerShell found on Windows")
       const script = [
         '$lines = "alpha`nbeta`ngamma"',

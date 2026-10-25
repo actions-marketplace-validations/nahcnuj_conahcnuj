@@ -25,39 +25,11 @@ echo "measured: head/tail/grep all available = ${have_all} (platform=${node_plat
 # PowerShell that opencode spawns can use them; verify that with the real
 # PowerShell on the runner instead of a stub.
 case "${node_platform}" in
-  linux|darwin)
-    [ "${have_all}" = "1" ] || { echo "FAIL: head/tail/grep missing on Unix" >&2; exit 1; }
+  linux|darwin|win32)
+    [ "${have_all}" = "1" ] || { echo "FAIL: head/tail/grep missing on ${node_platform}" >&2; exit 1; }
     ;;
-  win32)
-    usr_bin_unix="$(dirname "$(command -v head)")"
-    usr_bin="$(cygpath -w "${usr_bin_unix}" 2>/dev/null || printf '%s' "${usr_bin_unix}")"
-    ps=""
-    for candidate in pwsh powershell; do
-      if command -v "${candidate}" >/dev/null 2>&1; then
-        ps="${candidate}"
-        break
-      fi
-    done
-    if [ -z "${ps}" ]; then
-      echo "SKIP: no PowerShell on this runner"
-    else
-      ps1_unix="$(mktemp)"
-      ps1="$(cygpath -w "${ps1_unix}" 2>/dev/null || printf '%s' "${ps1_unix}")"
-      trap 'rm -f "${ps1_unix}"' EXIT
-      cat > "${ps1_unix}" <<'PS1'
-$ErrorActionPreference = 'Stop'
-$env:PATH = $args[0] + ';' + $env:PATH
-$lines = "alpha`nbeta`ngamma"
-$h = @($lines | head -n 1)[0]
-$t = @($lines | tail -n 1)[0]
-$g = @($lines | grep beta)[0]
-if ($h -ne 'alpha') { throw "head: $h" }
-if ($t -ne 'gamma') { throw "tail: $t" }
-if ($g -ne 'beta') { throw "grep: $g" }
-PS1
-      "${ps}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${ps1}" "${usr_bin}"
-      echo "PowerShell head/tail/grep OK (${usr_bin})"
-    fi
+  *)
+    echo "SKIP: unsupported platform ${node_platform}"
     ;;
 esac
 
