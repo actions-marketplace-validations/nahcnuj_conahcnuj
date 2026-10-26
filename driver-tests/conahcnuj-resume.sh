@@ -102,6 +102,10 @@ APPROVED_LINE="$(grep -n "Ready to merge" "${LOG}" | head -1 | cut -d: -f1)"
 ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #15" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${APPROVED_LINE}" && "${ASSIGNED_LINE}" -lt "${APPROVED_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" || { echo "FAIL: review feedback was not acted on"; exit 1; }
+# The agent commits the fix with `git vc` in the same round; the driver must
+# see the new commit and not commit the work a second time.
+grep -q "completed the work and committed it" "${LOG}" || { echo "FAIL: the agent's commit was not detected"; exit 1; }
+grep -q "Using coding agent's commit message" "${LOG}" && { echo "FAIL: the driver committed the agent's work again"; exit 1; }
 # Known feedback must be addressed before the run waits on CI (#219): a PR with
 # open threads (or required conversation resolution) never reaches the
 # constraints until the threads are answered, so polling first only stalls.

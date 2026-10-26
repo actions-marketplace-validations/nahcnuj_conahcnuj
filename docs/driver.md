@@ -35,7 +35,8 @@ bash bin/conahcnuj.sh <番号>   # インストールせずリポジトリ内か
    deprecated / 削除 / 利用不可で落ちた場合は provider ではなくそのモデルだけを
    `gh-app/missing-models` に記録し、以後のラウンドと次回実行ではラウンドを
    消費せずスキップする（#209）
-2. エージェントが書いた `.commit-msg` で Verified コミットを作成し、PR を開く。
+2. エージェントが `git vc` で Verified コミットを作成し、ドライバが PR を開く。コミットし忘れた
+   変更がある場合だけ、ドライバが `.commit-msg` を安全網としてコミットする。
    issue の進捗ファイル `TODO.md`（生存期間は issue 毎）がある間は PR を **draft**
    として開き、レビュー依頼をしない。エージェントが作業中に `TODO.md` を更新し、
    完了して ready to merge するときに削除すると、ドライバが draft を解除して
@@ -62,11 +63,12 @@ bash bin/conahcnuj.sh <番号>   # インストールせずリポジトリ内か
    戻って mergeable であること）→ owner へ再依頼 → 承認までポーリング。既知の
    レビュー意見は制約のポーリングを待たずに**先に**対応する
    （未解決スレッドが残る PR は、スレッドが片付くまで制約を満たせないので、
-   先に待つと時間予算を無駄にするだけ。#219）。レビュースレッドへの返信は
-   エージェント自身が行う。ただし返信は修正を Verified コミットして push した
-   **後**に行う（先に「直しました」とコメントすると、まだ push されていない
-   修正をレビュアーに誤認させるため。#485）。その返信は bot 著者として
-   fingerprint から除外されるので自分の返信でループしない
+    先に待つと時間予算を無駄にするだけ。#219）。レビュースレッドへの返信は
+    エージェント自身が行う。エージェントは修正を `git vc` でコミットしてから
+    **同じラウンドで**返信する（`git vc` は GitHub 上にコミットを作るので、
+    先に「直しました」とコメントして未 push の修正をレビュアーに誤認させる
+    ことはない。#485）。返信は bot 著者として fingerprint から除外されるので
+    自分の返信でループしない
 5. 異常終了時（タイムアウト・全モデル失敗・想定外エラー等、非 0 で終わる場合）は、
    対象リポジトリへバグ報告 issue を自動作成する（終了コード・対象番号・ブランチ・
    HEAD・実行ログ末尾を含む）。ただし **Ctrl-C 等による利用者からの中断**
@@ -92,9 +94,10 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 全ラウンド共通で、コーディングエージェントには次の一段落だけが伝えられます:
 
 > This run takes the issue (or the pull request being resumed) to the owner's
-> approval. Your part is the change in the working tree: implement it and run
-> the repository's own validation. The driver names the branch and creates the
-> commit, the push, the pull request and the review request once you are done.
+> approval. Your part is the change in the working tree and the commit:
+> implement it, run the repository's own validation, and commit with `git vc`.
+> The driver names the branch, creates the pull request and the review request
+> once you are done.
 
 契約に足さない代わりに、決定論的に収集できる情報は **データとして** 別枠で
 同梱されます（`Collected context:` ブロック。指示ではなく材料を渡すので、
@@ -120,7 +123,7 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 
 | ファイル | 内容 |
 | --- | --- |
-| `.commit-msg` | コミットメッセージ。**1 行・72 文字以内**。無い場合はドライバはコミットしない |
+| `.commit-msg` | コミットし忘れた変更があるときだけ書くコミットメッセージ。**1 行・72 文字以内**。無い場合、ドライバは未コミット変更をコミットしない（`git vc` 済みなら不要） |
 | `.branch-name` | フィーチャーブランチ名。無い場合はドライバが `conahcnuj/<番号>-<スラッグ>` で採番 |
 | `TODO.md` | issue ごとの進捗ファイル。着手で作成・作業中に更新・完了（ready to merge）で削除する。**書式は問わない**。残っていると PR が draft のままでレビュー依頼されない |
 
@@ -155,7 +158,7 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 | `CONAHCNUJ_POLL_CONDITIONS_MIN` / `_MAX` | `15` / `300` | 制約ポーリングの間隔幅（秒・ジッター付き） |
 | `CONAHCNUJ_COMMIT_MODEL` | 未設定 | コミット trailer（`Co-Authored-By: <値>`。プラグインが `provider (model/effort)` を設定する） |
 | `CONAHCNUJ_OPENCODE_LOG_LEVEL` | `WARN` | opencode の `--log-level`（デバッグは `DEBUG`） |
-| `CONAHCNUJ_OWN_WORKFLOWS` | `Issue auto-drive,Owner-approved auto-merge` | 制約チェックから除外する自 workflow（デッドロック防止） |
+| `CONAHCNUJ_OWN_WORKFLOWS` | `Issue auto-drive,Owner-approved auto-merge` | 制約チェックから除外する自 workflow（デッドロック防止）。空で無効。issue driver の job 名（`Attempt to resolve issue`）も除外し、reusable workflow として他リポジトリから呼ばれ workflow 名が呼び出し側になる場合も自身を待たない |
 | `CONAHCNUJ_CONTEXT_FILES` | `README.md AGENTS.md` | プロンプトへ同梱する作業ツリーファイル（スペース区切り。空で無効） |
 | `CONAHCNUJ_MISSING_MODELS_FILE` | `<gh-app>/missing-models` | 永久に使えないモデルの記録先（ラウンド前に読み、判明したモデルを追記） |
 | `CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS` | `1` | provider の rate limit を検知してラウンドを打ち切る監視間隔（秒） |
