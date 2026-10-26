@@ -495,7 +495,7 @@ render_marked() {
   local value="${1:-}" marker="${2:-}" line
   [[ -n "${value}" ]] || return 0
   while IFS= read -r line; do
-    printf '  %s %s\n' "${marker}" "${line}"
+    printf '%s %s\n' "${marker}" "${line}"
   done <<< "${value}"
 }
 
@@ -690,7 +690,12 @@ render_block_tool() {
     else
       printf '✅ %s\n' "${label}"
       if [[ -n "${F[diff]}" ]]; then
+        # The diff is its own structured text (unified diff): print it without
+        # the block's indent so it stays copy-pasteable as a real diff.
+        local _saved_indent="${INDENT}"
+        INDENT=""
         render_stream "${F[diff]}"
+        INDENT="${_saved_indent}"
       elif [[ "${tool}" == "edit" && ( -n "${F[oldstr]}" || -n "${F[newstr]}" ) ]]; then
         render_marked "${F[oldstr]}" "-"
         render_marked "${F[newstr]}" "+"

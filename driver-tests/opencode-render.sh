@@ -286,9 +286,14 @@ test_tool_edit_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"one","newString":"ONE"},"output":"edited","metadata":{"diff":"@ -1 +1 @@\n-one\n+ONE"}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line with the file"
-  assert_contains "${out}" "  @ -1 +1 @@" "the diff is under the verdict line"
-  assert_contains "${out}" "  -one" "removed line in the diff"
-  assert_contains "${out}" "  +ONE" "added line in the diff"
+  # The diff is not indented: it stays at column 0 so it reads (and copies) as
+  # a real diff instead of being nudged right by the block indent.
+  assert_contains "${out}" $'✅ Edit tracked.txt\n@ -1 +1 @@' "the diff starts unindented under the verdict line"
+  assert_contains "${out}" $'\n-one\n' "removed line in the diff"
+  assert_contains "${out}" $'\n+ONE' "added line in the diff"
+  assert_not_contains "${out}" "  @ -1 +1 @@" "the diff is not indented"
+  assert_not_contains "${out}" "  -one" "removed line is not indented"
+  assert_not_contains "${out}" "  +ONE" "added line is not indented"
   rm -rf "${tmp}"
   echo "render edit diff passed"
 }
@@ -301,9 +306,11 @@ test_tool_edit_stitched_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"two","newString":"TWO\nmore"},"output":"edited","metadata":{"exit":0}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line"
-  assert_contains "${out}" "  - two" "the old text shows as removed"
-  assert_contains "${out}" "  + TWO" "the new text shows as added"
-  assert_contains "${out}" "  + more" "the second line of the new text"
+  assert_contains "${out}" $'\n- two\n' "the old text shows as removed, unindented"
+  assert_contains "${out}" $'\n+ TWO\n' "the new text shows as added, unindented"
+  assert_contains "${out}" $'\n+ more' "the second line of the new text"
+  assert_not_contains "${out}" "  - two" "the stitched diff is not indented"
+  assert_not_contains "${out}" "  + TWO" "the stitched added line is not indented"
   rm -rf "${tmp}"
   echo "render edit stitched diff passed"
 }
