@@ -245,19 +245,16 @@ opencode_run() {
   # child shells regardless of the plugin's state (#1311).
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
     : "${GH_TOKEN:=test-token}"
-    export GH_TOKEN
   else
     if [[ -z "${GH_TOKEN:-}" ]]; then
       local fetched_token
       fetched_token="$(bash "${OPENCODE_LIB_DIR}/../gh-app/get-token.sh" 2>/dev/null || true)"
       if [[ -n "${fetched_token}" ]]; then
         GH_TOKEN="${fetched_token}"
-        export GH_TOKEN
       fi
-    else
-      export GH_TOKEN
     fi
   fi
+  export GH_TOKEN
 
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
     if [[ -n "${session_id}" ]]; then
