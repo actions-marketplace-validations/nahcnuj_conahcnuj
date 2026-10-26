@@ -26,3 +26,4 @@ grep -q "まず自分がどの OS" "${ROOT}/opencode/AGENTS.md" || {
   echo "FAIL: opencode/AGENTS.md does not tell the model to identify its environment first" >&2
   exit 1
 }
+
