@@ -236,6 +236,26 @@ opencode_run() {
 
   echo "opencode: trying model ${model}" >&2
 
+  # Make the App installation token available to the coding agent's shells. The
+  # plugin injects GH_TOKEN through its shell.env hook when installed, but a
+  # driver run (CI or a machine without the plugin) has no such injection, so
+  # replies to review threads (which the agent posts itself) and any other
+  # GitHub API call the agent makes would see an empty token. Export it here
+  # from the same source the driver uses, so it is inherited by opencode's
+  # child shells regardless of the plugin's state (#1311).
+  if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
+    : "${GH_TOKEN:=test-token}"
+  else
+    if [[ -z "${GH_TOKEN:-}" ]]; then
+      local fetched_token
+      fetched_token="$(bash "${OPENCODE_LIB_DIR}/../gh-app/get-token.sh" 2>/dev/null || true)"
+      if [[ -n "${fetched_token}" ]]; then
+        GH_TOKEN="${fetched_token}"
+      fi
+    fi
+  fi
+  export GH_TOKEN
+
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
     if [[ -n "${session_id}" ]]; then
       printf 'opencode run --format json --model %s --dir %s --session %s %s\n' "${model}" "${workdir}" "${session_id}" "${prompt}"
