@@ -405,6 +405,29 @@ EOF
   echo "render command grouped streaming in github actions passed"
 }
 
+test_command_group_closed_at_eof_in_github_actions() {
+  local tmp out groups endgroups
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command still running when the event stream ends (the round was cut off,
+  # opencode exited mid-command, ...) must not leave its log group open: an
+  # unclosed `::group::` makes GitHub Actions hide everything after it, which
+  # is how the trailing ✅/❌️ lines went missing (#491).
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"id":"prt_ge","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"slow build"},"output":"compiling"},"title":"slow build"}}' |
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ slow build" "the unterminated command opens its group"
+  assert_contains "${out}" "  compiling" "its partial output is on the log"
+  assert_contains "${out}" "::endgroup::" "the dangling group is closed at end of stream"
+  groups="$(printf '%s\n' "${out}" | grep -c '::group::' || true)"
+  endgroups="$(printf '%s\n' "${out}" | grep -c '::endgroup::' || true)"
+  [[ "${groups}" == "${endgroups}" ]] || fail "group not balanced (${groups} open / ${endgroups} close)" "${out}"
+  # The end marker has to stand on its own log line; glued to partial output
+  # GitHub Actions does not recognise it.
+  [[ "$(printf '%s\n' "${out}" | tail -n 1)" == "::endgroup::" ]] || fail "::endgroup:: is not the last line" "${out}"
+  rm -rf "${tmp}"
+  echo "render command group closed at eof in github actions passed"
+}
+
 test_command_not_grouped_outside_github_actions() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -667,6 +690,7 @@ test_command_streams_as_it_prints
 test_command_running_has_no_verdict_yet
 test_command_grouped_in_github_actions
 test_command_grouped_streaming_in_github_actions
+test_command_group_closed_at_eof_in_github_actions
 test_command_not_grouped_outside_github_actions
 test_command_grouped_in_github_actions_with_one
 test_command_not_grouped_with_unrecognized_github_actions
