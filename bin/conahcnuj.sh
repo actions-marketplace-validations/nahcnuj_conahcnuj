@@ -1034,7 +1034,7 @@ persist_missing_model() {
 # base, so a message-only round there stays no work and still falls through to
 # the other models.
 implement() {
-  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider tree_changed model_retried
+  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider tree_changed model_retried head_before head_after committed
   local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   local base_branch="${4:-}"
@@ -1079,10 +1079,16 @@ implement() {
         echo "Session handoff was unavailable after ${previous_model}; ${model} will continue from the working tree." >&2
       fi
       run_failed="false"
+      head_before="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
       if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}" "${COLLECTED_CONTEXT}"; then
         run_failed="true"
       fi
       OPENCODE_USED_MODELS="${OPENCODE_USED_MODELS}${model} "
+      head_after="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
+      committed="false"
+      if [[ -n "${head_after}" && "${head_after}" != "${head_before}" ]]; then
+        committed="true"
+      fi
       wrote_message="false"
       if [[ -s "${workdir}/.commit-msg" ]]; then
         wrote_message="true"
@@ -1090,6 +1096,12 @@ implement() {
       tree_changed="false"
       if workdir_changed "${workdir}"; then
         tree_changed="true"
+      fi
+      if [[ "${committed}" == "true" ]]; then
+        rm -f "${workdir}/.commit-msg"
+        echo "Model ${model} completed the work and committed it." >&2
+        OPENCODE_LAST_MODEL="${model}"
+        return 0
       fi
       if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
         echo "Model ${model} completed the work." >&2
@@ -1583,19 +1595,22 @@ drive() {
       # "Addressed the review feedback" comment: the in-thread replies are how
       # the reviewer learns what happened. Because the fingerprint drops
       # bot-authored comments, those replies never look like fresh feedback.
-      local reply_help="Address the pull request review feedback. First make the code changes and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers), leaving the result in the working tree and writing .commit-msg; the driver commits and pushes it and then CI runs. Only after that, reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass)."
-      if ! implement "${title}" "${body}" "${reply_help}
+      local code_help="Address the pull request review feedback. Make the code changes, commit them with \`git vc\`, and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers). Then reply in each unresolved review thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass).
 
-${summary}" "${base}"; then
+${summary}"
+      if ! implement "${title}" "${body}" "${code_help}" "${base}"; then
         echo "No working-tree change was produced for this feedback; keeping whatever thread replies were already made." >&2
       fi
-      # A round can fail after leaving a partial change and no .commit-msg (a
-      # provider outage mid-round is what filed issue #251). There is nothing
-      # the driver may commit, and refusing must not abort the run: it hands the
-      # PR back to the reviewer below and keeps driving.
+      # The agent is asked to commit with `git vc` itself; the driver only
+      # commits uncommitted changes that still have a .commit-msg as a safety
+      # net. A round can fail after leaving a partial change and no
+      # .commit-msg (a provider outage mid-round is what filed issue #251):
+      # there is nothing the driver may commit, and refusing must not abort the
+      # run.
       if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
       fi
+      rm -f .commit-msg
       # Verify the non-reviewer constraints again before handing the PR back:
       # the fix restarted CI, so the reviewer is only asked once the checks are
       # green again (and the branch still merges), exactly as on the first
@@ -1713,7 +1728,9 @@ start_issue() {
       exit 1
     fi
     branch="$(resolve_agent_branch_name "${owner}" "${repo}" "${default_oid}" "${branch}")"
-    commit_changes
+    if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
+      commit_changes
+    fi
   fi
 
   drive "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}"
