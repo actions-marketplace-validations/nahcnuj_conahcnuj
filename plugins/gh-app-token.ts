@@ -367,8 +367,18 @@ const HEAD_TAIL_GREP_AVAILABLE =
   process.platform === "win32"
     ? "`head`, `tail`, and `grep` are available as commands here (provided by Git for Windows), so you may use them in shell commands"
     : "`head`, `tail`, and `grep` are available as commands here"
+const NULL_DEVICE_AVAILABLE =
+  process.platform === "win32"
+    ? "there is no `/dev/null` device on PowerShell: redirect to `$null` (for example `2>$null`) or pipe to `Out-Null` instead of `>/dev/null` or `2>/dev/null`"
+    : "`/dev/null` is the null device and may be used for redirection"
+const LINE_CONTINUATION_AVAILABLE =
+  process.platform === "win32"
+    ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\)"
+    : "a backslash (\\) continues a command onto the next line"
 const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
+  `Null device: ${NULL_DEVICE_AVAILABLE}.`,
+  `Line continuation: ${LINE_CONTINUATION_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
 ].join(" ")
