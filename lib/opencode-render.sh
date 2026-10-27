@@ -181,6 +181,9 @@ function codepoint(s, i,  j, cp, ch, valid) {
   # needed; caller passes index of the backslash). Returns the code point,
   # or -1 when the escape is not a valid \uXXXX (so the caller can leave
   # it untouched instead of fabricating a code point from non-hex digits).
+  # A truncated escape (fewer than four hex digits before the end of the
+  # string) is not a real \uXXXX: leave it untouched.
+  if (i + 5 > length(s)) return -1
   valid = 1
   cp = 0
   for (j = 0; j < 4; j++) {
