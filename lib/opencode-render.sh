@@ -49,6 +49,7 @@
 set -uo pipefail
 
 export LC_ALL=C
+export LANG=C
 
 GROUP_DEPTH=0
 
