@@ -28,8 +28,12 @@ test_opencode_build_prompt() {
   [[ "${prompt}" == *"Issue: Issue title"* ]]
   [[ "${prompt}" == *"Issue body"* ]]
   [[ "${prompt}" == *"extra ctx"* ]]
-  [[ "${prompt}" == *"Do NOT create any commits"* ]]
+  [[ "${prompt}" == *"Commit your changes with \`git vc\`"* ]]
   [[ "${prompt}" == *".commit-msg"* ]]
+  # .commit-msg is for uncommitted leftovers only; the agent commits with
+  # `git vc` first (owner feedback on #489).
+  [[ "${prompt}" == *"If you leave any changes uncommitted"* ]] || { echo "FAIL: .commit-msg is not tied to uncommitted changes"; exit 1; }
+  [[ "${prompt}" != *"When you are done, write a short, descriptive commit message"* ]] || { echo "FAIL: the prompt still asks for a message-only round"; exit 1; }
   # Follow-up rounds keep the existing branch: no branch-name instruction.
   [[ "${prompt}" != *".branch-name"* ]]
   # Every round says the same short thing: the point of the run and who does
@@ -38,7 +42,7 @@ test_opencode_build_prompt() {
   # the task itself and answered with a commit message instead of code.
   [[ "${prompt}" == *"to the owner's approval"* ]] || { echo "FAIL: the prompt does not state what the run is for"; exit 1; }
   [[ "${prompt}" == *"Your part is the change in the working tree"* ]] || { echo "FAIL: the prompt does not name the working-tree change as the agent's part"; exit 1; }
-  [[ "${prompt}" == *"The driver names the branch and creates the commit, the push, the pull request and the review request"* ]] || { echo "FAIL: the prompt does not say the driver owns everything that needs GitHub"; exit 1; }
+  [[ "${prompt}" == *"The driver names the branch, creates the pull request and the review request"* ]] || { echo "FAIL: the prompt does not say the driver owns everything that needs GitHub"; exit 1; }
   [[ "${prompt}" == *"gh pr create"* ]] && { echo "FAIL: the prompt enumerates commands the agent must not run"; exit 1; }
   [[ "${prompt}" == *"counts as no work"* ]] && { echo "FAIL: the prompt lectures the agent about what it may not answer with"; exit 1; }
   echo "opencode_build_prompt passed"
@@ -85,8 +89,30 @@ test_opencode_build_handoff_prompt() {
   [[ "${prompt}" == *".commit-msg"* ]]
   # The handoff carries the same short statement of the division of labour.
   [[ "${prompt}" == *"Your part is the change in the working tree"* ]] || { echo "FAIL: the handoff prompt does not name the working-tree change as the agent's part"; exit 1; }
-  [[ "${prompt}" == *"The driver names the branch and creates the commit"* ]] || { echo "FAIL: the handoff prompt does not say the driver owns everything that needs GitHub"; exit 1; }
+  [[ "${prompt}" == *"The driver names the branch, creates the pull request and the review request"* ]] || { echo "FAIL: the handoff prompt does not say the driver owns everything that needs GitHub"; exit 1; }
   echo "opencode_build_handoff_prompt passed"
+}
+
+test_opencode_run_commits() {
+  export OPENCODE_TEST_MODE=1
+  local tmp message body old_commit_model="${CONAHCNUJ_COMMIT_MODEL-}"
+  unset CONAHCNUJ_COMMIT_MODEL
+  tmp="$(mktemp -d)"
+  git -C "${tmp}" init -q
+  git -C "${tmp}" config user.email "test@example.com"
+  git -C "${tmp}" config user.name "test"
+  git -C "${tmp}" config commit.gpgsign false
+  # The mock agent runs `git vc` (overridden in the offline repo to a local
+  # commit), so the branch already has the implementation when the round ends.
+  opencode_run "Issue" "Body" "${tmp}" "opencode/worker" >/dev/null 2>&1
+  message="$(git -C "${tmp}" log -1 --format=%s 2>/dev/null || true)"
+  [[ "${message}" == "mock commit from opencode/worker" ]] || { echo "FAIL: the mock agent did not commit"; exit 1; }
+  body="$(git -C "${tmp}" log -1 --format=%B)"
+  [[ "${body}" == *"Co-Authored-By: opencode (worker)"* ]] || { echo "FAIL: the mock commit lost the model trailer"; exit 1; }
+  [[ -z "${old_commit_model}" ]] || export CONAHCNUJ_COMMIT_MODEL="${old_commit_model}"
+  rm -rf "${tmp}"
+  unset OPENCODE_TEST_MODE
+  echo "opencode_run (mock agent commits with git vc) passed"
 }
 
 test_opencode_run_message_only() {
@@ -425,6 +451,7 @@ test_opencode_build_prompt_fresh
 test_opencode_build_prompt_collected
 test_opencode_build_handoff_prompt
 test_opencode_run
+test_opencode_run_commits
 test_opencode_run_message_only
 test_opencode_run_noop_models
 test_opencode_run_session_handoff

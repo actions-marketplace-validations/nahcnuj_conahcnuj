@@ -700,6 +700,21 @@ next_free_branch() {
   printf '%s\n' "${branch}"
 }
 
+# Drop any in-progress merge or unmerged index entries left by an interrupted
+# round so a following `git checkout` can actually move HEAD. An unresolved
+# conflict (MERGE_HEAD present, or "needs merge" entries in the index) makes
+# `git checkout` refuse with "you need to resolve your current index first",
+# which used to abort the run at the first checkout of a resumed PR (issue
+# #489). The fetch has already succeeded by the time this runs, so the remote
+# head is known; discarding the local conflict state loses only work that was
+# never committed, which is the same fate an interrupted round already had.
+clear_merge_state() {
+  if git rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
+    git merge --quit 2>/dev/null || git merge --abort 2>/dev/null || true
+  fi
+  git reset --hard HEAD >/dev/null 2>&1 || true
+}
+
 # Fetch <branch> from origin and check out its head. A failed fetch stops the
 # run instead of falling back to whatever origin/<branch> happens to hold: such
 # a checkout "succeeds" at a stale commit, the driver then reads the branch as
@@ -716,6 +731,7 @@ checkout_branch_head() {
     echo "ERROR: could not fetch ${branch} from origin; refusing to work on a stale branch head." >&2
     return 1
   fi
+  clear_merge_state
   git checkout -B "${branch}" "origin/${branch}" 1>&2
 }
 
@@ -766,6 +782,7 @@ checkout_new_branch_from_base() {
     echo "ERROR: no base commit to start ${branch} from." >&2
     return 1
   fi
+  clear_merge_state
   git checkout -B "${branch}" "${base}" 1>&2
 }
 
@@ -781,6 +798,7 @@ ensure_issue_branch() {
   echo "Feature branch: ${branch} (from ${default_branch})" >&2
 
   if [[ "${TEST_MODE}" == "1" ]]; then
+    clear_merge_state
     git checkout -B "${branch}" >/dev/null 2>&1 || git checkout -b "${branch}"
     printf '%s\n' "${branch}"
     return 0
@@ -810,6 +828,7 @@ ensure_issue_branch() {
       echo "WARNING: branch create returned an error for ${branch}; will try to fetch it." >&2
     fi
     if fetch_new_branch_ref "${branch}"; then
+      clear_merge_state
       git checkout -B "${branch}" "origin/${branch}" 1>&2 || return 1
     elif [[ "${created}" == "1" ]]; then
       echo "WARNING: ${branch} is not fetchable right after creation; starting it from ${default_branch}." >&2
@@ -828,6 +847,7 @@ ensure_pr_branch_head() {
   local owner="${1}" repo="${2}" head="${3}"
   echo "Checking out PR head branch ${head}..." >&2
   if [[ "${TEST_MODE}" == "1" ]]; then
+    clear_merge_state
     git checkout -B "${head}" >/dev/null 2>&1 || git checkout -b "${head}"
     return 0
   fi
@@ -872,6 +892,7 @@ resolve_agent_branch_name() {
     # The ref may not be fetchable the instant it was created; the branch is
     # brand-new, so starting it from the base loses no committed work.
     if fetch_new_branch_ref "${want}"; then
+      clear_merge_state
       git checkout -B "${want}" "origin/${want}" 1>&2
     else
       echo "WARNING: ${want} is not fetchable right after creation; starting it from the base." >&2
@@ -881,6 +902,7 @@ resolve_agent_branch_name() {
       }
     fi
   else
+    clear_merge_state
     git checkout -B "${want}" >/dev/null 2>&1
   fi
   echo "Using the coding agent's feature branch: ${want}" >&2
@@ -1012,7 +1034,7 @@ persist_missing_model() {
 # base, so a message-only round there stays no work and still falls through to
 # the other models.
 implement() {
-  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider tree_changed model_retried
+  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider tree_changed model_retried head_before head_after committed
   local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   local base_branch="${4:-}"
@@ -1057,10 +1079,16 @@ implement() {
         echo "Session handoff was unavailable after ${previous_model}; ${model} will continue from the working tree." >&2
       fi
       run_failed="false"
+      head_before="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
       if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}" "${COLLECTED_CONTEXT}"; then
         run_failed="true"
       fi
       OPENCODE_USED_MODELS="${OPENCODE_USED_MODELS}${model} "
+      head_after="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
+      committed="false"
+      if [[ -n "${head_after}" && "${head_after}" != "${head_before}" ]]; then
+        committed="true"
+      fi
       wrote_message="false"
       if [[ -s "${workdir}/.commit-msg" ]]; then
         wrote_message="true"
@@ -1068,6 +1096,12 @@ implement() {
       tree_changed="false"
       if workdir_changed "${workdir}"; then
         tree_changed="true"
+      fi
+      if [[ "${committed}" == "true" ]]; then
+        rm -f "${workdir}/.commit-msg"
+        echo "Model ${model} completed the work and committed it." >&2
+        OPENCODE_LAST_MODEL="${model}"
+        return 0
       fi
       if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
         echo "Model ${model} completed the work." >&2
@@ -1561,19 +1595,22 @@ drive() {
       # "Addressed the review feedback" comment: the in-thread replies are how
       # the reviewer learns what happened. Because the fingerprint drops
       # bot-authored comments, those replies never look like fresh feedback.
-      local reply_help="Address the pull request review feedback. First make the code changes and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers), leaving the result in the working tree and writing .commit-msg; the driver commits and pushes it and then CI runs. Only after that, reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass)."
-      if ! implement "${title}" "${body}" "${reply_help}
+      local code_help="Address the pull request review feedback. Make the code changes, commit them with \`git vc\`, and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers). Then reply in each unresolved review thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass).
 
-${summary}" "${base}"; then
+${summary}"
+      if ! implement "${title}" "${body}" "${code_help}" "${base}"; then
         echo "No working-tree change was produced for this feedback; keeping whatever thread replies were already made." >&2
       fi
-      # A round can fail after leaving a partial change and no .commit-msg (a
-      # provider outage mid-round is what filed issue #251). There is nothing
-      # the driver may commit, and refusing must not abort the run: it hands the
-      # PR back to the reviewer below and keeps driving.
+      # The agent is asked to commit with `git vc` itself; the driver only
+      # commits uncommitted changes that still have a .commit-msg as a safety
+      # net. A round can fail after leaving a partial change and no
+      # .commit-msg (a provider outage mid-round is what filed issue #251):
+      # there is nothing the driver may commit, and refusing must not abort the
+      # run.
       if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
       fi
+      rm -f .commit-msg
       # Verify the non-reviewer constraints again before handing the PR back:
       # the fix restarted CI, so the reviewer is only asked once the checks are
       # green again (and the branch still merges), exactly as on the first
@@ -1691,7 +1728,9 @@ start_issue() {
       exit 1
     fi
     branch="$(resolve_agent_branch_name "${owner}" "${repo}" "${default_oid}" "${branch}")"
-    commit_changes
+    if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
+      commit_changes
+    fi
   fi
 
   drive "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}"

@@ -93,6 +93,11 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | `MOCK_OPENCODE_NOOP` | 指定モデルを no-op（実装を省略した振る舞い）にする |
 | `MOCK_OPENCODE_SESSION_ID` | モックが返す `sessionID` |
 
+通常の `OPENCODE_TEST_MODE=1` のモックは、実エージェントと同じように
+`git vc` 相当のローカルコミットを作り、`.commit-msg` は残しません。
+`MOCK_OPENCODE_MESSAGE_ONLY` のときだけ、作業ツリーを変えずに `.commit-msg`
+だけを書くラウンドを再現します。
+
 ## 内部変数（実装詳細・上書きしない）
 
 ドライバとライブラリが内部状態として扱う変数です。ユーザー設定ではありません。

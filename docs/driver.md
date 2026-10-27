@@ -35,7 +35,8 @@ bash bin/conahcnuj.sh <番号>   # インストールせずリポジトリ内か
    deprecated / 削除 / 利用不可で落ちた場合は provider ではなくそのモデルだけを
    `gh-app/missing-models` に記録し、以後のラウンドと次回実行ではラウンドを
    消費せずスキップする（#209）
-2. エージェントが書いた `.commit-msg` で Verified コミットを作成し、PR を開く。
+2. エージェントが `git vc` で Verified コミットを作成し、ドライバが PR を開く。コミットし忘れた
+   変更がある場合だけ、ドライバが `.commit-msg` を安全網としてコミットする。
    issue の進捗ファイル `TODO.md`（生存期間は issue 毎）がある間は PR を **draft**
    として開き、レビュー依頼をしない。エージェントが作業中に `TODO.md` を更新し、
    完了して ready to merge するときに削除すると、ドライバが draft を解除して
@@ -62,9 +63,12 @@ bash bin/conahcnuj.sh <番号>   # インストールせずリポジトリ内か
    戻って mergeable であること）→ owner へ再依頼 → 承認までポーリング。既知の
    レビュー意見は制約のポーリングを待たずに**先に**対応する
    （未解決スレッドが残る PR は、スレッドが片付くまで制約を満たせないので、
-   先に待つと時間予算を無駄にするだけ。#219）。レビュースレッドへの返信は
-   エージェント自身が行い、その返信は bot 著者として fingerprint から除外される
-   ので自分の返信でループしない
+    先に待つと時間予算を無駄にするだけ。#219）。レビュースレッドへの返信は
+    エージェント自身が行う。エージェントは修正を `git vc` でコミットしてから
+    **同じラウンドで**返信する（`git vc` は GitHub 上にコミットを作るので、
+    先に「直しました」とコメントして未 push の修正をレビュアーに誤認させる
+    ことはない。#485）。返信は bot 著者として fingerprint から除外されるので
+    自分の返信でループしない
 5. 異常終了時（タイムアウト・全モデル失敗・想定外エラー等、非 0 で終わる場合）は、
    対象リポジトリへバグ報告 issue を自動作成する（終了コード・対象番号・ブランチ・
    HEAD・実行ログ末尾を含む）。ただし **Ctrl-C 等による利用者からの中断**
@@ -90,9 +94,10 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 全ラウンド共通で、コーディングエージェントには次の一段落だけが伝えられます:
 
 > This run takes the issue (or the pull request being resumed) to the owner's
-> approval. Your part is the change in the working tree: implement it and run
-> the repository's own validation. The driver names the branch and creates the
-> commit, the push, the pull request and the review request once you are done.
+> approval. Your part is the change in the working tree and the commit:
+> implement it, run the repository's own validation, and commit with `git vc`.
+> The driver names the branch, creates the pull request and the review request
+> once you are done.
 
 契約に足さない代わりに、決定論的に収集できる情報は **データとして** 別枠で
 同梱されます（`Collected context:` ブロック。指示ではなく材料を渡すので、
@@ -107,16 +112,18 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 `Collected context up front: ...` として何が同梱されたかを残します。
 
 唯一の例外がレビュースレッドへの返信です。これはドライバが代行せず、
-フィードバック対応ラウンドの追加コンテキストで各スレッドの comment id と返信
-エンドポイント（`POST /repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies`）を
-添え、エージェント自身が返信します。返信は bot 著者のコメントとして
-fingerprint から除外されるため、新規の reviewer 意見と誤認されません。
+フィードバック対応ラウンドで各スレッドの comment id と返信エンドポイント
+（`POST /repos/<owner>/<repo>/pulls/<n>/comments/<id>/replies`）を添え、
+エージェント自身が返信します。返信は修正のコミット・push が済んだ後に
+行います（先にコメントすると、まだ push されていない修正をレビュアーに
+誤認させるため。#485）。返信は bot 著者のコメントとして fingerprint から
+除外されるため、新規の reviewer 意見と誤認されません。
 
 エージェントが決めるもの:
 
 | ファイル | 内容 |
 | --- | --- |
-| `.commit-msg` | コミットメッセージ。**1 行・72 文字以内**。無い場合はドライバはコミットしない |
+| `.commit-msg` | コミットし忘れた変更があるときだけ書くコミットメッセージ。**1 行・72 文字以内**。無い場合、ドライバは未コミット変更をコミットしない（`git vc` 済みなら不要） |
 | `.branch-name` | フィーチャーブランチ名。無い場合はドライバが `conahcnuj/<番号>-<スラッグ>` で採番 |
 | `TODO.md` | issue ごとの進捗ファイル。着手で作成・作業中に更新・完了（ready to merge）で削除する。**書式は問わない**。残っていると PR が draft のままでレビュー依頼されない |
 

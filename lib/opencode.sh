@@ -70,7 +70,7 @@ opencode_get_models() {
 # labour and stops there: telling the coding agent how to work gets in its way.
 opencode_agent_contract() {
   cat <<'EOF'
-This run takes the issue (or the pull request being resumed) to the owner's approval. Your part is the change in the working tree: implement it and run the repository's own validation. The driver names the branch and creates the commit, the push, the pull request and the review request once you are done.
+This run takes the issue (or the pull request being resumed) to the owner's approval. Your part is the change in the working tree and the commit: implement it, run the repository's own validation, and commit with `git vc`. The driver names the branch, creates the pull request and the review request once you are done.
 EOF
 }
 
@@ -106,9 +106,9 @@ ${extra_context}"
 
 $(opencode_agent_contract)
 
-Do NOT create any commits; just edit files in the working tree. The outer driver commits and pushes for you.
+Commit your changes with \`git vc\` (do not use \`git commit\`); the driver creates the pull request and the review request once you are done.
 
-When you are done, write a short, descriptive commit message (one line, no more than 72 characters) to the file .commit-msg in the repository root. The driver uses that line as the commit message it makes for you."
+If you leave any changes uncommitted, write their commit message (one line, no more than 72 characters) to .commit-msg in the repository root so the driver can commit them; once everything is committed there is no .commit-msg to write."
   if [[ -z "${extra_context}" ]]; then
     prompt="${prompt}
 
@@ -119,7 +119,9 @@ If you want to choose the feature branch name, write your preferred branch name 
 
 opencode_build_handoff_prompt() {
   local previous_model="${1}"
-  printf 'You are taking over unfinished work from model %s because it could not complete the task. Continue this same session and preserve all work already present in the working tree. Inspect the current progress, finish every remaining requirement, and run the relevant validation. Do not restart from scratch, discard existing work, or create commits.\n\n%s\n\nWhen the work is complete, write a short descriptive commit message (one line, no more than 72 characters) to .commit-msg in the repository root.\n' "${previous_model}" "$(opencode_agent_contract)"
+  # The literal backticks are prompt text, not command substitutions.
+  # shellcheck disable=SC2016
+  printf 'You are taking over unfinished work from model %s because it could not complete the task. Continue this same session and preserve all work already present in the working tree. Inspect the current progress, finish every remaining requirement, run the relevant validation, and commit with `git vc`. Do not restart from scratch or discard existing work. If you leave any changes uncommitted, write their commit message (one line, no more than 72 characters) to .commit-msg in the repository root so the driver can commit them; once everything is committed there is no .commit-msg to write.\n\n%s\n' "${previous_model}" "$(opencode_agent_contract)"
 }
 
 # True when the round's JSON event stream carries an environment error
@@ -219,13 +221,18 @@ opencode_round_is_rate_limited() {
 # A session handoff reuses the conversation the first prompt already carried
 # the collected context in, so only the fresh-prompt branch below gets it.
 opencode_run() {
-  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}" collected_context="${8:-}"
+  local issue_title="${1}" issue_body="${2}" workdir="${3}" model="${4}" extra_context="${5:-}" session_id="${6:-}" previous_model="${7:-}" collected_context="${8:-}" prompt_override="${9:-}"
   local prompt
   OPENCODE_ROUND_ENVIRONMENT="false"
   OPENCODE_ROUND_MODEL_GONE="false"
   OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
   OPENCODE_ROUND_RATE_LIMITED="false"
-  if [[ -n "${session_id}" ]]; then
+  # A caller may supply the whole prompt (the feedback reply round does): it
+  # then takes precedence over both the hand-off and the implementation prompt
+  # so the reply instructions and thread ids actually reach the model.
+  if [[ -n "${prompt_override}" ]]; then
+    prompt="${prompt_override}"
+  elif [[ -n "${session_id}" ]]; then
     prompt="$(opencode_build_handoff_prompt "${previous_model:-unknown}")"
   else
     prompt="$(opencode_build_prompt "${issue_title}" "${issue_body}" "${extra_context}" "${collected_context}")"
@@ -302,12 +309,12 @@ opencode_run() {
       fi
       return 1
     fi
+    local mock_message=""
     if [[ -z "${MOCK_OPENCODE_NOOP:-}" || "${MOCK_OPENCODE_NOOP}" != "${model}" ]]; then
       if [[ -z "${MOCK_OPENCODE_MESSAGE_ONLY:-}" || "${MOCK_OPENCODE_MESSAGE_ONLY}" != "${model}" ]]; then
         if [[ -d "${workdir}" && -w "${workdir}" ]]; then
           printf 'mock change from %s\n' "${model}" >> "${workdir}/conahcnuj.mock"
-          # Simulate the agent honouring the .commit-msg contract.
-          printf 'mock commit from %s\n' "${model}" > "${workdir}/.commit-msg"
+          mock_message="mock commit from ${model}"
         fi
       else
         # A model that answered with a message instead of doing the work.
@@ -333,6 +340,47 @@ opencode_run() {
       else
         printf '# TODO\n' > "${workdir}/TODO.md"
         : > "${todo_state}"
+      fi
+    fi
+    # The mock agent commits through `git vc` like the real one, instead of
+    # leaving only a .commit-msg for the driver. Tests run offline, so the
+    # alias is overridden for this one invocation to make the same local
+    # commit api-commit.sh would create in a real run. Outside a git work
+    # tree (the unit tests call opencode_run in a bare temp dir) there is
+    # nothing to commit; the message is left for the driver safety net.
+    if [[ -n "${mock_message}" && -d "${workdir}" && -w "${workdir}" ]]; then
+      local mock_trailer=""
+      if git -C "${workdir}" rev-parse --git-dir >/dev/null 2>&1; then
+        mock_trailer="${CONAHCNUJ_COMMIT_MODEL:-}"
+        if [[ -z "${mock_trailer}" ]]; then
+          local mock_provider="${model%%/*}" mock_rest="${model#*/}"
+          if [[ -n "${mock_rest}" && "${mock_rest}" != "${model}" ]]; then
+            mock_trailer="${mock_provider} (${mock_rest})"
+          else
+            mock_trailer="${model}"
+          fi
+        fi
+        local mock_msgfile
+        mock_msgfile="$(mktemp "${TMPDIR:-/tmp}/conahcnuj-mock-msg.XXXXXX")"
+        printf '%s\n\nCo-Authored-By: %s\n' "${mock_message}" "${mock_trailer}" > "${mock_msgfile}"
+        (
+          cd "${workdir}" || exit 1
+          # The wrapping opencode session injects its own `git vc` alias via
+          # GIT_CONFIG_*; clear those so this test alias (a local commit in the
+          # offline repo) is the one that runs. The message lives outside the
+          # work tree so metadata never gets committed.
+          unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+          local cfg
+          for cfg in $(compgen -v GIT_CONFIG_KEY_); do unset "${cfg}"; done
+          for cfg in $(compgen -v GIT_CONFIG_VALUE_); do unset "${cfg}"; done
+          export MOCK_COMMIT_MSG_FILE="${mock_msgfile}"
+          # The alias body expands at git-alias execution time, not here.
+          # shellcheck disable=SC2016
+          git add -A && git -c commit.gpgsign=false -c 'alias.vc=!git commit -q -F "$MOCK_COMMIT_MSG_FILE"' vc
+        ) >/dev/null 2>&1 || true
+        rm -f "${mock_msgfile}" "${workdir}/.commit-msg"
+      else
+        printf '%s\n' "${mock_message}" > "${workdir}/.commit-msg"
       fi
     fi
     return 0

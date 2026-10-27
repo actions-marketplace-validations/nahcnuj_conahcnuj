@@ -286,9 +286,14 @@ test_tool_edit_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"one","newString":"ONE"},"output":"edited","metadata":{"diff":"@ -1 +1 @@\n-one\n+ONE"}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line with the file"
-  assert_contains "${out}" "  @ -1 +1 @@" "the diff is under the verdict line"
-  assert_contains "${out}" "  -one" "removed line in the diff"
-  assert_contains "${out}" "  +ONE" "added line in the diff"
+  # The diff is not indented: it stays at column 0 so it reads (and copies) as
+  # a real diff instead of being nudged right by the block indent.
+  assert_contains "${out}" $'✅ Edit tracked.txt\n@ -1 +1 @@' "the diff starts unindented under the verdict line"
+  assert_contains "${out}" $'\n-one\n' "removed line in the diff"
+  assert_contains "${out}" $'\n+ONE' "added line in the diff"
+  assert_not_contains "${out}" "  @ -1 +1 @@" "the diff is not indented"
+  assert_not_contains "${out}" "  -one" "removed line is not indented"
+  assert_not_contains "${out}" "  +ONE" "added line is not indented"
   rm -rf "${tmp}"
   echo "render edit diff passed"
 }
@@ -301,9 +306,11 @@ test_tool_edit_stitched_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"two","newString":"TWO\nmore"},"output":"edited","metadata":{"exit":0}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line"
-  assert_contains "${out}" "  - two" "the old text shows as removed"
-  assert_contains "${out}" "  + TWO" "the new text shows as added"
-  assert_contains "${out}" "  + more" "the second line of the new text"
+  assert_contains "${out}" $'\n- two\n' "the old text shows as removed, unindented"
+  assert_contains "${out}" $'\n+ TWO\n' "the new text shows as added, unindented"
+  assert_contains "${out}" $'\n+ more' "the second line of the new text"
+  assert_not_contains "${out}" "  - two" "the stitched diff is not indented"
+  assert_not_contains "${out}" "  + TWO" "the stitched added line is not indented"
   rm -rf "${tmp}"
   echo "render edit stitched diff passed"
 }
@@ -396,6 +403,29 @@ EOF
   [[ "$(printf '%s\n' "${out}" | grep -c '::group::')" == "1" ]] || fail "group opened more than once" "${out}"
   rm -rf "${tmp}"
   echo "render command grouped streaming in github actions passed"
+}
+
+test_command_group_closed_at_eof_in_github_actions() {
+  local tmp out groups endgroups
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command still running when the event stream ends (the round was cut off,
+  # opencode exited mid-command, ...) must not leave its log group open: an
+  # unclosed `::group::` makes GitHub Actions hide everything after it, which
+  # is how the trailing ✅/❌️ lines went missing (#491).
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"id":"prt_ge","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"slow build"},"output":"compiling"},"title":"slow build"}}' |
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ slow build" "the unterminated command opens its group"
+  assert_contains "${out}" "  compiling" "its partial output is on the log"
+  assert_contains "${out}" "::endgroup::" "the dangling group is closed at end of stream"
+  groups="$(printf '%s\n' "${out}" | grep -c '::group::' || true)"
+  endgroups="$(printf '%s\n' "${out}" | grep -c '::endgroup::' || true)"
+  [[ "${groups}" == "${endgroups}" ]] || fail "group not balanced (${groups} open / ${endgroups} close)" "${out}"
+  # The end marker has to stand on its own log line; glued to partial output
+  # GitHub Actions does not recognise it.
+  [[ "$(printf '%s\n' "${out}" | tail -n 1)" == "::endgroup::" ]] || fail "::endgroup:: is not the last line" "${out}"
+  rm -rf "${tmp}"
+  echo "render command group closed at eof in github actions passed"
 }
 
 test_command_not_grouped_outside_github_actions() {
@@ -660,6 +690,7 @@ test_command_streams_as_it_prints
 test_command_running_has_no_verdict_yet
 test_command_grouped_in_github_actions
 test_command_grouped_streaming_in_github_actions
+test_command_group_closed_at_eof_in_github_actions
 test_command_not_grouped_outside_github_actions
 test_command_grouped_in_github_actions_with_one
 test_command_not_grouped_with_unrecognized_github_actions
