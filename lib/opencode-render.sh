@@ -48,6 +48,18 @@
 
 set -uo pipefail
 
+GROUP_DEPTH=0
+
+close_open_groups() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    while [[ "${GROUP_DEPTH}" -gt 0 ]]; do
+      close_line
+      echo '::endgroup::'
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    done
+  fi
+}
+
 INDENT="  "
 SEP=$'\x1f'
 
@@ -663,6 +675,7 @@ render_block_tool() {
       # `$ <command>` caption everywhere else.
       if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
         echo -n '::group::'
+        GROUP_DEPTH=$((GROUP_DEPTH + 1))
       fi
       echo "\$ ${label}"
     fi
@@ -770,6 +783,9 @@ render_block_tool() {
   fi
   if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
     echo '::endgroup::'
+    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    fi
   fi
   [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
   return 0
@@ -821,6 +837,15 @@ render_event() {
   esac
 }
 
+# Safety net: a group left open must never outlive the renderer (a signal or
+# an early exit mid-command would otherwise hide the rest of the GitHub
+# Actions log).
+trap close_open_groups EXIT
+
 while IFS= read -r render_line || [[ -n "${render_line}" ]]; do
   render_event "${render_line}"
 done
+
+# Close any command group left open when the stream ended (e.g. a command that
+# was still running) so GitHub Actions does not swallow the trailing output.
+close_open_groups
