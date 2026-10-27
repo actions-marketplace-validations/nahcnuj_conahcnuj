@@ -869,6 +869,15 @@ render_block_tool() {
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
   [[ "${fed}" == "true" ]] && print_newline
+  # Close the collapsible group BEFORE the verdict line so the result (✅/❌️)
+  # stays visible even when GitHub Actions collapses the command's group; the
+  # verdict then precedes the next model name (header) instead of being hidden.
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
+      echo '::endgroup::'
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    fi
+  fi
   if [[ "${timed_out}" == "true" ]]; then
     printf '❌️ %s (timed out)\n' "${label}"
   elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
@@ -880,14 +889,8 @@ render_block_tool() {
   else
     printf '✅ %s\n' "${label}"
   fi
-  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-    # The group may already have been closed when a later block started while
-    # this command was still running; do not emit a stray ::endgroup:: then.
-    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
-      echo '::endgroup::'
-      GROUP_DEPTH=$((GROUP_DEPTH - 1))
-    fi
-  fi
+  # The group was closed above (or already closed by a later block's header),
+  # so no stray ::endgroup:: here.
   [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
   return 0
 }
