@@ -104,8 +104,8 @@ done
 # is exact here and far smaller than a parser. Nesting from part down is what
 # keeps a tool input of {"command":"…","output":"…"} from shadowing the real
 # state.output.
-# \uXXXX escapes are left as-is: JSON.stringify never emits them for printable
-# text, so they only show up for control bytes and lone surrogates.
+# \uXXXX escapes are decoded into their UTF-8 characters so the terminal
+# shows the text the model/API actually produced instead of a literal escape.
 IFS= read -r -d '' RENDER_AWK <<'AWK' || true
 function val_end(s, i,  c, j, depth) {
   c = substr(s, i, 1)
@@ -163,7 +163,45 @@ function field_end(s, key,  re) {
   if (!match(s, re)) return 0
   return val_end(s, RSTART + RLENGTH)
 }
-function unescape(s,  out, i, n, c, e) {
+function hexval(ch,  v) {
+  if (ch >= "0" && ch <= "9") v = index("0123456789", ch) - 1
+  else if (ch >= "a" && ch <= "f") v = index("abcdef", ch) + 9
+  else if (ch >= "A" && ch <= "F") v = index("ABCDEF", ch) + 9
+  else v = 0
+  return v
+}
+function codepoint(s, i,  j, cp, hv) {
+  # decode a single \uXXXX at position i (1-based, pointing at 'u' is not
+  # needed; caller passes index of the backslash). Returns the code point.
+  cp = 0
+  for (j = 0; j < 4; j++) {
+    cp = cp * 16 + hexval(substr(s, i + 2 + j, 1))
+  }
+  return cp
+}
+function utf8(cp,  out, b1, b2, b3, b4) {
+  # Encode a code point as UTF-8 bytes (awk prints bytes under LC_ALL=C).
+  if (cp < 0x80) {
+    out = sprintf("%c", cp)
+  } else if (cp < 0x800) {
+    b1 = 0xC0 + int(cp / 64)
+    b2 = 0x80 + (cp % 64)
+    out = sprintf("%c%c", b1, b2)
+  } else if (cp < 0x10000) {
+    b1 = 0xE0 + int(cp / 4096)
+    b2 = 0x80 + int((cp % 4096) / 64)
+    b3 = 0x80 + (cp % 64)
+    out = sprintf("%c%c%c", b1, b2, b3)
+  } else {
+    b1 = 0xF0 + int(cp / 262144)
+    b2 = 0x80 + int((cp % 262144) / 4096)
+    b3 = 0x80 + int((cp % 4096) / 64)
+    b4 = 0x80 + (cp % 64)
+    out = sprintf("%c%c%c%c", b1, b2, b3, b4)
+  }
+  return out
+}
+function unescape(s,  out, i, n, c, e, cp, low) {
   if (substr(s, 1, 1) != "\"") return s
   s = substr(s, 2, length(s) - 2)
   out = ""
@@ -177,14 +215,27 @@ function unescape(s,  out, i, n, c, e) {
       continue
     }
     e = substr(s, i + 1, 1)
-    if (e == "n") out = out "\n"
-    else if (e == "t") out = out "\t"
-    else if (e == "r") out = out "\r"
-    else if (e == "b") out = out "\b"
-    else if (e == "f") out = out "\f"
-    else if (e == "/") out = out "/"
-    else out = out e
-    i += 2
+    if (e == "n") { out = out "\n"; i += 2; continue }
+    else if (e == "t") { out = out "\t"; i += 2; continue }
+    else if (e == "r") { out = out "\r"; i += 2; continue }
+    else if (e == "b") { out = out "\b"; i += 2; continue }
+    else if (e == "f") { out = out "\f"; i += 2; continue }
+    else if (e == "/") { out = out "/"; i += 2; continue }
+    else if (e == "u") {
+      cp = codepoint(s, i)
+      # surrogate pair
+      if (cp >= 0xD800 && cp <= 0xDBFF && i + 6 <= n && substr(s, i + 6, 2) == "\\u") {
+        low = codepoint(s, i + 6)
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          cp = 0x10000 + (cp - 0xD800) * 0x400 + (low - 0xDC00)
+          i += 6
+        }
+      }
+      out = out utf8(cp)
+      i += 6
+      continue
+    }
+    else { out = out e; i += 2; continue }
   }
   return out
 }
@@ -285,7 +336,7 @@ render_fields() {
       F["${tag}"]="${value}"
       SEEN["${tag}"]=1
     fi
-  done < <(printf '%s\n' "${1}" | awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
+  done < <(printf '%s\n' "${1}" | LC_ALL=C awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
   # opencode's "(no output)" sentinel is not a real command output: drop it (and
   # any blank lines it leaves behind) so a command that printed nothing shows
   # nothing. Only the first line can be the sentinel -- either the whole output
