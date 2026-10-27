@@ -171,7 +171,7 @@ opencode_round_is_environment() {
 # that merely writes the words is not quota-exhausted.
 opencode_round_is_quota_exhausted() {
   local output_file="${1}" err_file="${2:-}"
-  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent'
+  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent|free usage limit'
   if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi
@@ -206,10 +206,10 @@ opencode_round_is_model_gone() {
 opencode_round_is_rate_limited() {
   local output_file="${1}" err_file="${2:-}"
   local pattern='rate limit|rate_limit|too many requests|please try again later|retry-after|retry after|quota exceeded|usage limit|resource_exhausted|\b429\b'
-  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
+  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiv 'free usage limit' | grep -Eiq "${pattern}"; then
     return 0
   fi
-  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiq "${pattern}" "${err_file}" 2>/dev/null; then
+  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiv 'free usage limit' "${err_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi
   return 1
