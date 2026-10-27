@@ -289,7 +289,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build image and exercise the wrapper
-        run: bash driver-tests/docker-run-real.sh
+        run: bash driver-tests/docker-run.sh
 
   lint-ts:
     name: Typecheck opencode plugin

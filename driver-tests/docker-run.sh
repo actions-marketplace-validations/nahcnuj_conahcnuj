@@ -1,163 +1,131 @@
 #!/usr/bin/env bash
-# docker-run.sh test (offline: docker and wslpath are mocked).
+# Real-Docker test for docker-run.sh (no mocked docker/wslpath).
 #
-# Regression for issue #417: on Windows, a bare `bash` from PowerShell resolves
-# to WSL bash, where `docker` only knows unix:///var/run/docker.sock and cannot
-# reach Docker Desktop even though `docker ps` works in PowerShell. The wrapper
-# must re-launch itself under the configured Git Bash (BASH_EXE) and pass the
-# target repo through as a Windows path. These tests also pin the normal
-# (non-WSL) argument building so the relaunch does not change it.
+# The offline test (driver-tests/docker-run-mocked.sh) pins argument building and the
+# WSL relaunch, but it cannot prove the wrapper actually works: the reported
+# failures came from real Docker Desktop, not from the arguments we mocked.
+# This test builds the real image and runs the wrapper with an entrypoint
+# override, then inspects the container to assert that the target repo, the
+# generated app.env and the private key are mounted where the driver expects.
+#
+# docker-run.sh runs whenever a Docker daemon is available; the offline
+# suite (driver-tests/run.sh) skips it where there is none. CI runs it in the
+# dedicated `docker-runner` job.
 set -euo pipefail
+
+# Run whenever a working Docker daemon is available; skip (do not fail) in
+# environments without one (e.g. the offline suite on a developer machine).
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  echo "SKIP: docker is not available"
+  exit 0
+fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "${HERE}/.." && pwd)"
 WRAPPER="${REPO}/docker-run.sh"
+IMAGE="conahcnuj-runner-test"
 
 ROOT="$(mktemp -d)"
-trap 'rm -rf "${ROOT}"' EXIT
+cleanup() {
+  rm -rf "${ROOT}"
+  docker image rm -f "${IMAGE}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
-MOCKBIN="${ROOT}/bin"
-mkdir -p "${MOCKBIN}"
+TARGET="${ROOT}/target"
+git init -q "${TARGET}"
+printf 'hello\n' > "${TARGET}/hello.txt"
 
-# Mock docker: record every invocation and succeed. `info`/`image inspect`
-# succeed so the wrapper skips the build step.
-cat > "${MOCKBIN}/docker" <<'EOF'
-#!/usr/bin/env bash
-{
-  printf 'docker'
-  for a in "$@"; do printf ' <%s>' "$a"; done
-  printf '\n'
-} >> "${DOCKER_LOG}"
-exit 0
-EOF
-chmod +x "${MOCKBIN}/docker"
-
-# Mock wslpath: -u resolves the configured Git Bash, -m prefixes Windows-form
-# paths with W so the test can assert that the target was converted. It must be
-# a script on PATH, not an exported shell function: the wrapper calls it from a
-# child `bash`, and on Git Bash (MSYS) exported functions travel as environment
-# variables whose names contain `%`, which Windows drops, so `command -v
-# wslpath` would not see the mock and the relaunch would be skipped (Windows CI
-# only; Linux passed with the function).
-cat > "${MOCKBIN}/wslpath" <<'EOF'
-#!/usr/bin/env bash
-case "${1}" in
-  -u) printf '%s\n' "${WSLPATH_U_OUT}" ;;
-  -m) printf 'W%s\n' "${2}" ;;
-esac
-EOF
-chmod +x "${MOCKBIN}/wslpath"
-
-# The "Git Bash" the relaunch runs: record its arguments and the forwarded
-# environment, then exit.
-GITBASH="${ROOT}/fake-git-bash"
-cat > "${GITBASH}" <<'EOF'
-#!/usr/bin/env bash
-printf 'args' > "${GITBASH_LOG}"
-for a in "$@"; do printf ' <%s>' "$a" >> "${GITBASH_LOG}"; done
-printf '\nTARGET=<%s>\n' "${CONAHCNUJ_TARGET:-}" >> "${GITBASH_LOG}"
-exit 0
-EOF
-chmod +x "${GITBASH}"
-
-# A throwaway git work tree and a private key that only has to exist.
-TARGET_REPO="${ROOT}/target"
-git init -q "${TARGET_REPO}"
 PEM="${ROOT}/app.pem"
-printf 'dummy\n' > "${PEM}"
 APP_ENV="${ROOT}/app.env"
-cat > "${APP_ENV}" <<EOF
-APP_ID="1"
-INSTALLATION_ID="2"
-APP_SLUG="conahcnuj"
+# Use the real GitHub App env when it is provided (CI passes the repo secrets),
+# so the wrapper is exercised the way it is in regular usage; fall back to
+# dummy values for local runs without secrets.
+if [[ -n "${APP_ID:-}" && -n "${INSTALLATION_ID:-}" && -n "${PRIVATE_KEY:-}" ]]; then
+  REAL_ENV=1
+  printf '%s\n' "${PRIVATE_KEY}" > "${PEM}"
+  APP_SLUG_VAL="${APP_SLUG:-conahcnuj}"
+  cat > "${APP_ENV}" <<EOF
+APP_ID="${APP_ID}"
+INSTALLATION_ID="${INSTALLATION_ID}"
+APP_SLUG="${APP_SLUG_VAL}"
 PRIVATE_KEY_PATH="${PEM}"
 BASH_EXE="C:/Program Files/Git/bin/bash.exe"
 EOF
+else
+  REAL_ENV=0
+  APP_SLUG_VAL="conahcnuj"
+  printf 'dummy-pem-%s\n' "$$" > "${PEM}"
+  cat > "${APP_ENV}" <<EOF
+APP_ID="1"
+INSTALLATION_ID="2"
+APP_SLUG="${APP_SLUG_VAL}"
+PRIVATE_KEY_PATH="${PEM}"
+BASH_EXE="C:/Program Files/Git/bin/bash.exe"
+EOF
+fi
 
-export PATH="${MOCKBIN}:${PATH}"
 export OPENCODE_CONFIG_DIR="${ROOT}/no-config"
 export OPENCODE_DATA_DIR="${ROOT}/no-data"
 
-# Run the wrapper with a clean WSL/Git Bash baseline plus the given overrides.
-# Use the shell's `unset` rather than `env -u`: on Git Bash `env` does not
-# reliably clear MSYSTEM for the child, which made the simulated WSL run look
-# like it was already running under Git Bash and skip the relaunch (Windows
-# CI only; Linux passed). Exported variables are inherited by the wrapper.
-run_wrapper() {
-  local assignment
-  (
-    unset MSYSTEM WSL_DISTRO_NAME BASH_EXE
-    export CONAHCNUJ_IMAGE=test-image
-    export CONAHCNUJ_TARGET="${TARGET_REPO}"
-    export CONAHCNUJ_APP_ENV="${APP_ENV}"
-    export DOCKER_LOG GITBASH_LOG
-    export WSLPATH_U_OUT="${GITBASH}"
-    for assignment in "$@"; do
-      # shellcheck disable=SC2163  # the value is a NAME=VALUE assignment
-      export "${assignment}"
-    done
-    bash "${WRAPPER_PATH:-${WRAPPER}}" 42
-  )
+# Build the real image and run the wrapper through real Docker. The override
+# entrypoint lets us inspect the container instead of launching the driver
+# (which would need live GitHub credentials).
+if (( REAL_ENV == 1 )); then
+  TOKEN_CHECK='bash /opt/conahcnuj/gh-app/get-token.sh >/dev/null && echo "TOKEN_OK"'
+else
+  TOKEN_CHECK='echo "TOKEN_SKIP (no real env)"'
+fi
+out="$(
+  CONAHCNUJ_BUILD=1 \
+  CONAHCNUJ_IMAGE="${IMAGE}" \
+  CONAHCNUJ_TARGET="${TARGET}" \
+  CONAHCNUJ_APP_ENV="${APP_ENV}" \
+  CONAHCNUJ_ENTRYPOINT=/bin/bash \
+  bash "${WRAPPER}" -c "
+    set -e
+    test -d /work/.git
+    test -f /work/hello.txt
+    test -x /opt/conahcnuj/bin/conahcnuj.sh
+    test -f /opt/conahcnuj/lib/gh-api.sh
+    test -f /opt/conahcnuj/gh-app/get-token.sh
+    command -v gh >/dev/null
+    command -v opencode >/dev/null
+    test -f /opt/conahcnuj/gh-app/app.env
+    grep -qx 'PRIVATE_KEY_PATH=/run/secrets/app.pem' /opt/conahcnuj/gh-app/app.env
+    grep -qx 'BASH_EXE=/usr/bin/bash' /opt/conahcnuj/gh-app/app.env
+    grep -qx \"APP_SLUG=${APP_SLUG_VAL}\" /opt/conahcnuj/gh-app/app.env
+    test -r /run/secrets/app.pem
+    test ! -w /run/secrets/app.pem
+    test ! -w /opt/conahcnuj/gh-app/app.env
+    ${TOKEN_CHECK}
+    printf 'PWD=%s\\n' \"\$(pwd)\"
+    printf 'PEM=%s\\n' \"\$(cat /run/secrets/app.pem)\"
+  " 2>&1
+)"
+
+grep -q 'PWD=/work' <<<"${out}" || {
+  echo "FAIL: container did not start in /work; output:" >&2
+  printf '%s\n' "${out}" >&2
+  exit 1
+}
+if (( REAL_ENV == 1 )); then
+  grep -q "TOKEN_OK" <<<"${out}" || {
+    echo "FAIL: get-token.sh did not succeed with the real env; output:" >&2
+    printf '%s\n' "${out}" >&2
+    exit 1
+  }
+else
+  grep -q "PEM=dummy-pem-$$" <<<"${out}" || {
+    echo "FAIL: private key was not mounted read-only at /run/secrets/app.pem; output:" >&2
+    printf '%s\n' "${out}" >&2
+    exit 1
+  }
+fi
+grep -q 'PEM=' <<<"${out}" || {
+  echo "FAIL: private key was not mounted at /run/secrets/app.pem; output:" >&2
+  printf '%s\n' "${out}" >&2
+  exit 1
 }
 
-# --- normal (non-WSL) run ---------------------------------------------------
-DOCKER_LOG="${ROOT}/docker-normal.log"
-GITBASH_LOG="${ROOT}/gitbash-normal.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-run_wrapper >/dev/null 2>&1
-
-grep -q '^docker <info>' "${DOCKER_LOG}" || { echo "FAIL: docker info was not checked" >&2; exit 1; }
-grep -q '<run>.*<--rm>' "${DOCKER_LOG}" || { echo "FAIL: docker run --rm was not invoked" >&2; exit 1; }
-grep -q '<test-image> <42>' "${DOCKER_LOG}" || { echo "FAIL: image + issue number were not passed" >&2; exit 1; }
-grep -q '<-w> </work>' "${DOCKER_LOG}" || { echo "FAIL: container workdir /work missing" >&2; exit 1; }
-grep -q ':/work>' "${DOCKER_LOG}" || { echo "FAIL: target repo was not mounted at /work" >&2; exit 1; }
-grep -q ':/opt/conahcnuj/gh-app/app.env:ro>' "${DOCKER_LOG}" || { echo "FAIL: container app.env was not mounted" >&2; exit 1; }
-grep -q ':/run/secrets/app.pem:ro>' "${DOCKER_LOG}" || { echo "FAIL: private key was not mounted" >&2; exit 1; }
-[[ ! -s "${GITBASH_LOG}" ]] || { echo "FAIL: no relaunch expected outside WSL" >&2; exit 1; }
-echo "docker-run.sh (non-WSL) passed"
-
-# --- WSL with a reachable Git Bash: relaunch -------------------------------
-DOCKER_LOG="${ROOT}/docker-wsl.log"
-GITBASH_LOG="${ROOT}/gitbash-wsl.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' >/dev/null 2>&1
-
-[[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: WSL run did not re-launch under Git Bash" >&2; exit 1; }
-grep -q '<42>' "${GITBASH_LOG}" || { echo "FAIL: issue number not passed to the relaunch" >&2; exit 1; }
-grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not passed to the relaunch" >&2; exit 1; }
-grep -q 'TARGET=<W' "${GITBASH_LOG}" || { echo "FAIL: target repo was not converted to a Windows path" >&2; exit 1; }
-[[ ! -s "${DOCKER_LOG}" ]] || { echo "FAIL: WSL shell must not call the WSL docker before relaunching" >&2; exit 1; }
-echo "docker-run.sh (WSL -> Git Bash relaunch) passed"
-
-# --- WSL invoked via a relative script path: resolve it before conversion ----
-# Regression for the reported `bash ../conahcnuj/docker-run.sh` invocation: a
-# relative BASH_SOURCE[0] cannot be converted by wslpath, so the wrapper must
-# make it absolute first or Docker Desktop is still unreachable.
-DOCKER_LOG="${ROOT}/docker-relative.log"
-GITBASH_LOG="${ROOT}/gitbash-relative.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-( cd "${REPO}" && WRAPPER_PATH="./docker-run.sh" run_wrapper \
-    WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' ) >/dev/null 2>&1
-
-[[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: relative-path WSL run did not re-launch" >&2; exit 1; }
-grep -q 'W/' "${GITBASH_LOG}" || { echo "FAIL: relative wrapper path was not made absolute" >&2; exit 1; }
-grep -q 'W\.\.' "${GITBASH_LOG}" && { echo "FAIL: relative wrapper path reached wslpath" >&2; exit 1; }
-grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not passed to the relaunch" >&2; exit 1; }
-echo "docker-run.sh (WSL relative path -> Git Bash relaunch) passed"
-
-# --- WSL but the configured Git Bash is unreachable: no relaunch ------------
-DOCKER_LOG="${ROOT}/docker-unreachable.log"
-GITBASH_LOG="${ROOT}/gitbash-unreachable.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/missing/bash.exe' \
-  WSLPATH_U_OUT="${ROOT}/does-not-exist" >/dev/null 2>&1
-
-grep -q '<run>.*<--rm>' "${DOCKER_LOG}" || { echo "FAIL: unreachable Git Bash should continue under WSL" >&2; exit 1; }
-[[ ! -s "${GITBASH_LOG}" ]] || { echo "FAIL: unreachable Git Bash must not be executed" >&2; exit 1; }
-echo "docker-run.sh (WSL, unreachable Git Bash) passed"
-
-echo "docker-run.sh tests passed"
+echo "docker-run.sh (real Docker) passed"
