@@ -181,9 +181,6 @@ function codepoint(s, i,  j, cp, ch, valid) {
   # needed; caller passes index of the backslash). Returns the code point,
   # or -1 when the escape is not a valid \uXXXX (so the caller can leave
   # it untouched instead of fabricating a code point from non-hex digits).
-  # A truncated escape (fewer than four hex digits before the end of the
-  # string) is not a real \uXXXX: leave it untouched.
-  if (i + 5 > length(s)) return -1
   valid = 1
   cp = 0
   for (j = 0; j < 4; j++) {
@@ -253,10 +250,11 @@ function unescape(s,  out, i, n, c, e, cp, low) {
           i += 6
         }
       }
-      # A lone surrogate, NUL, or an out-of-range code point cannot be
-      # represented as valid UTF-8: keep the escape so the terminal never
-      # receives an invalid byte.
-      if ((cp >= 55296 && cp <= 57343) || cp == 0 || cp > 1114111) {
+      # A lone surrogate, NUL, an out-of-range code point, or any other
+      # control character (C0 except the whitespace escapes handled above,
+      # DEL and the C1 controls) cannot be safely rendered to a terminal:
+      # keep the escape so the terminal never receives a raw control byte.
+      if ((cp >= 55296 && cp <= 57343) || cp == 0 || (cp >= 1 && cp <= 31 && cp != 8 && cp != 9 && cp != 10 && cp != 12 && cp != 13) || cp == 127 || (cp >= 128 && cp <= 159) || cp > 1114111) {
         out = out "\\u" substr(s, i + 2, 4)
         i += 6
         continue
