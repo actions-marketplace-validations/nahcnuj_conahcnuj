@@ -48,6 +48,18 @@
 
 set -uo pipefail
 
+GROUP_DEPTH=0
+
+close_open_groups() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    while [[ "${GROUP_DEPTH}" -gt 0 ]]; do
+      close_line
+      echo '::endgroup::'
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    done
+  fi
+}
+
 INDENT="  "
 SEP=$'\x1f'
 
@@ -274,6 +286,51 @@ render_fields() {
       SEEN["${tag}"]=1
     fi
   done < <(printf '%s\n' "${1}" | awk -v sep="${SEP}" "${RENDER_AWK}" 2>/dev/null)
+  # opencode's "(no output)" sentinel is not a real command output: drop it (and
+  # any blank lines it leaves behind) so a command that printed nothing shows
+  # nothing. Only the first line can be the sentinel -- either the whole output
+  # (no trailing newline) or the opener of a timed-out command's
+  # <shell_metadata> block. A genuine "(no output)" -- printed with its own
+  # trailing newline, or appearing after other real output -- is kept.
+  local _raw="${F[output]}" _result="" _line _first=1
+  local -a _lines=() _keep=()
+  while IFS= read -r _line || [[ -n "${_line}" ]]; do
+    _lines+=("${_line}")
+  done <<< "${_raw}"
+  local _n="${#_lines[@]}" _i _j
+  for ((_i = 0; _i < _n; _i++)); do
+    if [[ "${_i}" -eq 0 && "${_lines[$_i]}" == "(no output)" ]]; then
+      _j=$((_i + 1))
+      while ((_j < _n)) && [[ -z "${_lines[$_j]// }" ]]; do
+        _j=$((_j + 1))
+      done
+      if ((_j >= _n)); then
+        # Sentinel only if "(no output)" is the final line (no trailing newline).
+        if ((_i == _n - 1)); then
+          continue
+        fi
+      elif [[ "${_lines[$_j]}" == "<shell_metadata>"* ]]; then
+        continue
+      fi
+    fi
+    _keep+=("${_lines[$_i]}")
+  done
+  _first=1
+  for _line in "${_keep[@]}"; do
+    if [[ "${_first}" == "1" ]]; then
+      _result="${_line}"
+      _first=0
+    else
+      _result="${_result}"$'\n'"${_line}"
+    fi
+  done
+  while [[ "${_result}" == $'\n'* ]]; do
+    _result="${_result#?}"
+  done
+  if [[ -z "${_result//[$'\n' ]/}" ]]; then
+    _result=""
+  fi
+  F["output"]="${_result}"
 }
 
 # --- context header ---------------------------------------------------------
@@ -450,7 +507,7 @@ render_marked() {
   local value="${1:-}" marker="${2:-}" line
   [[ -n "${value}" ]] || return 0
   while IFS= read -r line; do
-    printf '  %s %s\n' "${marker}" "${line}"
+    printf '%s %s\n' "${marker}" "${line}"
   done <<< "${value}"
 }
 
@@ -531,6 +588,15 @@ render_block_tool() {
   case "${code}" in
     ''|*[!0-9]*) code="" ;;
   esac
+  # opencode kills a command that hits its timeout and still reports the call as
+  # "completed" with no exit code: the only tell is the <shell_metadata> block
+  # it appends to the output ("shell tool terminated command after exceeding
+  # timeout ..."). A timed-out command did not succeed, so it must not get a ✅
+  # (#420).
+  local timed_out="false"
+  case "${F[output]}${F[toolerror]}" in
+    *"terminated command after exceeding timeout"*) timed_out="true" ;;
+  esac
   if [[ -n "${pid}" ]]; then
     prev_out="${PART_OUT[${pid}]:-}"
     prev_err="${PART_ERR[${pid}]:-}"
@@ -604,7 +670,14 @@ render_block_tool() {
       label="${F[title]}"
       [[ -n "${label}" ]] || label="${F[command]}"
       [[ -n "${label}" ]] || label="${tool}"
-      printf '$ %s\n' "${label}"
+      # GitHub Actions collapses a run's log by `::group::`/`::endgroup::`
+      # markers, so wrap each command block in one there and keep the plain
+      # `$ <command>` caption everywhere else.
+      if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+        echo -n '::group::'
+        GROUP_DEPTH=$((GROUP_DEPTH + 1))
+      fi
+      echo "\$ ${label}"
     fi
   fi
 
@@ -630,7 +703,12 @@ render_block_tool() {
     else
       printf '✅ %s\n' "${label}"
       if [[ -n "${F[diff]}" ]]; then
+        # The diff is its own structured text (unified diff): print it without
+        # the block's indent so it stays copy-pasteable as a real diff.
+        local _saved_indent="${INDENT}"
+        INDENT=""
         render_stream "${F[diff]}"
+        INDENT="${_saved_indent}"
       elif [[ "${tool}" == "edit" && ( -n "${F[oldstr]}" || -n "${F[newstr]}" ) ]]; then
         render_marked "${F[oldstr]}" "-"
         render_marked "${F[newstr]}" "+"
@@ -692,7 +770,9 @@ render_block_tool() {
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
   [[ "${fed}" == "true" ]] && print_newline
-  if [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
+  if [[ "${timed_out}" == "true" ]]; then
+    printf '❌️ %s (timed out)\n' "${label}"
+  elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
     if [[ -n "${code}" ]]; then
       printf '❌️ %s (exit %s)\n' "${label}" "${code}"
     else
@@ -700,6 +780,12 @@ render_block_tool() {
     fi
   else
     printf '✅ %s\n' "${label}"
+  fi
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    echo '::endgroup::'
+    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    fi
   fi
   [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
   return 0
@@ -751,6 +837,15 @@ render_event() {
   esac
 }
 
+# Safety net: a group left open must never outlive the renderer (a signal or
+# an early exit mid-command would otherwise hide the rest of the GitHub
+# Actions log).
+trap close_open_groups EXIT
+
 while IFS= read -r render_line || [[ -n "${render_line}" ]]; do
   render_event "${render_line}"
 done
+
+# Close any command group left open when the stream ended (e.g. a command that
+# was still running) so GitHub Actions does not swallow the trailing output.
+close_open_groups

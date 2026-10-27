@@ -36,7 +36,7 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | `CONAHCNUJ_POLL_CONDITIONS_MAX` | `300` | 制約ポーリングの最長間隔（秒） |
 | `CONAHCNUJ_COMMIT_MODEL` | 未設定 | コミット trailer（`Co-Authored-By: <値>`。プラグインが `provider (model/effort)` を設定）。未設定なら trailer なし |
 | `CONAHCNUJ_OPENCODE_LOG_LEVEL` | `WARN` | opencode の `--log-level` |
-| `CONAHCNUJ_OWN_WORKFLOWS` | `Issue auto-drive,Owner-approved auto-merge` | 制約チェックから除外する自 workflow 名（カンマ区切り） |
+| `CONAHCNUJ_OWN_WORKFLOWS` | `Issue auto-drive,Owner-approved auto-merge` | 制約チェックから除外する自 workflow 名（カンマ区切り、空で無効）。issue driver の job 名（`Attempt to resolve issue`）も除外し、reusable workflow として他リポジトリから実行され workflow 名が呼び出し側になる場合も自身の status を待たない |
 | `CONAHCNUJ_CONTEXT_FILES` | `README.md AGENTS.md` | 最初のプロンプトへ同梱する作業ツリーファイル（スペース区切り）。空文字で同梱を無効化 |
 | `CONAHCNUJ_MISSING_MODELS_FILE` | `<gh-app>/missing-models` | 永久に使えない（deprecated / 削除済み）モデルの記録先。ラウンド前に読み、判明したモデルを追記する |
 | `CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS` | `1` | provider の rate limit を検知してラウンドを打ち切る監視間隔（秒）。再試行を待たず次モデルへ移る |
@@ -93,6 +93,11 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | `MOCK_OPENCODE_NOOP` | 指定モデルを no-op（実装を省略した振る舞い）にする |
 | `MOCK_OPENCODE_SESSION_ID` | モックが返す `sessionID` |
 
+通常の `OPENCODE_TEST_MODE=1` のモックは、実エージェントと同じように
+`git vc` 相当のローカルコミットを作り、`.commit-msg` は残しません。
+`MOCK_OPENCODE_MESSAGE_ONLY` のときだけ、作業ツリーを変えずに `.commit-msg`
+だけを書くラウンドを再現します。
+
 ## 内部変数（実装詳細・上書きしない）
 
 ドライバとライブラリが内部状態として扱う変数です。ユーザー設定ではありません。
@@ -106,7 +111,7 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 `CONAHCNUJ_RUN_TIMEOUT_SECONDS`（単発ラウンドのタイムアウト）/
 `OPENCODE_LIB_DIR` / `OPENCODE_RENDER_SH`（ライブラリの場所）/
 `GH_API_LAST_HTTP_CODE`（最後の HTTP ステータス）/
-`PR_BODY_SYNCED_FILE` / `PR_CONTINUATION_COMMENTED_FILE`（プロセス内マーカー）/
+`PR_BODY_SYNCED_FILE`（プロセス内マーカー）/
 `OPENCODE_ARGS_FILE`（テスト用モックが引数を受け取る経路）。
 
 ## 関連ページ

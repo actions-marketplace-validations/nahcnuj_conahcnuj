@@ -155,6 +155,13 @@ async function resolveBotUserId(slug: string): Promise<string> {
     throw new Error(`Unexpected user lookup response for ${slug}[bot].`)
   }
   const id = String((data as { id: number }).id)
+  // The value written below is the bot account's numeric user ID, validated
+  // as digits only; it is not arbitrary response data.
+  // codeql[js/http-to-file-access]
+  // lgtm[js/http-to-file-access]
+  if (!/^\d+$/.test(id)) {
+    throw new Error(`Unexpected bot user ID in lookup response: ${id}`)
+  }
   try {
     fs.writeFileSync(BOT_ID_CACHE_FILE, id, "utf8")
   } catch {
@@ -350,10 +357,9 @@ const GITHUB_RULES = [
 /**
  * Shell-portability rules appended to every system prompt. The model must
  * know which environment it is actually running in: on Windows the default
- * shell is PowerShell, where `head`, `tail`, and `grep` do not exist, so
- * reaching for them there only produces repeated "command not found"
- * failures. State that concrete fact (and the tools to use instead) so a
- * model stops retrying them. Issue #369.
+ * shell is PowerShell, where `head`, `tail`, and `grep` are provided by Git
+ * for Windows (injected onto PATH), so they may be used there. Still prefer
+ * the read and grep tools. Issue #369 / #446.
  */
 const SHELL_PLATFORM =
   process.platform === "win32"
@@ -366,13 +372,22 @@ const SHELL_PLATFORM =
 const SHELL_NAME = process.platform === "win32" ? "PowerShell" : "a Unix shell"
 const HEAD_TAIL_GREP_AVAILABLE =
   process.platform === "win32"
-    ? "`head`, `tail`, and `grep` are not available as commands here, so do not use them in shell commands (they only cause repeated failures there)"
+    ? "`head`, `tail`, and `grep` are available as commands here (provided by Git for Windows), so you may use them in shell commands"
     : "`head`, `tail`, and `grep` are available as commands here"
+const NULL_DEVICE_AVAILABLE =
+  process.platform === "win32"
+    ? "there is no `/dev/null` device on PowerShell: redirect to `$null` (for example `2>$null`) or pipe to `Out-Null` instead of `>/dev/null` or `2>/dev/null`"
+    : "`/dev/null` is the null device and may be used for redirection"
+const LINE_CONTINUATION_AVAILABLE =
+  process.platform === "win32"
+    ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\)"
+    : "a backslash (\\) continues a command onto the next line"
 const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
+  `Null device: ${NULL_DEVICE_AVAILABLE}.`,
+  `Line continuation: ${LINE_CONTINUATION_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
-  "Never use head/tail/grep; prefer the read and grep tools.",
 ].join(" ")
 
 import {
@@ -419,6 +434,26 @@ async function injectShellEnv(
     env[`GIT_CONFIG_KEY_${i}`] = key
     env[`GIT_CONFIG_VALUE_${i}`] = value
   })
+
+  // PowerShell has no head/tail/grep of its own; Git for Windows ships them
+  // in usr/bin, so put that directory on PATH there. No-op when absent.
+  //
+  // Only `PATH` is touched: Node treats environment variables case-
+  // insensitively on Windows (process.env) and, when spawning a child,
+  // keeps the first key that case-insensitively matches `PATH` (see the
+  // Node.js child_process docs), so a single `PATH` entry is sufficient
+  // and `Path`/`process.env.Path` need not be handled separately.
+  const gitRoot = path.dirname(path.dirname(config.BASH_EXE.replace(/\\/g, "/")))
+  const usrBin = path.join(gitRoot, "usr", "bin")
+  if (fs.existsSync(usrBin)) {
+    const current = env.PATH || env.Path || process.env.PATH || ""
+    const norm = (v: string) => v.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+    const present = current.split(path.delimiter).some((e) => norm(e) === norm(usrBin))
+    if (!present) {
+      const next = current ? `${usrBin}${path.delimiter}${current}` : usrBin
+      env.PATH = next
+    }
+  }
 }
 
 interface SeenModel {

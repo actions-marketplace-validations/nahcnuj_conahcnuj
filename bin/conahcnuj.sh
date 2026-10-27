@@ -101,7 +101,6 @@ fi
 # a "1" written into the file. Lives outside the work tree so it is never picked
 # up by `git add -A`.
 PR_BODY_SYNCED_FILE="${PR_BODY_SYNCED_FILE:-$(mktemp)}"
-PR_CONTINUATION_COMMENTED_FILE="${PR_CONTINUATION_COMMENTED_FILE:-$(mktemp)}"
 
 # Whether the last request_review_from_owner call could confirm the reviewer
 # assignment. log_review_handoff words its final line after it, so the run log
@@ -141,12 +140,6 @@ pr_body_synced() {
 }
 pr_body_mark_synced() {
   printf '1\n' > "${PR_BODY_SYNCED_FILE}"
-}
-pr_continuation_commented() {
-  [[ "$(cat "${PR_CONTINUATION_COMMENTED_FILE}" 2>/dev/null || true)" == "1" ]]
-}
-pr_continuation_mark_commented() {
-  printf '1\n' > "${PR_CONTINUATION_COMMENTED_FILE}"
 }
 
 # --- Windows relaunch -------------------------------------------------------
@@ -355,13 +348,19 @@ branch_has_commits() {
   # and head). That is what crashed the driver into the bug-report chain of
   # issues #33/#34.
   ref="${default_oid}"
-  if ! git rev-parse --verify -q "${ref}^{commit}" >/dev/null 2>&1; then
+  if [[ -z "${ref}" ]] || ! git rev-parse --verify -q "${ref}^{commit}" >/dev/null 2>&1; then
     # The OID is not in this clone (offline tests feed a placeholder oid);
     # fall back to the local default-branch refs.
     ref="${default_branch}"
-    if git rev-parse --verify -q "origin/${default_branch}" >/dev/null 2>&1; then
+    if [[ -n "${ref}" ]] && git rev-parse --verify -q "origin/${default_branch}" >/dev/null 2>&1; then
       ref="origin/${default_branch}"
     fi
+  fi
+  if [[ -z "${ref}" ]]; then
+    # No base to compare against: cannot tell whether HEAD already carries
+    # work, so treat it as "no commits yet" (never accept a message-only
+    # round on an unknown base).
+    return 1
   fi
   count="$(git rev-list --count "${ref}..HEAD" 2>/dev/null || printf '0')"
   [[ "${count}" -gt 0 ]]
@@ -405,6 +404,24 @@ apply_driver_commit_model() {
   fi
 }
 
+# Make an external text stream safe to hold in a bash variable and embed in a
+# JSON string. NUL bytes are dropped (bash cannot keep them and silently drops
+# them from command substitutions while corrupting the surrounding bytes), and
+# invalid UTF-8 is removed too: a UTF-16 encoded file (a BOM plus NUL-separated
+# ASCII) becomes invalid UTF-8 once the NULs are stripped, and a raw invalid
+# byte in a title/body makes GitHub answer 400 "Problems parsing JSON", losing
+# the whole API call. The same sanitizer runs for the agent's commit message
+# and for the captured run log in the bug report.
+sanitize_text() {
+  if command -v iconv >/dev/null 2>&1; then
+    iconv -c -f UTF-8 -t UTF-8 2>/dev/null || cat
+  else
+    # No iconv: keep ASCII and drop every other byte so the request still
+    # parses. Losing non-ASCII text beats losing the API call.
+    LC_ALL=C tr -d '\200-\377'
+  fi
+}
+
 # Commit every working-tree change as a Verified commit, then sync the local
 # branch to the remote head api-commit.sh created. The commit message always
 # comes from the coding agent (.commit-msg); the driver never invents a fixed
@@ -421,7 +438,13 @@ commit_changes() {
     echo "ERROR: the coding agent left no .commit-msg; refusing to commit with a fixed message." >&2
     return 1
   fi
-  message="$(head -1 .commit-msg)"
+  # Read the first line without letting an embedded NUL byte (which bash
+  # cannot hold in a variable) trigger "ignored null byte in input" and
+  # silently corrupt the surrounding UTF-8: strip NULs through a pipe, drop a
+  # leading BOM, and coerce to valid UTF-8 so the message never reaches the
+  # GitHub API as a malformed JSON string.
+  message="$(head -n 1 .commit-msg | tr -d '\000' | sed '1s/^\xEF\xBB\xBF//' | sanitize_text)"
+  message="${message%$'\r'}"
   rm -f .commit-msg
   if [[ -z "${message}" ]]; then
     echo "ERROR: .commit-msg is empty; the coding agent must write a commit message." >&2
@@ -558,7 +581,7 @@ report_bug_body() {
     opener="The conahcnuj driver terminated abnormally and could not resolve the item it was working on. This issue was filed automatically so the driver bug can be fixed (re-run: conahcnuj ${input})."
     closing="The driver exits this way only when it is unable to finish the run; a maintainer should investigate and pick this report up."
   fi
-  log_tail="$(tail -n 100 "${RUN_LOG_FILE}" 2>/dev/null || true)"
+  log_tail="$(tail -n 100 "${RUN_LOG_FILE}" 2>/dev/null | tr -d '\000' | sanitize_text)"
   if [[ -n "${log_tail}" ]]; then
     log_block="\`\`\`text
 ${log_tail}
@@ -677,6 +700,21 @@ next_free_branch() {
   printf '%s\n' "${branch}"
 }
 
+# Drop any in-progress merge or unmerged index entries left by an interrupted
+# round so a following `git checkout` can actually move HEAD. An unresolved
+# conflict (MERGE_HEAD present, or "needs merge" entries in the index) makes
+# `git checkout` refuse with "you need to resolve your current index first",
+# which used to abort the run at the first checkout of a resumed PR (issue
+# #489). The fetch has already succeeded by the time this runs, so the remote
+# head is known; discarding the local conflict state loses only work that was
+# never committed, which is the same fate an interrupted round already had.
+clear_merge_state() {
+  if git rev-parse --verify -q MERGE_HEAD >/dev/null 2>&1; then
+    git merge --quit 2>/dev/null || git merge --abort 2>/dev/null || true
+  fi
+  git reset --hard HEAD >/dev/null 2>&1 || true
+}
+
 # Fetch <branch> from origin and check out its head. A failed fetch stops the
 # run instead of falling back to whatever origin/<branch> happens to hold: such
 # a checkout "succeeds" at a stale commit, the driver then reads the branch as
@@ -693,6 +731,7 @@ checkout_branch_head() {
     echo "ERROR: could not fetch ${branch} from origin; refusing to work on a stale branch head." >&2
     return 1
   fi
+  clear_merge_state
   git checkout -B "${branch}" "origin/${branch}" 1>&2
 }
 
@@ -743,6 +782,7 @@ checkout_new_branch_from_base() {
     echo "ERROR: no base commit to start ${branch} from." >&2
     return 1
   fi
+  clear_merge_state
   git checkout -B "${branch}" "${base}" 1>&2
 }
 
@@ -758,6 +798,7 @@ ensure_issue_branch() {
   echo "Feature branch: ${branch} (from ${default_branch})" >&2
 
   if [[ "${TEST_MODE}" == "1" ]]; then
+    clear_merge_state
     git checkout -B "${branch}" >/dev/null 2>&1 || git checkout -b "${branch}"
     printf '%s\n' "${branch}"
     return 0
@@ -787,6 +828,7 @@ ensure_issue_branch() {
       echo "WARNING: branch create returned an error for ${branch}; will try to fetch it." >&2
     fi
     if fetch_new_branch_ref "${branch}"; then
+      clear_merge_state
       git checkout -B "${branch}" "origin/${branch}" 1>&2 || return 1
     elif [[ "${created}" == "1" ]]; then
       echo "WARNING: ${branch} is not fetchable right after creation; starting it from ${default_branch}." >&2
@@ -805,6 +847,7 @@ ensure_pr_branch_head() {
   local owner="${1}" repo="${2}" head="${3}"
   echo "Checking out PR head branch ${head}..." >&2
   if [[ "${TEST_MODE}" == "1" ]]; then
+    clear_merge_state
     git checkout -B "${head}" >/dev/null 2>&1 || git checkout -b "${head}"
     return 0
   fi
@@ -824,7 +867,7 @@ resolve_agent_branch_name() {
   fi
   # Trim leading/trailing whitespace only; internal spaces stay and are then
   # rejected by git check-ref-format rather than silently altered.
-  want="$(head -1 .branch-name | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  want="$(head -n 1 .branch-name | tr -d '\000' | sanitize_text | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   rm -f .branch-name
   if [[ -z "${want}" ]]; then
     echo "WARNING: .branch-name is empty; keeping the driver-derived branch ${current}." >&2
@@ -849,6 +892,7 @@ resolve_agent_branch_name() {
     # The ref may not be fetchable the instant it was created; the branch is
     # brand-new, so starting it from the base loses no committed work.
     if fetch_new_branch_ref "${want}"; then
+      clear_merge_state
       git checkout -B "${want}" "origin/${want}" 1>&2
     else
       echo "WARNING: ${want} is not fetchable right after creation; starting it from the base." >&2
@@ -858,6 +902,7 @@ resolve_agent_branch_name() {
       }
     fi
   else
+    clear_merge_state
     git checkout -B "${want}" >/dev/null 2>&1
   fi
   echo "Using the coding agent's feature branch: ${want}" >&2
@@ -989,7 +1034,7 @@ persist_missing_model() {
 # base, so a message-only round there stays no work and still falls through to
 # the other models.
 implement() {
-  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider
+  local title="${1}" body="${2}" extra="${3:-}" workdir model previous_model="" run_failed run_timeout now wrote_message provider tree_changed model_retried head_before head_after committed
   local dead_providers="" quota_providers="" failed_rounds=0 env_failed_rounds=0 quota_failed_rounds=0 ran_without_failure=0
   local model_list known_skipped=""
   local base_branch="${4:-}"
@@ -1010,8 +1055,6 @@ implement() {
     [[ -z "${model}" ]] && continue
     check_timeout
     provider="${model%%/*}"
-    # A model a previous round (this run or a past one) proved gone is not even
-    # tried: no round, no error in the log.
     if is_missing_model "${model}"; then
       continue
     fi
@@ -1023,72 +1066,94 @@ implement() {
       echo "Skipping ${model}: provider ${provider} already exhausted its quota/billing, and no other of its models can change that." >&2
       continue
     fi
-    now="$(date +%s)"
-    run_timeout=$((MAX_DURATION - (now - START_TIME) - 30))
-    (( run_timeout > 0 )) || run_timeout=1
-    if [[ -n "${OPENCODE_SESSION_ID}" ]]; then
-      echo "Handing off session ${OPENCODE_SESSION_ID} from ${previous_model} to ${model}." >&2
-      OPENCODE_HANDOFFS="${OPENCODE_HANDOFFS}${previous_model}->${model} "
-    elif [[ -n "${previous_model}" ]]; then
-      echo "Session handoff was unavailable after ${previous_model}; ${model} will continue from the working tree." >&2
-    fi
-    run_failed="false"
-    if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}" "${COLLECTED_CONTEXT}"; then
-      run_failed="true"
-    fi
-    OPENCODE_USED_MODELS="${OPENCODE_USED_MODELS}${model} "
-    wrote_message="false"
-    if [[ -s "${workdir}/.commit-msg" ]]; then
-      wrote_message="true"
-    fi
-    if workdir_changed "${workdir}" && [[ "${wrote_message}" == "true" ]]; then
-      echo "Model ${model} completed the work." >&2
-      OPENCODE_LAST_MODEL="${model}"
-      return 0
-    fi
-    # In a round where a message can be the whole deliverable (the feedback
-    # round, which passes the base branch), a model can finish with just a
-    # .commit-msg because there is nothing left to change: the branch already
-    # carries the implementation (a resumed PR, or a later round on an
-    # implemented branch). Accept it and let the run move on instead of handing
-    # the finished work to the next model. Skipping such a model has churned
-    # through models and let a weaker one commit junk onto the branch, which is
-    # what issue #273 reported. The .commit-msg is metadata, never committed, so
-    # it is cleaned up here.
-    if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
+    model_retried=0
+    while true; do
+      check_timeout
+      now="$(date +%s)"
+      run_timeout=$((MAX_DURATION - (now - START_TIME) - 30))
+      (( run_timeout > 0 )) || run_timeout=1
+      if [[ -n "${OPENCODE_SESSION_ID}" && "${previous_model}" != "${model}" ]]; then
+        echo "Handing off session ${OPENCODE_SESSION_ID} from ${previous_model} to ${model}." >&2
+        OPENCODE_HANDOFFS="${OPENCODE_HANDOFFS}${previous_model}->${model} "
+      elif [[ -n "${previous_model}" && "${previous_model}" != "${model}" && -z "${OPENCODE_SESSION_ID}" ]]; then
+        echo "Session handoff was unavailable after ${previous_model}; ${model} will continue from the working tree." >&2
+      fi
+      run_failed="false"
+      head_before="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
+      if ! CONAHCNUJ_RUN_TIMEOUT_SECONDS="${run_timeout}" opencode_run "${title}" "${body}" "${workdir}" "${model}" "${extra}" "${OPENCODE_SESSION_ID}" "${previous_model}" "${COLLECTED_CONTEXT}"; then
+        run_failed="true"
+      fi
+      OPENCODE_USED_MODELS="${OPENCODE_USED_MODELS}${model} "
+      head_after="$(git -C "${workdir}" rev-parse HEAD 2>/dev/null || true)"
+      committed="false"
+      if [[ -n "${head_after}" && "${head_after}" != "${head_before}" ]]; then
+        committed="true"
+      fi
+      wrote_message="false"
+      if [[ -s "${workdir}/.commit-msg" ]]; then
+        wrote_message="true"
+      fi
+      tree_changed="false"
+      if workdir_changed "${workdir}"; then
+        tree_changed="true"
+      fi
+      if [[ "${committed}" == "true" ]]; then
+        rm -f "${workdir}/.commit-msg"
+        echo "Model ${model} completed the work and committed it." >&2
+        OPENCODE_LAST_MODEL="${model}"
+        return 0
+      fi
+      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
+        echo "Model ${model} completed the work." >&2
+        OPENCODE_LAST_MODEL="${model}"
+        return 0
+      fi
+      if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
+        rm -f "${workdir}/.commit-msg"
+        echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
+        OPENCODE_LAST_MODEL="${model}"
+        return 0
+      fi
       rm -f "${workdir}/.commit-msg"
-      echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
-      OPENCODE_LAST_MODEL="${model}"
-      return 0
-    fi
-    rm -f "${workdir}/.commit-msg"
-    previous_model="${model}"
-    if [[ "${run_failed}" == "true" ]]; then
-      failed_rounds=$((failed_rounds + 1))
-      if [[ "${OPENCODE_ROUND_MODEL_GONE}" == "true" ]]; then
-        persist_missing_model "${model}"
-        echo "Model ${model} failed before completing the work: the model itself is gone (deprecated / removed / unavailable); remembering it as unavailable and skipping it from now on." >&2
-      elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
-        quota_failed_rounds=$((quota_failed_rounds + 1))
-        quota_providers="${quota_providers} ${provider}"
-        echo "Model ${model} failed before completing the work: provider quota/billing exhausted; giving up on provider ${provider} for the rest of this run." >&2
-      elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
-        env_failed_rounds=$((env_failed_rounds + 1))
-        dead_providers="${dead_providers} ${provider}"
-        echo "Model ${model} failed before completing the work: environment error (provider unreachable or credentials rejected); giving up on provider ${provider} for the rest of this run." >&2
-      elif [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
-        echo "Model ${model} hit a rate limit; trying the next model without waiting for the retry." >&2
+      previous_model="${model}"
+      if [[ "${run_failed}" == "true" ]]; then
+        failed_rounds=$((failed_rounds + 1))
+        if [[ "${OPENCODE_ROUND_MODEL_GONE}" == "true" ]]; then
+          persist_missing_model "${model}"
+          echo "Model ${model} failed before completing the work: the model itself is gone (deprecated / removed / unavailable); remembering it as unavailable and skipping it from now on." >&2
+        elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
+          quota_failed_rounds=$((quota_failed_rounds + 1))
+          quota_providers="${quota_providers} ${provider}"
+          echo "Model ${model} failed before completing the work: provider quota/billing exhausted; giving up on provider ${provider} for the rest of this run." >&2
+        elif [[ "${OPENCODE_ROUND_ENVIRONMENT}" == "true" ]]; then
+          env_failed_rounds=$((env_failed_rounds + 1))
+          dead_providers="${dead_providers} ${provider}"
+          echo "Model ${model} failed before completing the work: environment error (provider unreachable or credentials rejected); giving up on provider ${provider} for the rest of this run." >&2
+        elif [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
+          echo "Model ${model} hit a rate limit; trying the next model without waiting for the retry." >&2
+        else
+          echo "Model ${model} failed before completing the work; handing off to the next model." >&2
+        fi
+        break
       else
-        echo "Model ${model} failed before completing the work; handing off to the next model." >&2
+        ran_without_failure=$((ran_without_failure + 1))
+        if [[ "${wrote_message}" == "true" ]]; then
+          echo "Model ${model} left the working tree unchanged and only wrote .commit-msg; handing off to the next model." >&2
+          break
+        elif [[ "${tree_changed}" == "false" ]]; then
+          if [[ "${model_retried}" -eq 0 ]]; then
+            model_retried=1
+            echo "Model ${model} produced no complete work; retrying once with the same model." >&2
+            continue
+          fi
+          echo "Model ${model} produced no complete work." >&2
+          break 2
+        else
+          echo "Model ${model} produced no complete work; handing off to the next model." >&2
+          break
+        fi
       fi
-    else
-      ran_without_failure=$((ran_without_failure + 1))
-      if [[ "${wrote_message}" == "true" ]]; then
-        echo "Model ${model} left the working tree unchanged and only wrote .commit-msg; handing off to the next model." >&2
-      else
-        echo "Model ${model} produced no complete work; handing off to the next model." >&2
-      fi
-    fi
+    done
   done
   echo "ERROR: no available model completed the work (tried: ${OPENCODE_USED_MODELS:-none}; handoffs: ${OPENCODE_HANDOFFS:-none})." >&2
   if [[ "${failed_rounds}" -gt 0 && "$((env_failed_rounds + quota_failed_rounds))" -eq "${failed_rounds}" && "${ran_without_failure}" -eq 0 ]]; then
@@ -1099,18 +1164,6 @@ implement() {
 }
 
 # --- PR lifecycle -----------------------------------------------------------
-
-post_pr_continuation_comment() {
-  local owner="${1}" repo="${2}" pr="${3}"
-  if gh_api_post_comment "${owner}" "${repo}" "${pr}" "<!-- conahcnuj-continuation -->
-PR #${pr} の処理を継続するには、Issue auto-drive を手動実行してください。
-
-[継続するにはこちらをクリック](https://github.com/${owner}/${repo}/actions/workflows/issue-driver.yml/dispatch?inputs%5Bnumber%5D=${pr})" >/dev/null; then
-    return 0
-  fi
-  echo "WARNING: could not post the continuation comment for PR #${pr}." >&2
-  return 1
-}
 
 # Remove standalone closing-reference lines ("Closes #<n>", "Fixes #<n>",
 # "Resolves #<n>", also comma-separated lists) from a body and collapse the
@@ -1433,7 +1486,7 @@ drive() {
       # #N" bug report chain (issues #33/#34).
       echo "PR could not be created for ${branch} -> ${base}; running an implementation round." >&2
       local produced_change="false"
-      if implement "${title}" "${body}" "The pull request for ${branch} could not be opened; GitHub rejects a PR with no changes between the branches. Make a real change so the PR can be created."; then
+      if implement "${title}" "${body}" "The pull request for ${branch} could not be opened; GitHub rejects a PR with no changes between the branches. Make a real change so the PR can be created." "${base}"; then
         produced_change="true"
       fi
       # Only a round that both changed the tree AND named the commit may be
@@ -1455,12 +1508,6 @@ drive() {
       pr_draft="${want_draft}"
     fi
 
-    if ! pr_continuation_commented; then
-      if post_pr_continuation_comment "${owner}" "${repo}" "${pr}"; then
-        pr_continuation_mark_commented
-      fi
-    fi
-
     # --- TODO.md gate ---
     # TODO.md is the coding agent's per-issue progress file: present while the
     # issue is unfinished, deleted when it is resolved and ready for review. It
@@ -1477,7 +1524,7 @@ drive() {
       fi
       echo "TODO.md is still present; the issue is not finished. Keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.md is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.md current, and delete it once the issue is fully resolved and the pull request is ready for review."; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.md is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.md current, and delete it once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
@@ -1548,19 +1595,22 @@ drive() {
       # "Addressed the review feedback" comment: the in-thread replies are how
       # the reviewer learns what happened. Because the fingerprint drops
       # bot-authored comments, those replies never look like fresh feedback.
-      local reply_help="Address the pull request review feedback. First make the code changes and push them with git vc, then confirm CI passes and there is no merge conflict (CI status is unreliable while the branch conflicts, so resolve any conflict before trusting it). Only after that, reply in each unresolved thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass)."
-      if ! implement "${title}" "${body}" "${reply_help}
+      local code_help="Address the pull request review feedback. Make the code changes, commit them with \`git vc\`, and resolve any merge conflict (merge the base branch in, resolve every conflict, leave no conflict markers). Then reply in each unresolved review thread below (comment), saying what you changed or answering the question. Post the reply with the GitHub API (POST https://api.github.com/repos/${owner}/${repo}/pulls/${pr}/comments/<comment_id>/replies is the reply endpoint; \${GH_TOKEN} is set) using the comment id shown for each thread. Do not request review yourself (the driver does that after the checks pass).
 
-${summary}" "${base}"; then
+${summary}"
+      if ! implement "${title}" "${body}" "${code_help}" "${base}"; then
         echo "No working-tree change was produced for this feedback; keeping whatever thread replies were already made." >&2
       fi
-      # A round can fail after leaving a partial change and no .commit-msg (a
-      # provider outage mid-round is what filed issue #251). There is nothing
-      # the driver may commit, and refusing must not abort the run: it hands the
-      # PR back to the reviewer below and keeps driving.
+      # The agent is asked to commit with `git vc` itself; the driver only
+      # commits uncommitted changes that still have a .commit-msg as a safety
+      # net. A round can fail after leaving a partial change and no
+      # .commit-msg (a provider outage mid-round is what filed issue #251):
+      # there is nothing the driver may commit, and refusing must not abort the
+      # run.
       if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
         commit_changes
       fi
+      rm -f .commit-msg
       # Verify the non-reviewer constraints again before handing the PR back:
       # the fix restarted CI, so the reviewer is only asked once the checks are
       # green again (and the branch still merges), exactly as on the first
@@ -1610,7 +1660,7 @@ ${summary}" "${base}"; then
       fi
       fix_context="$(constraint_fix_context "${branch}" "${base}")"
       echo "PR #${pr}: constraints failing (${CONSTRAINT_FAILURE:-unknown}); fixing with a new implementation round." >&2
-      if implement "${title}" "${body}" "${fix_context}"; then
+      if implement "${title}" "${body}" "${fix_context}" "${base}"; then
         produced_change="true"
       fi
       # Same rule as the feedback round: a dirty tree without a .commit-msg is
@@ -1673,12 +1723,14 @@ start_issue() {
     echo "Working tree has uncommitted changes; committing them as the implementation." >&2
     commit_changes
   else
-    if ! implement "${title}" "${body}"; then
+    if ! implement "${title}" "${body}" "" "${default_branch}"; then
       echo "ERROR: could not implement issue #${num} with any available model." >&2
       exit 1
     fi
     branch="$(resolve_agent_branch_name "${owner}" "${repo}" "${default_oid}" "${branch}")"
-    commit_changes
+    if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
+      commit_changes
+    fi
   fi
 
   drive "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}"

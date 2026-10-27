@@ -42,9 +42,14 @@
 
 - **まず自分がどの OS・シェルで動いているかを確認すること。** 実際に動いている
   環境を自分で把握してからコマンドを選ぶこと（Windows のデフォルトシェル
-  (PowerShell) には `head` / `tail` / `grep` が無く、使うと "command not found"
-  のエラーが繰り返し発生する）。Windows/PowerShell では これらをシェルコマンド
-  として使わず、ファイルの読み取りは read ツール、検索は grep/glob ツールを
-  使うこと。シェルコマンドが避けられない場合は PowerShell の同等コマンドや
-  node/python を使うこと。コマンドが存在するか分からないときは先に確認すること。
-  Never use head/tail/grep on Windows/PowerShell; prefer the read and grep tools.
+  (PowerShell) でも Git for Windows 由来で `head` / `tail` / `grep` が使える
+  ようになったので、シェルコマンドとして使ってよい）。ファイルの読み取りは
+  read ツール、検索は grep/glob ツールを優先すること。シェルコマンドが
+  避けられない場合は PowerShell の同等コマンドや node/python を使うこと。
+  コマンドが存在するか分からないときは先に確認すること。
+- **`/dev/null` は Unix の null デバイスであり、Windows の PowerShell には
+  存在しません。** PowerShell では `$null`（例: `2>$null`）や `Out-Null` を
+  使ってください。`/dev/null` や `2>/dev/null` を PowerShell で使うと
+  `C:\dev\null` というファイル作成を試みて失敗します。
+- **行継続もシェル依存です。** PowerShell ではバッククォート (`` ` ``) を使い、
+  バックスラッシュ (`\`) は使えません（Unix シェルの継続文字です）。

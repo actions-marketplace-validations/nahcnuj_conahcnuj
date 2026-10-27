@@ -44,8 +44,8 @@ git -C "${WORK}" commit -qm init
 # Mocked response tape, in call order:
 #   fetch_issue (auto-detect: PR input), fetch_pr_state, fetch_issue (stub
 #   body -> real issue body), fetch_reviews (collection: one open thread, one
-#   resolved), update_pr (body sync on the reuse path), post_comment (the PR
-#   continuation comment), fetch_reviews (CHANGES_REQUESTED with an open
+#   resolved), update_pr (body sync on the reuse path), fetch_reviews
+#   (CHANGES_REQUESTED with an open
 #   thread), conditions, request_review, fetch_reviews (APPROVED -> the run
 #   ends on the approval, not the request). The feedback is read (and
 #   addressed) before the constraints poll: known feedback must not wait on CI
@@ -62,7 +62,6 @@ cat > "${TAPE}" <<'EOF'
 {"number": 10, "title": "Fix something", "body": "# 背景\nPR を引き継いで再開できるようにする。", "labels": [{"name": "enhancement"}], "state": "open"}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":101,"body":"Please document the collected context","author":{"login":"reviewer"}}]}},{"isResolved":true,"comments":{"nodes":[{"databaseId":102,"body":"Already settled thread","author":{"login":"reviewer"}}]}}]}}}}}
 {}
-{"id":889}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
@@ -103,6 +102,10 @@ APPROVED_LINE="$(grep -n "Ready to merge" "${LOG}" | head -1 | cut -d: -f1)"
 ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #15" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${APPROVED_LINE}" && "${ASSIGNED_LINE}" -lt "${APPROVED_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" || { echo "FAIL: review feedback was not acted on"; exit 1; }
+# The agent commits the fix with `git vc` in the same round; the driver must
+# see the new commit and not commit the work a second time.
+grep -q "completed the work and committed it" "${LOG}" || { echo "FAIL: the agent's commit was not detected"; exit 1; }
+grep -q "Using coding agent's commit message" "${LOG}" && { echo "FAIL: the driver committed the agent's work again"; exit 1; }
 # Known feedback must be addressed before the run waits on CI (#219): a PR with
 # open threads (or required conversation resolution) never reaches the
 # constraints until the threads are answered, so polling first only stalls.
@@ -115,6 +118,11 @@ FIRST_CONSTRAINTS_LINE="$(grep -n 'constraints: checks=' "${LOG}" | head -1 | cu
 grep -q "Addressed the review feedback" "${LOG}" && { echo "FAIL: the driver still posts its own review-feedback comment"; exit 1; }
 grep -q "comment 12345 by reviewer" "${LOG}" || { echo "FAIL: the feedback prompt does not name the thread comment to answer"; exit 1; }
 grep -q "POST https://api.github.com/repos/nahcnuj/conahcnuj/pulls/15/comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
+# The reply comes AFTER the fix is committed and pushed (#485): the code round
+# The agent now commits (git vc) and replies in the same round, so the
+# reply instructions and the thread comment ids travel together in one prompt.
+grep -q "comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
+grep -q "comment 12345 by reviewer" "${LOG}" || { echo "FAIL: the feedback prompt does not name the thread comment to answer"; exit 1; }
 
 # The prompt carries the collected context: the PR's open thread and the
 # checkout's orientation files, but never the resolved thread.

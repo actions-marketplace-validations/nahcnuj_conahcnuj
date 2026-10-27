@@ -160,6 +160,61 @@ test_tool_failure_exit_code() {
   echo "render tool failure passed"
 }
 
+test_tool_timeout_is_failure() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # opencode kills a command at its timeout and reports the call as completed
+  # with no exit code; the <shell_metadata> block it appends to the output is
+  # the only tell. A timed-out command is not a success (#420).
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"bash driver-tests/run.sh"},"output":"(no output)\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 120000 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n","metadata":{"output":"(no output)\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 120000 ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.\n</shell_metadata>\n","truncated":false},"title":"bash driver-tests/run.sh"}}}
+EOF
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "shell tool terminated command after exceeding timeout" "timeout reason kept in the feed"
+  assert_contains "${out}" "❌️ bash driver-tests/run.sh (timed out)" "timed-out command is a failure"
+  assert_not_contains "${out}" "✅ bash driver-tests/run.sh" "timed-out command is not a success"
+  rm -rf "${tmp}"
+  echo "render tool timeout passed"
+}
+
+test_tool_no_output_sentinel_suppressed() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"true"},"output":"(no output)","metadata":{"exit":0},"title":"true"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+  assert_not_contains "${out}" "(no output)" "sentinel is not a real no-op output"
+  assert_contains "${out}" "✅ true" "empty command still succeeds"
+  rm -rf "${tmp}"
+  echo "render tool no-output sentinel passed"
+}
+
+test_tool_no_output_real_print_kept() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"echo"},"output":"(no output)\n","metadata":{"exit":0},"title":"echo"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+  assert_contains "${out}" "  (no output)" "real (no output) print is kept"
+  rm -rf "${tmp}"
+  echo "render tool real no-output kept"
+}
+
+test_tool_no_output_after_real_output_kept() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # "(no output)" as the final line of real multi-line output (no trailing
+  # newline) is not the sentinel: only the first line can be, so it must stay.
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"printf"},"output":"one\n(no output)","metadata":{"exit":0},"title":"printf"}}}' |
+    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+  assert_contains "${out}" "  one" "real output before (no output) kept"
+  assert_contains "${out}" "  (no output)" "real trailing (no output) kept"
+  rm -rf "${tmp}"
+  echo "render tool no-output after real output passed"
+}
+
 test_tool_error_status() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -231,9 +286,14 @@ test_tool_edit_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"one","newString":"ONE"},"output":"edited","metadata":{"diff":"@ -1 +1 @@\n-one\n+ONE"}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line with the file"
-  assert_contains "${out}" "  @ -1 +1 @@" "the diff is under the verdict line"
-  assert_contains "${out}" "  -one" "removed line in the diff"
-  assert_contains "${out}" "  +ONE" "added line in the diff"
+  # The diff is not indented: it stays at column 0 so it reads (and copies) as
+  # a real diff instead of being nudged right by the block indent.
+  assert_contains "${out}" $'✅ Edit tracked.txt\n@ -1 +1 @@' "the diff starts unindented under the verdict line"
+  assert_contains "${out}" $'\n-one\n' "removed line in the diff"
+  assert_contains "${out}" $'\n+ONE' "added line in the diff"
+  assert_not_contains "${out}" "  @ -1 +1 @@" "the diff is not indented"
+  assert_not_contains "${out}" "  -one" "removed line is not indented"
+  assert_not_contains "${out}" "  +ONE" "added line is not indented"
   rm -rf "${tmp}"
   echo "render edit diff passed"
 }
@@ -246,9 +306,11 @@ test_tool_edit_stitched_diff() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"edit","state":{"status":"completed","input":{"filePath":"tracked.txt","oldString":"two","newString":"TWO\nmore"},"output":"edited","metadata":{"exit":0}}}}' |
     bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "✅ Edit tracked.txt" "edit verdict line"
-  assert_contains "${out}" "  - two" "the old text shows as removed"
-  assert_contains "${out}" "  + TWO" "the new text shows as added"
-  assert_contains "${out}" "  + more" "the second line of the new text"
+  assert_contains "${out}" $'\n- two\n' "the old text shows as removed, unindented"
+  assert_contains "${out}" $'\n+ TWO\n' "the new text shows as added, unindented"
+  assert_contains "${out}" $'\n+ more' "the second line of the new text"
+  assert_not_contains "${out}" "  - two" "the stitched diff is not indented"
+  assert_not_contains "${out}" "  + TWO" "the stitched added line is not indented"
   rm -rf "${tmp}"
   echo "render edit stitched diff passed"
 }
@@ -302,6 +364,118 @@ test_command_running_has_no_verdict_yet() {
   assert_contains "${out}" "  compiling" "its partial output is on the log"
   rm -rf "${tmp}"
   echo "render running verdict passed"
+}
+
+test_command_grouped_in_github_actions() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # On GitHub Actions every command block is wrapped in a collapsible log
+  # group: the caption keeps its leading `$` (consistent with local runs)
+  # and `::endgroup::` closes it once the command finishes.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_g1","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker prefixes the caption"
+  assert_contains "${out}" "::endgroup::" "group is closed at the verdict"
+  rm -rf "${tmp}"
+  echo "render command grouped in github actions passed"
+}
+
+test_command_grouped_streaming_in_github_actions() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command that streams under GitHub Actions: the group opens on the first
+  # sighting (running) and closes once the command finishes, so the partial
+  # output and the verdict stay inside the collapsible group.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_gs","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"cat tracked.txt"},"output":"one\ntwo\n"},"title":"cat tracked.txt"}}
+{"type":"tool_use","part":{"id":"prt_gs","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker opens on first sighting"
+  assert_contains "${out}" "  one" "partial output is inside the group"
+  assert_contains "${out}" "  three" "tail is inside the group"
+  assert_contains "${out}" "✅ cat tracked.txt" "verdict is inside the group"
+  assert_contains "${out}" "::endgroup::" "group is closed at the verdict"
+  [[ "$(printf '%s\n' "${out}" | grep -c '::group::')" == "1" ]] || fail "group opened more than once" "${out}"
+  rm -rf "${tmp}"
+  echo "render command grouped streaming in github actions passed"
+}
+
+test_command_group_closed_at_eof_in_github_actions() {
+  local tmp out groups endgroups
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # A command still running when the event stream ends (the round was cut off,
+  # opencode exited mid-command, ...) must not leave its log group open: an
+  # unclosed `::group::` makes GitHub Actions hide everything after it, which
+  # is how the trailing ✅/❌️ lines went missing (#491).
+  out="$(printf '%s\n' '{"type":"tool_use","part":{"id":"prt_ge","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"slow build"},"output":"compiling"},"title":"slow build"}}' |
+    GITHUB_ACTIONS=true bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ slow build" "the unterminated command opens its group"
+  assert_contains "${out}" "  compiling" "its partial output is on the log"
+  assert_contains "${out}" "::endgroup::" "the dangling group is closed at end of stream"
+  groups="$(printf '%s\n' "${out}" | grep -c '::group::' || true)"
+  endgroups="$(printf '%s\n' "${out}" | grep -c '::endgroup::' || true)"
+  [[ "${groups}" == "${endgroups}" ]] || fail "group not balanced (${groups} open / ${endgroups} close)" "${out}"
+  # The end marker has to stand on its own log line; glued to partial output
+  # GitHub Actions does not recognise it.
+  [[ "$(printf '%s\n' "${out}" | tail -n 1)" == "::endgroup::" ]] || fail "::endgroup:: is not the last line" "${out}"
+  rm -rf "${tmp}"
+  echo "render command group closed at eof in github actions passed"
+}
+
+test_command_not_grouped_outside_github_actions() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # Outside GitHub Actions the plain `$ <command>` caption is used and no
+  # group markers are emitted.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_g2","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "\$ cat tracked.txt" "plain caption is used"
+  assert_not_contains "${out}" "::group::" "no group marker outside GHA"
+  assert_not_contains "${out}" "::endgroup::" "no endgroup marker outside GHA"
+  rm -rf "${tmp}"
+  echo "render command not grouped outside github actions passed"
+}
+
+test_command_grouped_in_github_actions_with_one() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # `GITHUB_ACTIONS=1` is the other documented truthy spelling and must group
+  # exactly like `GITHUB_ACTIONS=true`.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_g3","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS=1 bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker prefixes the caption with =1"
+  assert_contains "${out}" "::endgroup::" "group is closed at the verdict with =1"
+  rm -rf "${tmp}"
+  echo "render command grouped in github actions with =1 passed"
+}
+
+test_command_not_grouped_with_unrecognized_github_actions() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  fixture_repo "${tmp}/repo"
+  # Only `true` and `1` count as GitHub Actions; any other value (including
+  # `false` and `0`) keeps the plain caption and no group markers.
+  out="$(cat <<'EOF' |
+{"type":"tool_use","part":{"id":"prt_g4","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
+EOF
+    GITHUB_ACTIONS=0 bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+  assert_contains "${out}" "\$ cat tracked.txt" "plain caption is used for =0"
+  assert_not_contains "${out}" "::group::" "no group marker for =0"
+  assert_not_contains "${out}" "::endgroup::" "no endgroup marker for =0"
+  rm -rf "${tmp}"
+  echo "render command not grouped for unrecognized github actions passed"
 }
 
 test_streamed_text_prints_only_the_tail() {
@@ -501,6 +675,10 @@ test_model_label_file_wins
 test_text_and_reasoning
 test_tool_success
 test_tool_failure_exit_code
+test_tool_timeout_is_failure
+test_tool_no_output_sentinel_suppressed
+test_tool_no_output_real_print_kept
+test_tool_no_output_after_real_output_kept
 test_tool_error_status
 test_tool_title_fallback
 test_tool_read_reports_in_one_line
@@ -510,6 +688,12 @@ test_tool_edit_stitched_diff
 test_tool_glob_reports_pattern_and_results
 test_command_streams_as_it_prints
 test_command_running_has_no_verdict_yet
+test_command_grouped_in_github_actions
+test_command_grouped_streaming_in_github_actions
+test_command_group_closed_at_eof_in_github_actions
+test_command_not_grouped_outside_github_actions
+test_command_grouped_in_github_actions_with_one
+test_command_not_grouped_with_unrecognized_github_actions
 test_streamed_text_prints_only_the_tail
 test_stream_snapshot_older_than_printed
 test_tool_input_does_not_shadow_state
