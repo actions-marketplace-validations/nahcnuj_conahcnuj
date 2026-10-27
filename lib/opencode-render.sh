@@ -310,7 +310,11 @@ function emit(tag, raw,  v, n, a, i, ends_nl) {
   emit("errmsg", field(field(e, "data"), "message"))
   emit("errname", field(e, "name"))
   emit("text", field(p, "text"))
-  emit("id", field(p, "id"))
+  # opencode puts the part id at the top level for tool_use events and
+  # inside part for text/reasoning events, so read both.
+  _topid = field($0, "id")
+  if (_topid == "") _topid = field(p, "id")
+  emit("id", _topid)
 }
 AWK
 
@@ -865,15 +869,6 @@ render_block_tool() {
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
   [[ "${fed}" == "true" ]] && print_newline
-  # Close the collapsible group BEFORE the verdict line so the result (✅/❌️)
-  # stays visible even when GitHub Actions collapses the command's group; the
-  # verdict then precedes the next model name (header) instead of being hidden.
-  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
-      echo '::endgroup::'
-      GROUP_DEPTH=$((GROUP_DEPTH - 1))
-    fi
-  fi
   if [[ "${timed_out}" == "true" ]]; then
     printf '❌️ %s (timed out)\n' "${label}"
   elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
@@ -885,8 +880,14 @@ render_block_tool() {
   else
     printf '✅ %s\n' "${label}"
   fi
-  # The group was closed above (or already closed by a later block's header),
-  # so no stray ::endgroup:: here.
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    # The group may already have been closed when a later block started while
+    # this command was still running; do not emit a stray ::endgroup:: then.
+    if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
+      echo '::endgroup::'
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    fi
+  fi
   [[ -n "${pid}" ]] && PART_STATE[${pid}]=1
   return 0
 }
@@ -936,11 +937,18 @@ render_event() {
       completes_open="true"
     fi
   fi
-  if [[ "${FLUSHING}" != "true" && "${#BUFFERED_EVENTS[@]}" -gt 0 && "${completes_open}" != "true" ]]; then
+  # An update to the command that is currently running is part of that
+  # command's own stream: it must render live (so its incremental output is
+  # shown as it arrives) instead of being deferred behind the buffered blocks.
+  local is_open_cmd_update="false"
+  if [[ -n "${OPEN_CMD_PID}" && "${pid}" == "${OPEN_CMD_PID}" && "${F[type]}" == "tool_use" ]]; then
+    is_open_cmd_update="true"
+  fi
+  if [[ "${FLUSHING}" != "true" && "${is_open_cmd_update}" != "true" && "${#BUFFERED_EVENTS[@]}" -gt 0 && "${completes_open}" != "true" ]]; then
     BUFFERED_EVENTS+=("${line}")
     return 0
   fi
-  if [[ "${FLUSHING}" != "true" && -n "${OPEN_CMD_PID}" && "${completes_open}" != "true" ]]; then
+  if [[ "${FLUSHING}" != "true" && "${is_open_cmd_update}" != "true" && -n "${OPEN_CMD_PID}" && "${completes_open}" != "true" ]]; then
     BUFFERED_EVENTS+=("${line}")
     return 0
   fi
@@ -956,8 +964,10 @@ render_event() {
   if [[ "${F[type]}" == "tool_use" && "${F[status]}" == "running" && -z "${OPEN_CMD_PID}" ]]; then
     OPEN_CMD_PID="${pid}"
   fi
-  # When the open command completes, flush the deferred blocks.
-  if [[ "${completes_open}" == "true" ]]; then
+  # When the open command completes, flush the deferred blocks. Only the
+  # outer (non-nested) completion drives a flush, so a completion that is
+  # itself being flushed does not toggle FLUSHING and break the outer loop.
+  if [[ "${completes_open}" == "true" && "${FLUSHING}" != "true" ]]; then
     OPEN_CMD_PID=""
     local _buf
     FLUSHING="true"
