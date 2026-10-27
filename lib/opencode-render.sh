@@ -48,6 +48,8 @@
 
 set -uo pipefail
 
+export LC_ALL=C
+
 GROUP_DEPTH=0
 
 close_open_groups() {
@@ -232,11 +234,10 @@ function unescape(s,  out, i, n, c, e, cp, low) {
     else if (e == "/") { out = out "/"; i += 2; continue }
     else if (e == "u") {
       cp = codepoint(s, i)
-      # Not a real escape: keep the backslash and the 'u' verbatim and let the
-      # following characters be processed normally.
+      # Not a real escape: keep it verbatim.
       if (cp < 0) {
-        out = out "\\u"
-        i += 2
+        out = out "\\u" substr(s, i + 2, 4)
+        i += 6
         continue
       }
       # surrogate pair
