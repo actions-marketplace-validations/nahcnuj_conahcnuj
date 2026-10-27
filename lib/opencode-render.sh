@@ -344,6 +344,12 @@ declare -A PART_FED=()    # the feed (output / error) has started for this part
 # Whether the log's last line is half-written: streamed parts keep growing one
 # and glue their continuation onto it instead of starting a new line.
 OPENLINE=0
+# A command that has started (running) but not yet completed: while one is
+# open, subsequent blocks are buffered so the command's result lands before
+# the next model name (header) instead of after it.
+OPEN_CMD_PID=""
+declare -a BUFFERED_EVENTS=()
+FLUSHING="false"
 
 render_fields() {
   local tag value nl=$'\n'
@@ -505,6 +511,16 @@ render_header() {
   # A part that streams can leave its last line half-written; a header starts
   # a new line of the log, so close the open one first.
   close_line
+  # If a command block is still open (its command has not verdicted yet) when a
+  # new block starts, close that group first so the previous command's result
+  # precedes this block's header (the model name) instead of swallowing it in
+  # GitHub Actions' collapsed log.
+  if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
+    while [[ "${GROUP_DEPTH}" -gt 0 ]]; do
+      echo '::endgroup::'
+      GROUP_DEPTH=$((GROUP_DEPTH - 1))
+    done
+  fi
   printf '%-*s  %s [%s] %s\n' 44 \
     "$(render_model_label)@$(render_repo):$(render_dir)" \
     "$(render_sha)" "$(render_branch)" "$(render_diff)"
@@ -861,8 +877,10 @@ render_block_tool() {
     printf '✅ %s\n' "${label}"
   fi
   if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-    echo '::endgroup::'
+    # The group may already have been closed when a later block started while
+    # this command was still running; do not emit a stray ::endgroup:: then.
     if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
+      echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
     fi
   fi
@@ -895,16 +913,33 @@ render_event() {
       ;;
   esac
   render_fields "${line}"
+  local pid="${F[id]}"
   # Same part id and identical content again: a replay (resumed session /
   # reconnected event stream), so print it once. Same id with *changed*
   # content still renders, the log must never drop a real update.
-  local pid="${F[id]}"
-  if [[ -n "${pid}" ]]; then
+  if [[ -n "${pid}" && "${FLUSHING}" != "true" ]]; then
     local fp="${F[type]}|${F[status]}|${F[title]}|${F[command]}|${F[filepath]}|${F[pattern]}|${F[oldstr]}|${F[newstr]}|${F[output]}|${F[exit]}|${F[diff]}|${F[toolerror]}|${F[errmsg]}|${F[errname]}|${F[text]}"
     if [[ "${SEEN_PARTS[${pid}]:-}" == "${fp}" ]]; then
       return 0
     fi
     SEEN_PARTS[${pid}]="${fp}"
+  fi
+  # Buffering: while a command is still running, defer any subsequent block so
+  # the command's result is printed before the next model name (header). The
+  # deferred events are flushed once that command completes.
+  local completes_open="false"
+  if [[ -n "${OPEN_CMD_PID}" && "${pid}" == "${OPEN_CMD_PID}" && "${F[type]}" == "tool_use" ]]; then
+    if [[ "${F[status]}" == "completed" || "${F[status]}" == "error" ]]; then
+      completes_open="true"
+    fi
+  fi
+  if [[ "${FLUSHING}" != "true" && "${#BUFFERED_EVENTS[@]}" -gt 0 && "${completes_open}" != "true" ]]; then
+    BUFFERED_EVENTS+=("${line}")
+    return 0
+  fi
+  if [[ "${FLUSHING}" != "true" && -n "${OPEN_CMD_PID}" && "${completes_open}" != "true" ]]; then
+    BUFFERED_EVENTS+=("${line}")
+    return 0
   fi
   case "${F[type]}" in
     text | reasoning) render_block_text ;;
@@ -914,6 +949,21 @@ render_event() {
       # step_start / step_finish and anything new: bookkeeping, not content.
       ;;
   esac
+  # Track a command that is now running (incomplete) so later blocks buffer.
+  if [[ "${F[type]}" == "tool_use" && "${F[status]}" == "running" && -z "${OPEN_CMD_PID}" ]]; then
+    OPEN_CMD_PID="${pid}"
+  fi
+  # When the open command completes, flush the deferred blocks.
+  if [[ "${completes_open}" == "true" ]]; then
+    OPEN_CMD_PID=""
+    local _buf
+    FLUSHING="true"
+    for _buf in "${BUFFERED_EVENTS[@]}"; do
+      render_event "${_buf}"
+    done
+    FLUSHING="false"
+    BUFFERED_EVENTS=()
+  fi
 }
 
 # Safety net: a group left open must never outlive the renderer (a signal or
@@ -924,6 +974,16 @@ trap close_open_groups EXIT
 while IFS= read -r render_line || [[ -n "${render_line}" ]]; do
   render_event "${render_line}"
 done
+
+# Flush any blocks that were deferred while a command was running, so a
+# command that never completed still leaves the deferred output on the log.
+OPEN_CMD_PID=""
+FLUSHING="true"
+for _buf in "${BUFFERED_EVENTS[@]}"; do
+  render_event "${_buf}"
+done
+FLUSHING="false"
+BUFFERED_EVENTS=()
 
 # Close any command group left open when the stream ended (e.g. a command that
 # was still running) so GitHub Actions does not swallow the trailing output.
