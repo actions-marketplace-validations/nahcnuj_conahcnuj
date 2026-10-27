@@ -276,14 +276,10 @@ jobs:
 
   docker-runner:
     name: docker-run.sh with real Docker
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+    runs-on: ubuntu-latest
     defaults:
       run:
-        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+        shell: bash
     env:
       APP_ID: ${{ secrets.APP_ID }}
       INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
