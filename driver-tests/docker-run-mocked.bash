@@ -103,9 +103,8 @@ run_wrapper() {
 # --- normal (non-WSL) run ---------------------------------------------------
 DOCKER_LOG="${ROOT}/docker-normal.log"
 GITBASH_LOG="${ROOT}/gitbash-normal.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-run_wrapper >/dev/null 2>&1
+touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+run_wrapper
 
 grep -q '^docker <info>' "${DOCKER_LOG}" || { echo "FAIL: docker info was not checked" >&2; exit 1; }
 grep -q '<run>.*<--rm>' "${DOCKER_LOG}" || { echo "FAIL: docker run --rm was not invoked" >&2; exit 1; }
@@ -115,7 +114,6 @@ grep -q ':/work>' "${DOCKER_LOG}" || { echo "FAIL: target repo was not mounted a
 grep -q ':/opt/conahcnuj/gh-app/app.env:ro>' "${DOCKER_LOG}" || { echo "FAIL: container app.env was not mounted" >&2; exit 1; }
 grep -q ':/run/secrets/app.pem:ro>' "${DOCKER_LOG}" || { echo "FAIL: private key was not mounted" >&2; exit 1; }
 [[ ! -s "${GITBASH_LOG}" ]] || { echo "FAIL: no relaunch expected outside WSL" >&2; exit 1; }
-echo "docker-run.sh (non-WSL) passed"
 
 # --- WSL with a reachable Git Bash: relaunch -------------------------------
 DOCKER_LOG="${ROOT}/docker-wsl.log"
@@ -129,7 +127,6 @@ grep -q '<42>' "${GITBASH_LOG}" || { echo "FAIL: issue number not passed to the 
 grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not passed to the relaunch" >&2; exit 1; }
 grep -q 'TARGET=<W' "${GITBASH_LOG}" || { echo "FAIL: target repo was not converted to a Windows path" >&2; exit 1; }
 [[ ! -s "${DOCKER_LOG}" ]] || { echo "FAIL: WSL shell must not call the WSL docker before relaunching" >&2; exit 1; }
-echo "docker-run.sh (WSL -> Git Bash relaunch) passed"
 
 # --- WSL invoked via a relative script path: resolve it before conversion ----
 # Regression for the reported `bash ../conahcnuj/docker-run.sh` invocation: a
@@ -146,7 +143,6 @@ GITBASH_LOG="${ROOT}/gitbash-relative.log"
 grep -q 'W/' "${GITBASH_LOG}" || { echo "FAIL: relative wrapper path was not made absolute" >&2; exit 1; }
 grep -q 'W\.\.' "${GITBASH_LOG}" && { echo "FAIL: relative wrapper path reached wslpath" >&2; exit 1; }
 grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not passed to the relaunch" >&2; exit 1; }
-echo "docker-run.sh (WSL relative path -> Git Bash relaunch) passed"
 
 # --- WSL but the configured Git Bash is unreachable: no relaunch ------------
 DOCKER_LOG="${ROOT}/docker-unreachable.log"
@@ -158,6 +154,4 @@ run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/missing/bash.exe' \
 
 grep -q '<run>.*<--rm>' "${DOCKER_LOG}" || { echo "FAIL: unreachable Git Bash should continue under WSL" >&2; exit 1; }
 [[ ! -s "${GITBASH_LOG}" ]] || { echo "FAIL: unreachable Git Bash must not be executed" >&2; exit 1; }
-echo "docker-run.sh (WSL, unreachable Git Bash) passed"
 
-echo "docker-run.sh tests passed"

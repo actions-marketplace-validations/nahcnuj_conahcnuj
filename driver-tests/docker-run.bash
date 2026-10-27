@@ -128,4 +128,3 @@ grep -q 'PEM=' <<<"${out}" || {
   exit 1
 }
 
-echo "docker-run.sh (real Docker) passed"

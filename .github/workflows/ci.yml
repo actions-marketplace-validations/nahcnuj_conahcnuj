@@ -288,7 +288,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build image and exercise the wrapper
-        run: bash driver-tests/docker-run.sh
+        run: bash driver-tests/docker-run.bash
+
+  docker-run-mocked-windows:
+    name: docker-run.sh mocked (Windows/pwsh)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Run mocked docker-run test
+        shell: pwsh
+        run: |
+          & "C:/Program Files/Git/bin/bash.exe" driver-tests/docker-run-mocked.bash
 
   lint-ts:
     name: Typecheck opencode plugin
