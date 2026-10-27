@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real-Docker test for docker-run.sh (no mocked docker/wslpath).
 #
-# The offline test (driver-tests/docker-run-mocked.sh) pins argument building and the
+# The offline test (driver-tests/docker-run-mocked.bash) pins argument building and the
 # WSL relaunch, but it cannot prove the wrapper actually works: the reported
 # failures came from real Docker Desktop, not from the arguments we mocked.
 # This test builds the real image and runs the wrapper with an entrypoint
