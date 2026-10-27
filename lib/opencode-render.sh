@@ -967,18 +967,20 @@ render_event() {
   if [[ "${F[type]}" == "tool_use" && "${F[status]}" == "running" && -z "${OPEN_CMD_PID}" ]]; then
     OPEN_CMD_PID="${pid}"
   fi
-  # When the open command completes, flush the deferred blocks. Only the
-  # outer (non-nested) completion drives a flush, so a completion that is
-  # itself being flushed does not toggle FLUSHING and break the outer loop.
-  if [[ "${completes_open}" == "true" && "${FLUSHING}" != "true" ]]; then
+  # When the open command completes, clear it (so a command that finished
+  # during a flush does not keep later blocks buffered forever) and, only
+  # for the outer (non-nested) completion, flush the deferred blocks.
+  if [[ "${completes_open}" == "true" ]]; then
     OPEN_CMD_PID=""
-    local _buf
-    FLUSHING="true"
-    for _buf in "${BUFFERED_EVENTS[@]}"; do
-      render_event "${_buf}"
-    done
-    FLUSHING="false"
-    BUFFERED_EVENTS=()
+    if [[ "${FLUSHING}" != "true" ]]; then
+      local _buf
+      FLUSHING="true"
+      for _buf in "${BUFFERED_EVENTS[@]}"; do
+        render_event "${_buf}"
+      done
+      FLUSHING="false"
+      BUFFERED_EVENTS=()
+    fi
   fi
 }
 
