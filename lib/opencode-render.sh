@@ -234,10 +234,11 @@ function unescape(s,  out, i, n, c, e, cp, low) {
     else if (e == "/") { out = out "/"; i += 2; continue }
     else if (e == "u") {
       cp = codepoint(s, i)
-      # Not a real escape: keep it verbatim.
+      # Not a real escape: keep the backslash and the 'u' verbatim and let the
+      # following characters be processed normally.
       if (cp < 0) {
-        out = out "\\u" substr(s, i + 2, 4)
-        i += 6
+        out = out "\\u"
+        i += 2
         continue
       }
       # surrogate pair
@@ -248,9 +249,10 @@ function unescape(s,  out, i, n, c, e, cp, low) {
           i += 6
         }
       }
-      # A lone surrogate (or NUL) cannot be represented as valid UTF-8:
-      # keep the escape so the terminal never receives an invalid byte.
-      if ((cp >= 55296 && cp <= 57343) || cp == 0) {
+      # A lone surrogate, NUL, or an out-of-range code point cannot be
+      # represented as valid UTF-8: keep the escape so the terminal never
+      # receives an invalid byte.
+      if ((cp >= 55296 && cp <= 57343) || cp == 0 || cp > 1114111) {
         out = out "\\u" substr(s, i + 2, 4)
         i += 6
         continue
