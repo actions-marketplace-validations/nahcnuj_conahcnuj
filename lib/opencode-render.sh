@@ -232,14 +232,15 @@ function unescape(s,  out, i, n, c, e, cp, low) {
     else if (e == "/") { out = out "/"; i += 2; continue }
     else if (e == "u") {
       cp = codepoint(s, i)
-      # Not a real escape: keep it verbatim.
+      # Not a real escape: keep the backslash and the 'u' verbatim and let the
+      # following characters be processed normally.
       if (cp < 0) {
-        out = out "\\u" substr(s, i + 2, 4)
-        i += 6
+        out = out "\\u"
+        i += 2
         continue
       }
       # surrogate pair
-      if (cp >= 55296 && cp <= 56319 && i + 6 <= n && substr(s, i + 6, 2) == "\\u") {
+      if (cp >= 55296 && cp <= 56319 && i + 11 <= n && substr(s, i + 6, 2) == "\\u") {
         low = codepoint(s, i + 6)
         if (low >= 56320 && low <= 57343) {
           cp = 65536 + (cp - 55296) * 1024 + (low - 56320)
