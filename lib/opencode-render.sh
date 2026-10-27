@@ -348,6 +348,9 @@ declare -A PART_FED=()    # the feed (output / error) has started for this part
 # Whether the log's last line is half-written: streamed parts keep growing one
 # and glue their continuation onto it instead of starting a new line.
 OPENLINE=0
+# Result of the most recently completed command: "initial" (none yet),
+# "success" or "failure". Drives the ●/🟢/🔴 marker on the next header.
+LAST_CMD_RESULT="initial"
 # A command that has started (running) but not yet completed: while one is
 # open, subsequent blocks are buffered so the command's result lands before
 # the next model name (header) instead of after it.
@@ -420,6 +423,15 @@ render_fields() {
     _result=""
   fi
   F["output"]="${_result}"
+}
+
+# Marker for the header: ● initial, 🟢 previous command succeeded, 🔴 failed.
+render_status_marker() {
+  case "${LAST_CMD_RESULT}" in
+    success) printf '🟢' ;;
+    failure) printf '🔴' ;;
+    *) printf '●' ;;
+  esac
 }
 
 # --- context header ---------------------------------------------------------
@@ -525,7 +537,7 @@ render_header() {
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
     done
   fi
-  printf '%-*s  %s [%s] %s\n' 44 \
+  printf '%s %-*s  %s [%s] %s\n' "$(render_status_marker)" 44 \
     "$(render_model_label)@$(render_repo):$(render_dir)" \
     "$(render_sha)" "$(render_branch)" "$(render_diff)"
 }
@@ -888,6 +900,13 @@ render_block_tool() {
     fi
   else
     printf '✅ %s\n' "${label}"
+  fi
+  # Remember this command's outcome so the next header (the model name) can
+  # show whether the previous command succeeded (🟢) or failed (🔴).
+  if [[ "${timed_out}" == "true" ]] || [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
+    LAST_CMD_RESULT="failure"
+  else
+    LAST_CMD_RESULT="success"
   fi
   # The group was closed above (or already closed by a later block's header),
   # so no stray ::endgroup:: here.
