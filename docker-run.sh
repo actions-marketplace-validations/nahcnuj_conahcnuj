@@ -158,7 +158,6 @@ docker_relaunch() {
     export WSLENV="${WSLENV:+${WSLENV}:}${wslenv_add}"
   fi
 
-  echo "Re-launching under ${bash_exe} so Docker Desktop is reachable." >&2
   "${bash_mnt}" "${self_win}" "$@" &
   child=$!
   trap 'kill -TERM "${child}" 2>/dev/null || true' INT TERM

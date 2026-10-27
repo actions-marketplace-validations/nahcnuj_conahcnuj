@@ -118,9 +118,8 @@ grep -q ':/run/secrets/app.pem:ro>' "${DOCKER_LOG}" || { echo "FAIL: private key
 # --- WSL with a reachable Git Bash: relaunch -------------------------------
 DOCKER_LOG="${ROOT}/docker-wsl.log"
 GITBASH_LOG="${ROOT}/gitbash-wsl.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
-run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' >/dev/null 2>&1
+touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe'
 
 [[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: WSL run did not re-launch under Git Bash" >&2; exit 1; }
 grep -q '<42>' "${GITBASH_LOG}" || { echo "FAIL: issue number not passed to the relaunch" >&2; exit 1; }
@@ -134,10 +133,9 @@ grep -q 'TARGET=<W' "${GITBASH_LOG}" || { echo "FAIL: target repo was not conver
 # make it absolute first or Docker Desktop is still unreachable.
 DOCKER_LOG="${ROOT}/docker-relative.log"
 GITBASH_LOG="${ROOT}/gitbash-relative.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
+touch "${DOCKER_LOG}" "${GITBASH_LOG}"
 ( cd "${REPO}" && WRAPPER_PATH="./docker-run.sh" run_wrapper \
-    WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' ) >/dev/null 2>&1
+    WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' )
 
 [[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: relative-path WSL run did not re-launch" >&2; exit 1; }
 grep -q 'W/' "${GITBASH_LOG}" || { echo "FAIL: relative wrapper path was not made absolute" >&2; exit 1; }
@@ -147,10 +145,9 @@ grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not p
 # --- WSL but the configured Git Bash is unreachable: no relaunch ------------
 DOCKER_LOG="${ROOT}/docker-unreachable.log"
 GITBASH_LOG="${ROOT}/gitbash-unreachable.log"
-: > "${DOCKER_LOG}"
-: > "${GITBASH_LOG}"
+touch "${DOCKER_LOG}" "${GITBASH_LOG}"
 run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/missing/bash.exe' \
-  WSLPATH_U_OUT="${ROOT}/does-not-exist" >/dev/null 2>&1
+  WSLPATH_U_OUT="${ROOT}/does-not-exist"
 
 grep -q '<run>.*<--rm>' "${DOCKER_LOG}" || { echo "FAIL: unreachable Git Bash should continue under WSL" >&2; exit 1; }
 [[ ! -s "${GITBASH_LOG}" ]] || { echo "FAIL: unreachable Git Bash must not be executed" >&2; exit 1; }
