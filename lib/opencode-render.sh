@@ -170,33 +170,42 @@ function hexval(ch,  v) {
   else v = 0
   return v
 }
-function codepoint(s, i,  j, cp, hv) {
+function ishex(ch) {
+  return (ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F")
+}
+function codepoint(s, i,  j, cp, ch, valid) {
   # decode a single \uXXXX at position i (1-based, pointing at 'u' is not
-  # needed; caller passes index of the backslash). Returns the code point.
+  # needed; caller passes index of the backslash). Returns the code point,
+  # or -1 when the escape is not a valid \uXXXX (so the caller can leave
+  # it untouched instead of fabricating a code point from non-hex digits).
+  valid = 1
   cp = 0
   for (j = 0; j < 4; j++) {
-    cp = cp * 16 + hexval(substr(s, i + 2 + j, 1))
+    ch = substr(s, i + 2 + j, 1)
+    if (!ishex(ch)) { valid = 0; break }
+    cp = cp * 16 + hexval(ch)
   }
+  if (!valid) return -1
   return cp
 }
 function utf8(cp,  out, b1, b2, b3, b4) {
   # Encode a code point as UTF-8 bytes (awk prints bytes under LC_ALL=C).
-  if (cp < 0x80) {
+  if (cp < 128) {
     out = sprintf("%c", cp)
-  } else if (cp < 0x800) {
-    b1 = 0xC0 + int(cp / 64)
-    b2 = 0x80 + (cp % 64)
+  } else if (cp < 2048) {
+    b1 = 192 + int(cp / 64)
+    b2 = 128 + (cp % 64)
     out = sprintf("%c%c", b1, b2)
-  } else if (cp < 0x10000) {
-    b1 = 0xE0 + int(cp / 4096)
-    b2 = 0x80 + int((cp % 4096) / 64)
-    b3 = 0x80 + (cp % 64)
+  } else if (cp < 65536) {
+    b1 = 224 + int(cp / 4096)
+    b2 = 128 + int((cp % 4096) / 64)
+    b3 = 128 + (cp % 64)
     out = sprintf("%c%c%c", b1, b2, b3)
   } else {
-    b1 = 0xF0 + int(cp / 262144)
-    b2 = 0x80 + int((cp % 262144) / 4096)
-    b3 = 0x80 + int((cp % 4096) / 64)
-    b4 = 0x80 + (cp % 64)
+    b1 = 240 + int(cp / 262144)
+    b2 = 128 + int((cp % 262144) / 4096)
+    b3 = 128 + int((cp % 4096) / 64)
+    b4 = 128 + (cp % 64)
     out = sprintf("%c%c%c%c", b1, b2, b3, b4)
   }
   return out
@@ -223,13 +232,26 @@ function unescape(s,  out, i, n, c, e, cp, low) {
     else if (e == "/") { out = out "/"; i += 2; continue }
     else if (e == "u") {
       cp = codepoint(s, i)
+      # Not a real escape: keep it verbatim.
+      if (cp < 0) {
+        out = out "\\u" substr(s, i + 2, 4)
+        i += 6
+        continue
+      }
       # surrogate pair
-      if (cp >= 0xD800 && cp <= 0xDBFF && i + 6 <= n && substr(s, i + 6, 2) == "\\u") {
+      if (cp >= 55296 && cp <= 56319 && i + 6 <= n && substr(s, i + 6, 2) == "\\u") {
         low = codepoint(s, i + 6)
-        if (low >= 0xDC00 && low <= 0xDFFF) {
-          cp = 0x10000 + (cp - 0xD800) * 0x400 + (low - 0xDC00)
+        if (low >= 56320 && low <= 57343) {
+          cp = 65536 + (cp - 55296) * 1024 + (low - 56320)
           i += 6
         }
+      }
+      # A lone surrogate (or NUL) cannot be represented as valid UTF-8:
+      # keep the escape so the terminal never receives an invalid byte.
+      if ((cp >= 55296 && cp <= 57343) || cp == 0) {
+        out = out "\\u" substr(s, i + 2, 4)
+        i += 6
+        continue
       }
       out = out utf8(cp)
       i += 6
