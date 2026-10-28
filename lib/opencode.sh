@@ -64,18 +64,19 @@ opencode_get_models() {
 
 
 # Resolve the effort variant to pass to opencode (--variant) in this run, if any.
-# Empty output means "use the model's default". Precedence: an explicit max-effort
-# flag (CONAHCNUJ_MAX_EFFORT) wins, then CONAHCNUJ_EFFORT, then CONAHCNUJ_VARIANT.
+# Max effort mode only: an explicit --max-effort flag (CONAHCNUJ_MAX_EFFORT=1)
+# or CONAHCNUJ_EFFORT=max enables `--variant max`. Empty output means "use the
+# model's default". Arbitrary effort levels are intentionally not supported.
 opencode_effort_variant() {
   if [[ "${CONAHCNUJ_MAX_EFFORT:-}" =~ ^(1|true|yes|on|MAX|max)$ ]]; then
     printf 'max'
     return 0
   fi
-  local v="${CONAHCNUJ_EFFORT:-${CONAHCNUJ_VARIANT:-}}"
-  v="$(printf '%s' "${v}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-  if [[ -n "${v}" ]]; then
-    printf '%s' "${v}"
-  fi
+  case "${CONAHCNUJ_EFFORT:-}" in
+    max|MAX|1|true|yes|on|TRUE|YES|ON)
+      printf 'max'
+      ;;
+  esac
 }
 
 # What every round shares, whatever the model or the stage: the point of the run

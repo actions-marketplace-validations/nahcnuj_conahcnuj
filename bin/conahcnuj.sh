@@ -1801,37 +1801,17 @@ main() {
     cd "${CONAHCNUJ_ORIG_PWD_WIN}" 2>/dev/null || true
   fi
   if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 [--max-effort|--effort <level>] <issue-or-pr-number>" >&2
+    echo "Usage: $0 [--max-effort] <issue-or-pr-number>" >&2
     exit 1
   fi
   local input="" repo_info owner repo
-  local effort_opt=""
+  local max_effort="0"
   local -a positional=()
   while [[ $# -gt 0 ]]; do
     case "${1}" in
       --max-effort)
-        effort_opt="max"
+        max_effort="1"
         shift
-        ;;
-      --effort)
-        if [[ $# -lt 2 ]]; then
-          echo "Usage: $0 [--max-effort|--effort <level>] <issue-or-pr-number>" >&2
-          exit 1
-        fi
-        effort_opt="${2}"
-        shift 2
-        ;;
-      --effort=*)
-        effort_opt="${1#*=}"
-        shift
-        ;;
-      -e)
-        if [[ $# -lt 2 ]]; then
-          echo "Usage: $0 [--max-effort|--effort <level>] <issue-or-pr-number>" >&2
-          exit 1
-        fi
-        effort_opt="${2}"
-        shift 2
         ;;
       --)
         shift
@@ -1849,12 +1829,12 @@ main() {
     esac
   done
   if [[ ${#positional[@]} -ne 1 ]]; then
-    echo "Usage: $0 [--max-effort|--effort <level>] <issue-or-pr-number>" >&2
+    echo "Usage: $0 [--max-effort] <issue-or-pr-number>" >&2
     exit 1
   fi
   input="${positional[0]}"
-  if [[ -n "${effort_opt}" ]]; then
-    export CONAHCNUJ_EFFORT="${effort_opt}"
+  if [[ "${max_effort}" == "1" ]]; then
+    export CONAHCNUJ_MAX_EFFORT="1"
   fi
   if [[ "${input}" == -* ]]; then
     echo "Unknown option: ${input}" >&2
