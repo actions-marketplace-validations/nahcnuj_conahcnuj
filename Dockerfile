@@ -48,7 +48,6 @@ COPY gh-app/ /opt/conahcnuj/gh-app/
 # Only the entrypoint is executed directly; the other scripts are invoked
 # through bash, so only it needs the executable bit, and it is committed with
 # that bit in git so COPY preserves it.
-RUN chmod +x /opt/conahcnuj/bin/conahcnuj.sh
 
 # The work tree is bind-mounted from the host; git would otherwise refuse it
 # as "dubious ownership". The container is disposable, so trust everything.
