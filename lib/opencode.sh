@@ -64,11 +64,12 @@ opencode_get_models() {
 
 
 # Resolve the effort variant to pass to opencode (--variant) in this run, if any.
-# Max effort mode only: an explicit --max-effort flag (CONAHCNUJ_MAX_EFFORT=1)
-# or CONAHCNUJ_EFFORT=max enables `--variant max`. Empty output means "use the
-# model's default". Arbitrary effort levels are intentionally not supported.
+# Max effort mode only: an explicit --max-effort flag (CONAHCNUJ_MAX_EFFORT
+# set, i.e. any non-empty value) or CONAHCNUJ_EFFORT=max enables `--variant
+# max`. Empty output means "use the model's default". Arbitrary effort levels
+# are intentionally not supported.
 opencode_effort_variant() {
-  if [[ "${CONAHCNUJ_MAX_EFFORT:-}" =~ ^(1|true|yes|on|MAX|max)$ ]]; then
+  if [[ -n "${CONAHCNUJ_MAX_EFFORT:-}" ]]; then
     printf 'max'
     return 0
   fi
