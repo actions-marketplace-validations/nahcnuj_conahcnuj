@@ -432,8 +432,8 @@ render_fields() {
 render_status_marker() {
   local exitcode="${1:-${LAST_CMD_RESULT}}"
   case "${exitcode}" in
-    ""|initial) printf '●' ;;
-    0|success) printf '🟢' ;;
+    "") printf '●' ;;
+    0) printf '🟢' ;;
     *) printf '🔴' ;;
   esac
 }
@@ -960,7 +960,7 @@ render_event() {
   # the command's result is printed before the next model name (header). The
   # deferred events are flushed once that command completes.
   local completes_open="false"
-  if [[ -n "${OPEN_CMD_PID}" && "${pid}" == "${OPEN_CMD_PID}" && "${F[type]}" == "tool_use" ]]; then
+  if [[ -n "${OPEN_CMD_PID}" && "${F[type]}" == "tool_use" ]]; then
     if [[ "${F[status]}" == "completed" || "${F[status]}" == "error" ]]; then
       completes_open="true"
     fi
