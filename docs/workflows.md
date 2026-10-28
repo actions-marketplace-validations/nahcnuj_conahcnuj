@@ -120,7 +120,7 @@ jobs:
 - ロジックの本体は `bin/auto-drive-workflow.sh`（`gh` API でのログ収集 →
   レポート作成 → トラッキング issue へ公開 → actionable 時に findings issue を
   更新し `self-improvement` を付与）。トラッキング issue と findings issue は
-  classic repository Project の card として board に載せる。`GITHUB_TOKEN` は
+  Projects V2 board の item として board に載せる。`GITHUB_TOKEN` は
   Projects API に到達できないため、repository の **Projects** 権限を持つ App の
   インストールトークン（`GH_APP_TOKEN`）で repository Projects API を叩く。
   board は `vars.PROJECT_NUMBER` で指定するか `vars.PROJECT_TITLE` で探し作成する。

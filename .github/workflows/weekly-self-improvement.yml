@@ -102,6 +102,7 @@ jobs:
           # PROJECT_* variables are optional: the board is found by PROJECT_TITLE
           # (default "auto-drive self-improvement") and created when missing.
           PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
+          PROJECT_OWNER: ${{ vars.PROJECT_OWNER }}
           PROJECT_TITLE: ${{ vars.PROJECT_TITLE }}
         run: |
           export GH_APP_TOKEN="$(bash gh-app/get-token.sh)"
