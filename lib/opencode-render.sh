@@ -348,9 +348,10 @@ declare -A PART_FED=()    # the feed (output / error) has started for this part
 # Whether the log's last line is half-written: streamed parts keep growing one
 # and glue their continuation onto it instead of starting a new line.
 OPENLINE=0
-# Result of the most recently completed command: "initial" (none yet),
-# "success" or "failure". Drives the ●/🟢/🔴 marker on the next header.
-LAST_CMD_RESULT="initial"
+# Exit code of the most recently completed command: empty when none has run
+# yet, 0 for success, non-zero for failure. Drives the ●/🟢/🔴 marker on the
+# next header.
+LAST_CMD_RESULT=""
 # A command that has started (running) but not yet completed: while one is
 # open, subsequent blocks are buffered so the command's result lands before
 # the next model name (header) instead of after it.
@@ -425,12 +426,15 @@ render_fields() {
   F["output"]="${_result}"
 }
 
-# Marker for the header: ● initial, 🟢 previous command succeeded, 🔴 failed.
+# Marker for the header: ● no previous command, 🟢 exit code 0, 🔴 otherwise.
+# The exit code is received as an argument (falling back to the global state)
+# so the marker can be rendered from either the live stream or a stored value.
 render_status_marker() {
-  case "${LAST_CMD_RESULT}" in
-    success) printf '🟢' ;;
-    failure) printf '🔴' ;;
-    *) printf '●' ;;
+  local exitcode="${1:-${LAST_CMD_RESULT}}"
+  case "${exitcode}" in
+    ""|initial) printf '●' ;;
+    0|success) printf '🟢' ;;
+    *) printf '🔴' ;;
   esac
 }
 
@@ -537,7 +541,7 @@ render_header() {
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
     done
   fi
-  printf '%s %-*s  %s [%s] %s\n' "$(render_status_marker)" 44 \
+  printf '%s %-*s  %s [%s] %s\n' "$(render_status_marker "${LAST_CMD_RESULT}")" 44 \
     "$(render_model_label)@$(render_repo):$(render_dir)" \
     "$(render_sha)" "$(render_branch)" "$(render_diff)"
 }
@@ -901,12 +905,14 @@ render_block_tool() {
   else
     printf '✅ %s\n' "${label}"
   fi
-  # Remember this command's outcome so the next header (the model name) can
+  # Remember this command's exit code so the next header (the model name) can
   # show whether the previous command succeeded (🟢) or failed (🔴).
-  if [[ "${timed_out}" == "true" ]] || [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
-    LAST_CMD_RESULT="failure"
+  if [[ "${timed_out}" == "true" ]] || [[ "${status}" == "error" ]]; then
+    LAST_CMD_RESULT=1
+  elif [[ -n "${code}" ]]; then
+    LAST_CMD_RESULT="${code}"
   else
-    LAST_CMD_RESULT="success"
+    LAST_CMD_RESULT=0
   fi
   # The group was closed above (or already closed by a later block's header),
   # so no stray ::endgroup:: here.
