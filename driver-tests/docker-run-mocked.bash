@@ -103,7 +103,7 @@ run_wrapper() {
 # --- normal (non-WSL) run ---------------------------------------------------
 DOCKER_LOG="${ROOT}/docker-normal.log"
 GITBASH_LOG="${ROOT}/gitbash-normal.log"
-touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+truncate --size 0 "${DOCKER_LOG}" "${GITBASH_LOG}"
 run_wrapper
 
 grep -q '^docker <info>' "${DOCKER_LOG}" || { echo "FAIL: docker info was not checked" >&2; exit 1; }
@@ -118,7 +118,7 @@ grep -q ':/run/secrets/app.pem:ro>' "${DOCKER_LOG}" || { echo "FAIL: private key
 # --- WSL with a reachable Git Bash: relaunch -------------------------------
 DOCKER_LOG="${ROOT}/docker-wsl.log"
 GITBASH_LOG="${ROOT}/gitbash-wsl.log"
-touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+truncate --size 0 "${DOCKER_LOG}" "${GITBASH_LOG}"
 run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe'
 
 [[ -s "${GITBASH_LOG}" ]] || { echo "FAIL: WSL run did not re-launch under Git Bash" >&2; exit 1; }
@@ -133,7 +133,7 @@ grep -q 'TARGET=<W' "${GITBASH_LOG}" || { echo "FAIL: target repo was not conver
 # make it absolute first or Docker Desktop is still unreachable.
 DOCKER_LOG="${ROOT}/docker-relative.log"
 GITBASH_LOG="${ROOT}/gitbash-relative.log"
-touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+truncate --size 0 "${DOCKER_LOG}" "${GITBASH_LOG}"
 ( cd "${REPO}" && WRAPPER_PATH="./docker-run.sh" run_wrapper \
     WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/Program Files/Git/bin/bash.exe' )
 
@@ -145,7 +145,7 @@ grep -q 'docker-run\.sh>' "${GITBASH_LOG}" || { echo "FAIL: wrapper script not p
 # --- WSL but the configured Git Bash is unreachable: no relaunch ------------
 DOCKER_LOG="${ROOT}/docker-unreachable.log"
 GITBASH_LOG="${ROOT}/gitbash-unreachable.log"
-touch "${DOCKER_LOG}" "${GITBASH_LOG}"
+truncate --size 0 "${DOCKER_LOG}" "${GITBASH_LOG}"
 run_wrapper WSL_DISTRO_NAME=Ubuntu-24.04 BASH_EXE='C:/missing/bash.exe' \
   WSLPATH_U_OUT="${ROOT}/does-not-exist"
 
