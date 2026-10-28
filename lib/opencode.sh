@@ -62,6 +62,22 @@ opencode_get_models() {
   opencode models 2>/dev/null | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 }
 
+
+# Resolve the effort variant to pass to opencode (--variant) in this run, if any.
+# Empty output means "use the model's default". Precedence: an explicit max-effort
+# flag (CONAHCNUJ_MAX_EFFORT) wins, then CONAHCNUJ_EFFORT, then CONAHCNUJ_VARIANT.
+opencode_effort_variant() {
+  if [[ "${CONAHCNUJ_MAX_EFFORT:-}" =~ ^(1|true|yes|on|MAX|max)$ ]]; then
+    printf 'max'
+    return 0
+  fi
+  local v="${CONAHCNUJ_EFFORT:-${CONAHCNUJ_VARIANT:-}}"
+  v="$(printf '%s' "${v}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if [[ -n "${v}" ]]; then
+    printf '%s' "${v}"
+  fi
+}
+
 # What every round shares, whatever the model or the stage: the point of the run
 # and who does what. This is deliberately one short paragraph. A model once read
 # a long list of instructions (banned commands, warnings that a message is not a
@@ -264,10 +280,16 @@ opencode_run() {
   export GH_TOKEN
 
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
+    local mock_variant_arg=""
+    local _mv
+    _mv="$(opencode_effort_variant 2>/dev/null || true)"
+    if [[ -n "${_mv}" ]]; then
+      mock_variant_arg=" --variant ${_mv}"
+    fi
     if [[ -n "${session_id}" ]]; then
-      printf 'opencode run --auto --format json --model %s --dir %s --session %s %s\n' "${model}" "${workdir}" "${session_id}" "${prompt}"
+      printf 'opencode run --auto --format json --model %s --dir %s%s --session %s %s\n' "${model}" "${workdir}" "${mock_variant_arg}" "${session_id}" "${prompt}"
     else
-      printf 'opencode run --auto --format json --model %s --dir %s --title conahcnuj %s\n' "${model}" "${workdir}" "${prompt}"
+      printf 'opencode run --auto --format json --model %s --dir %s%s --title conahcnuj %s\n' "${model}" "${workdir}" "${mock_variant_arg}" "${prompt}"
     fi
     OPENCODE_SESSION_ID="${MOCK_OPENCODE_SESSION_ID:-ses_mock}"
     export OPENCODE_SESSION_ID
@@ -416,6 +438,11 @@ opencode_run() {
   # --thinking makes opencode emit its reasoning parts as JSON events; without
   # it the log shows only tool calls and final answers.
   args=(run --auto --print-logs --thinking --format json --model "${model}" --dir "${workdir}")
+  local _effort_variant
+  _effort_variant="$(opencode_effort_variant 2>/dev/null || true)"
+  if [[ -n "${_effort_variant}" ]]; then
+    args+=(--variant "${_effort_variant}")
+  fi
   # --print-logs defaults to INFO, which is ~30 lines of boot/permission
   # chatter per model and buries the rendered log. WARN keeps the diagnostics
   # that matter without the noise; override to DEBUG when hunting a problem.
