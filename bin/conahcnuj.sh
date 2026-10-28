@@ -1266,7 +1266,7 @@ poll_conditions() {
         ;;
       CLOSED)
         echo "PR #${pr} is closed without merge while waiting; nothing left to do." >&2
-        exit 1
+        exit 0
         ;;
     esac
     if [[ "${state}" == "SUCCESS" && "${mergeable}" == "MERGEABLE" ]]; then
@@ -1771,7 +1771,7 @@ resume_pr() {
       ;;
     CLOSED)
       echo "PR #${pr} is closed without merge. Nothing to do." >&2
-      exit 1
+      exit 0
       ;;
     OPEN|"") ;;
     *)
