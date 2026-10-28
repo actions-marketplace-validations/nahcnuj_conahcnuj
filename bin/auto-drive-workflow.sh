@@ -70,11 +70,12 @@ FINDINGS_PREFIX="auto-drive findings"
 SELF_IMPROVEMENT_LABEL="self-improvement"
 LABEL_COLOR="5319e7"
 LABEL_DESCRIPTION="weekly auto-drive self-improvement finding"
+
 usage() {
   cat <<'EOF'
 Usage: auto-drive-workflow.sh [--repo OWNER/REPO] [--runs-url-prefix PREFIX]
                               [--lookback-days N] [--ref BRANCH]
-                              [--project-number N] [--project-owner OWNER]
+                              [--project-number N] [--project-owner OWNER] [--project-title TITLE]
 
 Weekly self-improvement loop: collect the "Issue auto-drive" run logs through
 `gh`, analyze them (auto-drive-report.sh, stdout), publish the report on a
@@ -92,6 +93,8 @@ runs_url_prefix=""
 lookback_days="7"
 dispatch_ref=""
 project_number="${PROJECT_NUMBER:-}"
+# shellcheck disable=SC2034
+project_title="${PROJECT_TITLE:-}"
 project_owner="${PROJECT_OWNER:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -102,6 +105,9 @@ while [[ $# -gt 0 ]]; do
     --ref) dispatch_ref="${2:-}"; shift 2 ;;
     --project-number) project_number="${2:-}"; shift 2 ;;
     --project-owner) project_owner="${2:-}"; shift 2 ;;
+    --project-title)
+      # shellcheck disable=SC2034
+      project_title="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
