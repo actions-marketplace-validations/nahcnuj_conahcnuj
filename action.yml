@@ -1,0 +1,14 @@
+name: 'conahcnuj'
+description: 'Issue-driven development behalf of you.'
+author: 'nahcnuj'
+
+branding:
+  icon: 'command'
+  color: 'gray-dark'
+
+runs:
+  using: composite
+  steps:
+    - name: conahcnuj
+      shell: bash
+      run: exit 255
