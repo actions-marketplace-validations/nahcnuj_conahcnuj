@@ -3,8 +3,6 @@
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を
 作成し、レビュー対応まで行います。
 
-`conahcnuj` は @nahcnuj のインスタンス名です。
-
 ## Getting started
 
 ### Create your GitHub App for conahcnuj
