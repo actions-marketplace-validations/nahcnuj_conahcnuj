@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Max effort mode behaviour (offline).
+#
+# `--max-effort` / CONAHCNUJ_MAX_EFFORT / CONAHCNUJ_EFFORT=max must make the
+# driver pass `--variant max` to opencode (highest effort), while a normal run
+# must not carry that flag, so effort never decreases. No secrets, no network.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "${HERE}/.." && pwd)"
+
+# shellcheck source=lib/opencode.sh
+. "${REPO}/lib/opencode.sh"
+
+# 1. opencode_effort_variant
+(
+  export CONAHCNUJ_MAX_EFFORT="1"
+  unset CONAHCNUJ_EFFORT
+  out="$(opencode_effort_variant)"
+  [[ "${out}" == "max" ]] || { echo "FAIL: MAX_EFFORT=1 did not yield max (got '${out}')"; exit 1; }
+)
+(
+  unset CONAHCNUJ_MAX_EFFORT CONAHCNUJ_EFFORT
+  out="$(opencode_effort_variant)"
+  [[ -z "${out}" ]] || { echo "FAIL: normal mode yielded '${out}' (expected empty)"; exit 1; }
+)
+(
+  unset CONAHCNUJ_MAX_EFFORT
+  export CONAHCNUJ_EFFORT="max"
+  out="$(opencode_effort_variant)"
+  [[ "${out}" == "max" ]] || { echo "FAIL: CONAHCNUJ_EFFORT=max did not yield max (got '${out}')"; exit 1; }
+)
+(
+  unset CONAHCNUJ_MAX_EFFORT
+  export CONAHCNUJ_EFFORT="high"
+  out="$(opencode_effort_variant)"
+  [[ -z "${out}" ]] || { echo "FAIL: arbitrary level 'high' leaked through (got '${out}')"; exit 1; }
+)
+echo "opencode_effort_variant (max effort) passed"
+
+# 2. opencode_run mock output carries the variant only in max mode.
+export OPENCODE_TEST_MODE=1
+tmp="$(mktemp -d)"
+trap 'rm -rf "${tmp}"' EXIT
+
+export CONAHCNUJ_MAX_EFFORT="1"
+out="$(opencode_run "Issue" "Body" "${tmp}" "opencode/m" 2>/dev/null)"
+[[ "${out}" == *"--variant max"* ]] || { echo "FAIL: max mode did not pass --variant max"; echo "${out}" | head -1; exit 1; }
+
+unset CONAHCNUJ_MAX_EFFORT CONAHCNUJ_EFFORT
+out="$(opencode_run "Issue" "Body" "${tmp}" "opencode/m" 2>/dev/null)"
+[[ "${out}" != *"--variant"* ]] || { echo "FAIL: normal mode unexpectedly passed --variant"; echo "${out}" | head -1; exit 1; }
+
+echo "opencode_run (max effort variant) passed"
