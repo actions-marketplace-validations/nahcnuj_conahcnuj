@@ -2,28 +2,50 @@
 
 > GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
 
-**GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を作成し、
-レビュー対応まで行います。`gh` CLI・GitHub API・opencode 内の git 操作を App 名義
-(`<slug>[bot]`) で動かすための設定とスクリプトも含みます。
+**GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue を開くと
+ドライバが自動でブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進め、
+owner の Approve で auto-merge します。
 
-`conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の GitHub App を
-作成し、そのスラッグ (`<slug>`) で利用します（bot アカウントは `<slug>[bot]`）。
+`conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の
+GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot アカウントは
+`<slug>[bot]`）。
 
-> **Marketplace での利用に `git clone` は不要です。** 実体は reusable workflow で、
-> 利用側リポジトリから `uses:` で呼び出します（下記「Marketplace で使う」）。
-> clone と `install.ps1` は、ローカルで opencode を bot 名義で動かす場合だけ必要です。
+> **Marketplace からの利用に `git clone` は不要です。** 実体は reusable workflow
+> で、利用側リポジトリから `uses:` で呼び出します。
+> clone と `install.ps1` は、ローカルで opencode を bot 名義で動かす場合だけ
+> 必要です。
 
 ## Marketplace で使う
 
 `.github/workflows/issue-driver.yml` と
 `.github/workflows/owner-approved-auto-merge.yml` は **reusable workflow** です。
-Marketplace のページにはこの README が表示されますが、利用側リポジトリから
-呼び出して使います（clone は不要です）。
+このリポジトリの `action.yml` は Marketplace 掲載用の shim で、直接
+`uses: nahcnuj/conahcnuj@…` では動きません。利用側リポジトリから reusable
+workflow を呼び出して使います。
+
+### 何ができるか
+
+- `gh` CLI / GitHub API が **App 名義 (`<slug>[bot]`)** で動く
+- opencode 内の git 操作が **App 名義** で行われる（Verified コミット）
+- issue → ブランチ → PR → レビュー依頼 → owner の Approve までを自律的に運ぶ
+  ドライバを含む
+- owner の Approve をトリガーに auto-merge
+
+### 前提（Marketplace 利用）
+
+1. 自分用の GitHub App を作成し、対象リポジトリにインストールする
+   （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
+2. 対象リポジトリの Secrets に `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY` を
+   登録する（`APP_SLUG` は Secret にしない）。
+3. auto-merge を使う場合は、対象リポジトリの Settings → General → Pull Requests
+   で **Allow auto-merge** を有効にする。
+
+設定値の詳細は [docs/configuration.md](docs/configuration.md) を参照してください。
 
 ### issue の自動対応
 
-issue が open されるとドライバを Actions 上で自動実行します。`workflow_call` で
-他リポジトリから再利用できます。
+issue が open / reopen されるとドライバを Actions 上で自動実行します。
+`workflow_call` で他リポジトリから再利用できます。
 
 ```yaml
 name: Issue auto-drive
@@ -44,15 +66,14 @@ jobs:
 ```
 
 タイムアウトは Actions 側で制御します（`timeout-minutes: 60`）。
-`CONAHCNUJ_MAX_SECONDS=3540` を設定し、ジョブ強制終了の前にドライバが自己終了して
-バグ報告を残せるようにします。必要な repo secrets は `APP_ID` / `INSTALLATION_ID` /
-`PRIVATE_KEY` です（`APP_SLUG` はシークレットにしません）。詳細は
-[docs/workflows.md](docs/workflows.md) を参照してください。
+`CONAHCNUJ_MAX_SECONDS=3540` を設定し、ジョブ強制終了の前にドライバが
+自己終了してバグ報告を残せるようにします。
+詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
 
 ### owner 承認後の自動マージ
 
-owner の approve をトリガーに auto-merge を有効化します。利用側リポジトリに次を
-追加します。
+owner の approve をトリガーに auto-merge を有効化します。利用側リポジトリに
+次を追加します。
 
 ```yaml
 name: Owner-approved auto-merge
@@ -74,8 +95,7 @@ jobs:
       head-sha: ${{ github.event.pull_request.head.sha }}
 ```
 
-対象リポジトリの Settings → General → Pull Requests で **Allow auto-merge** を有効に
-してください。詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
+詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
 
 ## ローカルで使う (opencode セットアップ)
 
@@ -83,9 +103,10 @@ jobs:
 
 前提: Windows + Git for Windows (`C:/Program Files/Git/bin/bash.exe`)、
 opencode が `~/.config/opencode/` をグローバル設定として使うこと。
+（`install.ps1` は pwsh があれば Linux / macOS でも動作しますが、CI での検証は
+Windows のみです。隔離実行には Docker も使えます。）
 
-1. このリポジトリを clone し、`install.ps1` を実行します（隔離実行には
-   `docker-run.sh` も使えます）。
+1. このリポジトリを clone し、`install.ps1` を実行します。
 
    ```sh
    git clone <repo>.git
@@ -118,6 +139,8 @@ opencode が `~/.config/opencode/` をグローバル設定として使うこと
    誘導します。
 4. `install.ps1` は `opencode/AGENTS.md` を `~/.config/opencode/AGENTS.md` へ
    管理ブロックとしてマージします（既存内容は保持）。
+
+プラグインの詳細は [docs/plugin.md](docs/plugin.md) を参照してください。
 
 ## Verified コミット (`git vc`)
 
@@ -157,8 +180,8 @@ bash <このリポジトリ>/docker-run.sh <issue-or-PR番号>
 
 ```
 .
-├── gh-app/                    # シェルスクリプト群（App トークン発行・認証まわり）
-├── bin/conahcnuj.sh           # issue駆動自律開発ドライバ本体
+├── gh-app/                    # App トークン発行・認証まわりのシェルスクリプト
+├── bin/conahcnuj.sh           # issue 駆動自律開発ドライバ本体
 ├── lib/                       # ドライバ用ライブラリ
 ├── plugins/gh-app-token.ts    # opencode プラグイン
 ├── opencode/AGENTS.md         # opencode グローバルルール
@@ -181,3 +204,4 @@ GitHub Pages で配信しています。
 - 機械可読な索引: <https://nahcnuj.github.io/conahcnuj/llms.txt>
 
 AI エージェント向けの詳細ルールは [AGENTS.md](AGENTS.md) を参照してください。
+filePath: /home/runner/work/conahcnuj/conahcnuj/README.md
