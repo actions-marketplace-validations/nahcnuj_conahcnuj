@@ -9,8 +9,8 @@
 
 ### Create your GitHub App for conahcnuj
 
-1. あなたのアカウントに GitHub App を作成し、対象リポジトリにインストールする
-   （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
+1. あなたのアカウントに GitHub App を作成する（対象リポジトリにインストールする。
+   App ID / Installation ID / 秘密鍵 / スラッグが必要）。
 2. 対象リポジトリの Secrets に `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY` を
    登録する（`APP_SLUG` は Secret にしない）。
 3. auto-merge を使う場合は、Settings → General → Pull Requests で
