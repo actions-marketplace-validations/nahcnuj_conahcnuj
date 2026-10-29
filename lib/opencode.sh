@@ -70,19 +70,10 @@ opencode_get_models() {
 # effort levels are intentionally not supported, so CONAHCNUJ_EFFORT accepts
 # only "max" (case-insensitive).
 opencode_effort_variant() {
-  if [[ -n "${CONAHCNUJ_MAX_EFFORT:-}" ]]; then
+  if [[ -n "${CONAHCNUJ_MAX_EFFORT:-}" ]] && [ -n "${CONAHCNUJ_EFFORT:-}" ] ; then
     printf 'max'
     return 0
   fi
-  local v="${CONAHCNUJ_EFFORT:-}"
-  # Trim surrounding whitespace.
-  v="${v#"${v%%[![:space:]]*}"}"
-  v="${v%"${v##*[![:space:]]}"}"
-  case "${v,,}" in
-    max)
-      printf 'max'
-      ;;
-  esac
 }
 
 # What every round shares, whatever the model or the stage: the point of the run
