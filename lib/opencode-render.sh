@@ -888,13 +888,10 @@ render_block_tool() {
   # Close the collapsible group BEFORE the verdict line so the result (✅/❌️)
   # stays visible even when GitHub Actions collapses the command's group; the
   # verdict then precedes the next model name (header) instead of being hidden.
-  closed_group_here=0
   if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
     if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
       echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
-      label=""
-      closed_group_here=1
     fi
   fi
   if [[ "${timed_out}" == "true" ]]; then
@@ -918,10 +915,10 @@ render_block_tool() {
       fi
     fi
   else
-    # After closing the group on GitHub Actions the result sign is redundant:
-    # success/failure already shows on the next header line (🟢/🔴), so print
-    # nothing once the group has just been closed.
-    if [[ "${closed_group_here}" == "1" ]]; then
+    # On GitHub Actions the success sign is redundant: success/failure is
+    # already shown on the next header line (🟢/🔴), so print nothing after
+    # ::endgroup::. Outside GitHub Actions keep the full verdict.
+    if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
       :
     elif [[ -n "${label}" ]]; then
       printf '✅ %s\n' "${label}"
