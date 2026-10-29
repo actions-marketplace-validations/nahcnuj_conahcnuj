@@ -1,19 +1,20 @@
 # conahcnuj
 
+> GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
+
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。
 issue から PR を作成し、レビュー対応まで行います。
 
-> Marketplace: <https://github.com/marketplace/actions/conahcnuj>
-
-（`conahcnuj` は作者 @nahcnuj のインスタンス名です。利用時は自分の GitHub App 名・スラッグに読み替えてください。）
+`conahcnuj` は @nahcnuj のインスタンスです。他のユーザーは自分の GitHub App
+（`<slug>`）を作成して利用します。bot アカウントは `<slug>[bot]` です。
 
 ## 何ができるか
 
-- `gh` CLI / GitHub API を **App 名義（`<slug>[bot]`）** で動かす
-- opencode 内の git 操作を **App 名義** で行う
+- `gh` CLI / GitHub API が **App 名義（`<slug>[bot]`）** で動く
+- opencode 内の git 操作が **App 名義** で行われる
 - issue を PR・レビュー依頼・owner の Approve まで自律的に運ぶドライバを含む
 
-## クイックスタート
+## Quick start (クイックスタート)
 
 1. このリポジトリを clone し、`powershell -ExecutionPolicy Bypass -File install.ps1` を実行します
    （隔離実行には `docker-run.sh` も使えます）。
@@ -25,10 +26,10 @@ issue から PR を作成し、レビュー対応まで行います。
    ドライバがブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進めます。
 5. owner が Approve すると、auto-merge workflow がマージします。
 
-## インストール
+## インストールと設定
 
-前提: Windows + Git for Windows（`C:/Program Files/Git/bin/bash.exe`）、opencode が
-`~/.config/opencode/` をグローバル設定として使うこと。
+前提: Windows + Git for Windows（`C:/Program Files/Git/bin/bash.exe`）、
+opencode が `~/.config/opencode/` をグローバル設定として使うこと。
 
 ```sh
 git clone <repo>.git
@@ -36,50 +37,10 @@ cd <repo>
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-詳細（パラメータ・Docker・更新手順）は [docs/installation.md](docs/installation.md) を参照。
-
-## 設定
-
 `~/.config/opencode/gh-app/app.env`（またはリポジトリの `gh-app/app.env`）に
 `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を設定します。
-キーの説明・キャッシュ・セキュリティは [docs/configuration.md](docs/configuration.md) を参照。
-
-## 使い方
-
-### ローカルドライバ
-
-```sh
-conahcnuj <issue番号>        # issue から開始
-conahcnuj <PR番号>           # PR を引き継いで再開
-```
-
-詳細は [docs/driver.md](docs/driver.md) を参照。
-
-### GitHub Actions（reusable workflow）
-
-`.github/workflows/issue-driver.yml` は issue が open されるとドライバを Actions 上で
-自動実行します。`workflow_call` で他リポジトリから再利用できます。
-
-```yaml
-name: Issue auto-drive
-
-on:
-  issues:
-    types: [opened, reopened]
-
-permissions:
-  contents: read
-
-jobs:
-  drive:
-    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
-    with:
-      number: ${{ github.event.issue.number }}
-    secrets: inherit
-```
-
-owner 承認後の auto-merge は `.github/workflows/owner-approved-auto-merge.yml` を同様に
-呼び出します。詳細は [docs/workflows.md](docs/workflows.md) を参照。
+キーの説明・キャッシュ・セキュリティは [docs/configuration.md](docs/configuration.md) と
+[docs/installation.md](docs/installation.md) を参照してください。
 
 ## 仕組み
 
@@ -105,6 +66,77 @@ git vc -m "message"        # staged の内容をコミット
 git vc -m "message" -a     # tracked の作業ツリー変更をコミット
 ```
 
+## トラブルシューティング
+
+- **`gh auth status` が自分のアカウントを表示する**: プラグインがトークンを取得できていない。
+  `BASH_EXE` が正しい Git Bash 経路か、`app.env` の値を確認。変更後は opencode を再起動。
+- **トークンが取れない**: `bash gh-app/get-token.sh` を直接実行して出力を確認
+  （`token.cache` 削除後に再実行）。
+- **CI で実トークンの検証が無い**: CI の `mock-test` は秘密鍵・ネットワーク不要の
+  offline 検証のみ。実トークンの動作確認はローカルで行う。
+
+## GitHub Actions として使う
+
+このリポジトリの `.github/workflows/issue-driver.yml` と
+`.github/workflows/owner-approved-auto-merge.yml` は **reusable workflow** です。
+Marketplace のページはこの README を表示しますが、直接 `uses:` するものではなく、
+利用側リポジトリから呼び出して使います。
+
+### issue の自動対応
+
+issue が open されるとドライバを Actions 上で自動実行します。`workflow_call` で
+他リポジトリから再利用できます。
+
+```yaml
+name: Issue auto-drive
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  drive:
+    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
+    with:
+      number: ${{ github.event.issue.number }}
+    secrets: inherit
+```
+
+タイムアウトは Actions 側で制御（`timeout-minutes: 60`）し、
+`CONAHCNUJ_MAX_SECONDS=3540` を設定します。必要な repo secrets:
+`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`（`APP_SLUG` はシークレットにしない）。
+詳細は [docs/workflows.md](docs/workflows.md) を参照。
+
+### owner 承認後の自動マージ
+
+owner の approve をトリガーに auto-merge を有効化します。利用側リポジトリに次を追加します。
+
+```yaml
+name: Owner-approved auto-merge
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    uses: nahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge@main
+    with:
+      repository: ${{ github.repository }}
+      pr-number: ${{ github.event.pull_request.number }}
+      head-sha: ${{ github.event.pull_request.head.sha }}
+```
+
+対象リポジトリの Settings → General → Pull Requests で **Allow auto-merge** を有効に
+してください。詳細は [docs/workflows.md](docs/workflows.md) を参照。
+
 ## 隔離環境で実行する（Docker）
 
 ```sh
@@ -115,15 +147,6 @@ bash <このリポジトリ>/docker-run.sh <issue-or-PR番号>
 対象リポジトリは `/work` にバインドマウントされ、秘密鍵と `app.env` はイメージに
 焼き込まず実行時に読み取り専用でマウントします。詳細は
 [docs/installation.md](docs/installation.md) を参照。
-
-## トラブルシューティング
-
-- **`gh auth status` が自分のアカウントを表示する**: プラグインがトークンを取得できていない。
-  `BASH_EXE` が正しい Git Bash 経路か、`app.env` の値を確認。変更後は opencode を再起動。
-- **トークンが取れない**: `bash gh-app/get-token.sh` を直接実行して出力を確認
-  （`token.cache` 削除後に再実行）。
-- **CI で実トークンの検証が無い**: CI の `mock-test` は秘密鍵・ネットワーク不要の
-  offline 検証のみ。実トークンの動作確認はローカルで行う。
 
 ## 構成
 
@@ -153,4 +176,3 @@ GitHub Pages で配信しています。
 - 機械可読な索引: <https://nahcnuj.github.io/conahcnuj/llms.txt>
 
 AI エージェント向けの詳細ルールは [AGENTS.md](AGENTS.md) を参照してください。
-filePath: /home/runner/work/conahcnuj/conahcnuj/README.md
