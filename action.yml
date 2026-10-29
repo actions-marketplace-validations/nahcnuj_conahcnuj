@@ -1,35 +1,16 @@
-# GitHub Marketplace requires a single action metadata file (action.yml) at the
-# repository root before the repository can be published as an action. This file
-# exists to satisfy that requirement and to make the repository's reusable
-# workflows discoverable on the Marketplace.
-#
-# The actual automation is NOT triggered by this composite action: a composite
-# action runs in the caller's job and cannot start a workflow or carry the
-# job-level secrets/environment that issue-driver needs. Instead, consumers
-# invoke the reusable workflows directly, e.g.
-#   uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@<tag>
-#   uses: nahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge.yml@<tag>
-# See README.md ("他のリポジトリで使う") and docs/workflows.md for the inputs.
 name: 'conahcnuj'
 description: >
-  GitHub App authentication for git and gh, plus the conahcnuj issue-driven
-  development and owner-approved auto-merge reusable workflows. The reusable
-  workflows live under .github/workflows/.
+  Marketplace entrypoint for the conahcnuj repository. The actual functionality
+  is provided by the reusable workflows under .github/workflows/ (issue-driver.yml
+  and owner-approved-auto-merge.yml), consumed via
+  `uses: nahcnuj/conahcnuj/.github/workflows/<name>.yml@<ref>`. This composite
+  action exists to satisfy the GitHub Marketplace publishing requirement that a
+  repository expose an action.yml at its root; it does not run the driver itself.
 author: 'nahcnuj'
 
 branding:
   icon: 'terminal'
   color: 'blue'
-
-inputs:
-  number:
-    description: 'Issue or pull request number to drive.'
-    required: false
-    default: ''
-  repository:
-    description: 'Target repository in owner/name form.'
-    required: false
-    default: ''
 
 runs:
   using: composite
@@ -37,6 +18,6 @@ runs:
     - name: conahcnuj
       shell: bash
       run: |
-        echo "conahcnuj reusable workflows are available."
-        echo "Invoke them via uses: nahcnuj/conahcnuj/.github/workflows/<name>.yml@<tag>."
-        echo "See README.md and docs/workflows.md for usage."
+        echo "conahcnuj is published to the GitHub Marketplace as an entrypoint."
+        echo "Use the reusable workflows under .github/workflows/ to drive issues or auto-merge PRs."
+        echo "See the repository README and docs/workflows.md for usage."
