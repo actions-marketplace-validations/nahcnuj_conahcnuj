@@ -15,15 +15,7 @@ GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot
 は Marketplace 掲載用の shim なので、直接 `uses: nahcnuj/conahcnuj@…` では
 動きません。
 
-### 何ができるか
-
-- `gh` CLI / GitHub API が **App 名義 (`<slug>[bot]`)** で動く
-- opencode 内の git 操作が **App 名義** で行われる（Verified コミット）
-- issue → ブランチ → PR → レビュー依頼 → owner の Approve までを自律的に運ぶ
-  ドライバを含む
-- owner の Approve をトリガーに auto-merge
-
-### 前提
+### Getting Started
 
 1. 自分用の GitHub App を作成し、対象リポジトリにインストールする
    （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
@@ -34,7 +26,17 @@ GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot
 
 設定値の詳細は [docs/configuration.md](docs/configuration.md)。
 
-### issue の自動対応
+### 使い方
+
+1. 上記の Getting Started を完了する。
+2. 利用側リポジトリで issue を開く（タスクを本文に書く）。
+3. `Issue auto-drive` workflow が自動で走り、ドライバがブランチ作成・Verified
+   コミット・PR 作成・レビュー依頼まで進める。
+4. PR を確認し、問題なければ Approve する。
+5. `Owner-approved auto-merge` workflow が auto-merge を有効化し、必要な
+   status checks が green になればマージされる。
+
+### issue の自動対応 (`issue-driver.yml`)
 
 issue が open / reopen されるとドライバを Actions 上で自動実行します。
 
@@ -60,7 +62,7 @@ jobs:
 `CONAHCNUJ_MAX_SECONDS=3540` を設定すると、ジョブ強制終了の前にドライバが
 自己終了してバグ報告を残せます。詳細は [docs/workflows.md](docs/workflows.md)。
 
-### owner 承認後の自動マージ
+### owner 承認後の自動マージ (`owner-approved-auto-merge.yml`)
 
 ```yaml
 name: Owner-approved auto-merge
