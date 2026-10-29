@@ -73,8 +73,12 @@ opencode_effort_variant() {
     printf 'max'
     return 0
   fi
-  case "${CONAHCNUJ_EFFORT:-}" in
-    max|MAX|1|true|yes|on|TRUE|YES|ON)
+  local v="${CONAHCNUJ_EFFORT:-}"
+  # Trim surrounding whitespace.
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  case "${v}" in
+    max|MAX|Max|max|1|true|TRUE|True|yes|YES|Yes|on|ON|On)
       printf 'max'
       ;;
   esac
