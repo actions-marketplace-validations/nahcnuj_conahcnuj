@@ -1,8 +1,5 @@
 name: 'conahcnuj'
-description: >
-  GitHub App authentication for git and gh, plus the conahcnuj issue-driven
-  development and owner-approved auto-merge reusable workflows. The reusable
-  workflows live under .github/workflows/.
+description: 'Issue-driven development behalf of you.'
 author: 'nahcnuj'
 
 branding:
