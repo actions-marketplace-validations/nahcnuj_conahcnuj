@@ -248,13 +248,6 @@ Reusable Workflow は利用側リポジトリの `GITHUB_TOKEN` を使い、App 
 対象リポジトリに `bin/` / `gh-app/` / `lib/` を置く必要はありません（ドライバは
 このリポジトリの `job.workflow_repository` から取得されます）。
 
-> **`action.yml` について**: ルートの `action.yml` は GitHub Marketplace にこの
-> リポジトリを公開するために必要なメタデータです（Marketplace 公開にはルートの
-> `action.yml` が必須）。**ここがドライバを起動する場所ではありません** — ドライバの
-> 起動は上記の reusable workflow（`.github/workflows/issue-driver.yml`）経由で行います。
-> composite action の `runs` は Marketplace 公開要件を満たすためのエントリポイントで、
-> 実際の issue 駆動は reusable workflow 側が担当します。
-
 ## owner 承認後の自動マージ（GitHub Actions）
 
 `.github/workflows/auto-merge.yml` は、owner が open 中の draft でない PR を
@@ -358,13 +351,6 @@ shim で、issue 駆動・auto-merge の実体は reusable workflow
 （`.github/workflows/issue-driver.yml` / `owner-approved-auto-merge.yml`）側に
 あります。利用時は `uses: nahcnuj/conahcnuj/.github/workflows/<name>.yml@<tag>`
 の形で呼び出してください（詳細は上記「他のリポジトリで使う」を参照）。
-
-> **`action.yml` で issue-driver を起動しない理由**: composite action は呼び出し側
-> ジョブ内で実行されるため、ワークフローを起動できず、issue-driver が必要とする
-> ジョブレベルの secret / environment も引き継げません。したがって `action.yml`
-> は Marketplace 公開要件（ルートの `action.yml` 必須）を満たすための discovery 用
-> エントリポイントにとどめ、実際の issue 駆動は reusable workflow 経由で行います。
-> （`action.yml` の `runs.steps` はメッセージ表示のみで、ドライバは起動しません。）
 
 ## トラブルシューティング
 
