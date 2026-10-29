@@ -1,24 +1,18 @@
 # conahcnuj
 
-**GitHub App 名義**で Git 操作を行う GitHub Actions です。issue から PR を
-作成し、レビュー対応まで行います。
-
-
 ## Getting started
 
-### 前提条件
-
-1. あなたのアカウントに GitHub App を作成し、対象リポジトリにインストールする。
-2. 対象リポジトリの Secrets に `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`
+1. あなたのアカウントに GitHub App を作成する。
+2. 使いたいリポジトリに作成したアプリをインストールする。
+3. 対象リポジトリの Secrets に `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`
    を登録する（`APP_SLUG` は Secret にしない）。
-3. auto-merge を使う場合は Settings → General → Pull Requests で
+4. auto-merge を使う場合は Settings → General → Pull Requests で
    **Allow auto-merge** を有効にする。
 
 ### 使い方
 
 1. issue を作成する。
-2. ドライバがブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進める。
-3. PR をレビューし、Approve すると auto-merge workflow がマージする。
+2. 作成された PR をレビューする。
 
 ## Workflows
 
