@@ -3,14 +3,11 @@
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を
 作成し、レビュー対応まで行います。
 
-`conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の
-GitHub App を作成する必要があります。
+`conahcnuj` は @nahcnuj のインスタンス名です。
 
-## Marketplace で使う
+## Getting started
 
-利用側リポジトリから reusable workflow を呼び出して使います。
-
-### 前提条件
+### Create your GitHub App for conahcnuj
 
 1. あなたのアカウントに GitHub App を作成し、対象リポジトリにインストールする
    （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
@@ -19,12 +16,12 @@ GitHub App を作成する必要があります。
 3. auto-merge を使う場合は、Settings → General → Pull Requests で
    **Allow auto-merge** を有効にする。
 
-設定値の詳細は [docs/configuration.md](docs/configuration.md)。
-
 ### 使い方
 
-1. 利用側リポジトリで issue を開く。
-2. PR を確認し、問題なければ Approve する。
+1. issue を作成する。
+2. PR をレビューする。
+
+## Workflows
 
 ### issue の自動対応 (`issue-driver.yml`)
 
@@ -137,9 +134,6 @@ bash <このリポジトリ>/docker-run.sh <issue-or-PR番号>
 [docs/installation.md](docs/installation.md)。
 
 ## ドキュメント
-
-設定・CLI・ドライバ・プラグイン・環境変数・ワークフローのリファレンスを `docs/` に置き、
-GitHub Pages で配信しています。
 
 - サイト: <https://nahcnuj.github.io/conahcnuj/>
 - 機械可読な索引: <https://nahcnuj.github.io/conahcnuj/llms.txt>
