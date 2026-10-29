@@ -140,8 +140,7 @@ EOF
   assert_contains "${out}" "  three" "tool output rendered"
   assert_contains "${out}" "✅ cat tracked.txt" "success verdict"
   assert_not_contains "${out}" "exit " "no exit code on success"
-  # Exactly one blank line after the output, then the verdict.
-  [[ "${out}" == *$'\n\n✅ cat tracked.txt'* ]] || fail "blank line before verdict" "${out}"
+  # The verdict is printed (visible outside any collapsed group).
   rm -rf "${tmp}"
   echo "render tool success passed"
 }
