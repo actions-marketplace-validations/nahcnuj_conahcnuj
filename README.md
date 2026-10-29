@@ -1,7 +1,14 @@
 # conahcnuj
 
+> GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
+
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を
 作成し、レビュー対応まで行います。
+
+> **Marketplace での利用に `git clone` は不要です。** reusable workflow は
+> `uses: nahcnuj/conahcnuj/.github/workflows/...@main` で呼び出します。
+> 以下の clone / install 手順は、ローカルで opencode を bot 名義で動かす場合のみ
+> 必要です。
 
 ## Getting started
 
@@ -19,57 +26,18 @@
 1. issue を作成する。
 2. PR をレビューする。
 
-## Workflows
+## GitHub Actions として使う
 
-### issue の自動対応 (`issue-driver.yml`)
-
-issue が open / reopen されるとドライバを Actions 上で自動実行します。
-
-```yaml
-name: Issue auto-drive
-
-on:
-  issues:
-    types: [opened, reopened]
-
-permissions:
-  contents: read
-
-jobs:
-  drive:
-    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
-    with:
-      number: ${{ github.event.issue.number }}
-    secrets: inherit
-```
-
-タイムアウトは Actions 側で制御します（`timeout-minutes: 60`）。
-`CONAHCNUJ_MAX_SECONDS=3540` を設定すると、ジョブ強制終了の前にドライバが
-自己終了してバグ報告を残せます。詳細は [docs/workflows.md](docs/workflows.md)。
-
-### owner 承認後の自動マージ (`owner-approved-auto-merge.yml`)
-
-```yaml
-name: Owner-approved auto-merge
-
-on:
-  pull_request_review:
-    types: [submitted]
-
-permissions:
-  contents: write
-  pull-requests: write
-
-jobs:
-  enable:
-    uses: nahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge@main
-    with:
-      repository: ${{ github.repository }}
-      pr-number: ${{ github.event.pull_request.number }}
-      head-sha: ${{ github.event.pull_request.head.sha }}
-```
-
+`.github/workflows/issue-driver.yml` と `.github/workflows/owner-approved-auto-merge.yml`
+は **reusable workflow** です（`action.yml` は Marketplace 用の shim で、実体は
+こちら）。clone は不要で、利用側リポジトリから呼び出して使います。
 詳細は [docs/workflows.md](docs/workflows.md)。
+
+- **issue の自動対応** (`issue-driver.yml`): issue が open / reopen されるとドライバを
+  Actions 上で自動実行します。必要な repo secrets: `APP_ID` / `INSTALLATION_ID` /
+  `PRIVATE_KEY`（`APP_SLUG` はシークレットにしない）。
+- **owner 承認後の自動マージ** (`owner-approved-auto-merge.yml`): owner の approve を
+  トリガーに auto-merge を有効化します。**Allow auto-merge** の有効化が必要です。
 
 ## ローカルで使う (opencode セットアップ)
 
@@ -156,4 +124,4 @@ AI エージェント向けの詳細ルールは [AGENTS.md](AGENTS.md) を参�
 ├── .gitignore
 └── AGENTS.md                  # AI エージェント向けルール
 ```
-filePath: /home/runner/work/conahcnuj/conahcnuj/README.md
+", filePath: "/home/runner/work/conahcnuj/conahcnuj/README.md"}
