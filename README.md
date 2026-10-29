@@ -9,10 +9,6 @@
 GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot アカウントは
 `<slug>[bot]`）。
 
-> **Marketplace での利用に `git clone` は不要です。** 実体は reusable
-> workflow で、利用側リポジトリから `uses:` で呼び出します。clone と
-> `install.ps1` は、ローカルで opencode を bot 名義で動かす場合だけ必要です。
-
 ## Marketplace で使う
 
 利用側リポジトリから reusable workflow を呼び出して使います。`action.yml`
