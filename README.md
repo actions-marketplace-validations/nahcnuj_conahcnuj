@@ -1,22 +1,18 @@
 # conahcnuj
 
-> GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
-
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を
 作成し、レビュー対応まで行います。
 
 `conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の
-GitHub App を作成する必要があります。スラッグは `<slug>` で、bot アカウントは
-`<slug>[bot]` です。
+GitHub App を作成する必要があります。
 
 ## Marketplace で使う
 
-利用側リポジトリから reusable workflow を呼び出して使います（`git clone` は
-不要です）。
+利用側リポジトリから reusable workflow を呼び出して使います。
 
 ### 前提条件
 
-1. 自分用の GitHub App を作成し、対象リポジトリにインストールする
+1. あなたのアカウントに GitHub App を作成し、対象リポジトリにインストールする
    （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
 2. 対象リポジトリの Secrets に `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY` を
    登録する（`APP_SLUG` は Secret にしない）。
@@ -27,13 +23,8 @@ GitHub App を作成する必要があります。スラッグは `<slug>` で�
 
 ### 使い方
 
-1. 上記の前提条件を満たす。
-2. 利用側リポジトリで issue を開く（タスクを本文に書く）。
-3. `Issue auto-drive` workflow が自動で走り、ドライバがブランチ作成・Verified
-   コミット・PR 作成・レビュー依頼まで進める。
-4. PR を確認し、問題なければ Approve する。
-5. `Owner-approved auto-merge` workflow が auto-merge を有効化し、必要な
-   status checks が green になればマージされる。
+1. 利用側リポジトリで issue を開く。
+2. PR を確認し、問題なければ Approve する。
 
 ### issue の自動対応 (`issue-driver.yml`)
 
