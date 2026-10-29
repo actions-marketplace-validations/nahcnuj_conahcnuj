@@ -359,6 +359,13 @@ shim で、issue 駆動・auto-merge の実体は reusable workflow
 あります。利用時は `uses: nahcnuj/conahcnuj/.github/workflows/<name>.yml@<tag>`
 の形で呼び出してください（詳細は上記「他のリポジトリで使う」を参照）。
 
+> **`action.yml` で issue-driver を起動しない理由**: composite action は呼び出し側
+> ジョブ内で実行されるため、ワークフローを起動できず、issue-driver が必要とする
+> ジョブレベルの secret / environment も引き継げません。したがって `action.yml`
+> は Marketplace 公開要件（ルートの `action.yml` 必須）を満たすための discovery 用
+> エントリポイントにとどめ、実際の issue 駆動は reusable workflow 経由で行います。
+> （`action.yml` の `runs.steps` はメッセージ表示のみで、ドライバは起動しません。）
+
 ## トラブルシューティング
 
 - **`gh auth status` が 自分のアカウントを表示する**
