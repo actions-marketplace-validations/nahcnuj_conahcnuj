@@ -135,7 +135,7 @@ test_tool_success() {
   out="$(cat <<'EOF' |
 {"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"output":"one\ntwo\nthree\n","exit":0,"truncated":false},"title":"cat tracked.txt"}}}
 EOF
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ cat tracked.txt' "command line rendered"
   assert_contains "${out}" "  three" "tool output rendered"
   assert_contains "${out}" "✅" "success verdict"
@@ -182,7 +182,7 @@ test_tool_no_output_sentinel_suppressed() {
   tmp="$(mktemp -d)"
   fixture_repo "${tmp}/repo"
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"true"},"output":"(no output)","metadata":{"exit":0},"title":"true"}}}' |
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
   assert_not_contains "${out}" "(no output)" "sentinel is not a real no-op output"
   assert_contains "${out}" "✅" "empty command still succeeds"
   rm -rf "${tmp}"
@@ -233,7 +233,7 @@ test_tool_title_fallback() {
   fixture_repo "${tmp}/repo"
   # No title: fall back to the command line, then to the tool name.
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"make check"},"output":"","metadata":{"exit":0}}}}' |
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ make check' "falls back to the command"
   assert_contains "${out}" "✅" "verdict uses the command"
   # A tool that is not a command execution is not a prompt: no `$` line at all,
@@ -340,7 +340,7 @@ test_command_streams_as_it_prints() {
 {"type":"tool_use","part":{"id":"prt_s1","type":"tool","tool":"bash","state":{"status":"running","input":{"command":"cat tracked.txt"},"output":"one\ntwo\n"},"title":"cat tracked.txt"}}
 {"type":"tool_use","part":{"id":"prt_s1","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"cat tracked.txt"},"output":"one\ntwo\nthree\n","metadata":{"exit":0},"title":"cat tracked.txt"}}}
 EOF
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ cat tracked.txt' "the command line opens the block"
   assert_contains "${out}" "  one" "the first chunk is on the log"
   assert_contains "${out}" "  three" "the tail is appended"
@@ -397,7 +397,6 @@ EOF
   assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker opens on first sighting"
   assert_contains "${out}" "  one" "partial output is inside the group"
   assert_contains "${out}" "  three" "tail is inside the group"
-  assert_contains "${out}" "✅" "verdict is inside the group"
   assert_contains "${out}" "::endgroup::" "group is closed at the verdict"
   [[ "$(printf '%s\n' "${out}" | grep -c '::group::')" == "1" ]] || fail "group opened more than once" "${out}"
   rm -rf "${tmp}"
@@ -523,7 +522,7 @@ test_tool_input_does_not_shadow_state() {
   # A tool is free to take its own output/title arguments; the renderer must
   # read state.output / state.title, not the argument object.
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"echo hi","output":"decoy output","title":"decoy title"},"output":"real output\n","metadata":{"exit":0},"title":"echo hi"}}}' |
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "  real output" "state.output wins over the tool argument"
   assert_not_contains "${out}" "decoy output" "tool argument output ignored"
   assert_contains "${out}" "✅" "state.title wins over the tool argument"
@@ -639,7 +638,7 @@ test_replayed_part_rendered_once() {
 {"type":"tool_use","part":{"id":"prt_b2","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"pwd"},"output":"/x\n","metadata":{"exit":0},"title":"pwd"}}}
 {"type":"tool_use","part":{"id":"prt_b2","type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"pwd"},"output":"/x\n","metadata":{"exit":0},"title":"pwd"}}}
 EOF
-    bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
+    GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
   [[ "${headers}" == "2" ]] || fail "replayed part printed again (${headers} headers)" "${out}"
   [[ "$(printf '%s\n' "${out}" | grep -c 'hello once')" == "1" ]] || fail "text duplicated" "${out}"

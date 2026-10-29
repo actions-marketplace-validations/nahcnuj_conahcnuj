@@ -282,7 +282,7 @@ EOF
   export PATH
   # The rendered log goes to stderr; stdout stays empty.
   log="$(mktemp)"
-  opencode_run "Issue" "Body" "${tmp}" "opencode/first" >"${tmp}/stdout" 2>"${log}"
+  GITHUB_ACTIONS='' opencode_run "Issue" "Body" "${tmp}" "opencode/first" >"${tmp}/stdout" 2>"${log}"
   [[ ! -s "${tmp}/stdout" ]] || {
     cat "${tmp}/stdout" >&2
     echo "FAIL: the raw JSON stream must not reach stdout" >&2
