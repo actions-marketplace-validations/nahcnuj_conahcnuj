@@ -329,6 +329,8 @@ const COMMIT_RULES = [
   `them. Commit with the \`git vc\` alias instead (${VC_USAGE}): it collects the`,
   "same content as `git commit` (add files with `git add` first; `-a` for",
   "tracked worktree changes) but GitHub creates and verifies the commit.",
+  "`git vc` is a git alias (not a separate executable): run it directly as `git vc ...`;",
+  "do not search for a `git-vc` binary and do not try `git commit`.",
   "Prefer `git vc` over `git commit` and use it naturally. Do not run `git commit`,",
   "and do not run gh-app/api-commit.sh or any other gh-app script directly:",
   "`git vc` is the supported wrapper around it.",

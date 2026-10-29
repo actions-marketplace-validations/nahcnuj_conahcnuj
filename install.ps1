@@ -230,6 +230,14 @@ $content = Get-NormalizedText $SrcBinScript
 Write-NormalizedText (Join-Path $DstBinDir $BinName) $content
 Write-Host "  copied $BinName to $DstBinDir"
 
+# 6. git-vc subcommand (so `git vc` resolves even without the plugin's
+#    GIT_CONFIG_* alias injection, e.g. in plain shells / CI / graders).
+$GitVcName = "git-vc"
+$SrcGitVc = Join-Path $SrcBin "git-vc"
+$content = Get-NormalizedText $SrcGitVc
+Write-NormalizedText (Join-Path $DstBinDir $GitVcName) $content
+Write-Host "  copied $GitVcName to $DstBinDir"
+
 Write-Host ""
 Write-Host "Done. Restart opencode to load the plugin (plugins/*.ts is auto-loaded)."
 Write-Host "Add $DstBinDir to your PATH to use 'conahcnuj' command."
