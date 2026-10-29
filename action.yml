@@ -1,0 +1,29 @@
+name: 'conahcnuj'
+description: >
+  GitHub App authentication for git and gh, plus the conahcnuj issue-driven
+  development and owner-approved auto-merge reusable workflows. The reusable
+  workflows live under .github/workflows/.
+author: 'nahcnuj'
+
+branding:
+  icon: 'terminal'
+  color: 'blue'
+
+inputs:
+  number:
+    description: 'Issue or pull request number to drive.'
+    required: false
+    default: ''
+  repository:
+    description: 'Target repository in owner/name form.'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: conahcnuj
+      shell: bash
+      run: |
+        echo "conahcnuj reusable workflows are available."
+        echo "See repository documentation for usage."

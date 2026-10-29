@@ -27,6 +27,7 @@ GitHub App「conahcnuj」のインストールトークンを発行し、それ�
 ├── plugin-tests/               # プラグインのテスト（unit＋smoke＋e2e と install.ps1 の AGENTS.md merge。node/npm・pwsh・opencode が必要）
 ├── driver-tests/               # ドライバの offline モックテスト（run.sh がランナー。秘密鍵・ネットワーク不要）
 │   └── run.sh                  #   driver-tests/ 全体のランナー
+├── action.yml                 # GitHub Marketplace 公開用の Action メタデータ（ルート必須）
 ├── Dockerfile                 # conahcnuj 実行用の隔離イメージ（opencode 同梱）
 ├── docker-run.sh              # そのイメージでドライバを走らせるラッパー
 ├── install.ps1                # グローバル設定（~/.config/opencode）へ配置＋ conahcnuj コマンド配備
