@@ -1805,7 +1805,7 @@ main() {
     exit 1
   fi
   local input="" repo_info owner repo
-  local max_effort="0"
+  local max_effort
   local -a positional=()
   while [[ $# -gt 0 ]]; do
     case "${1}" in
