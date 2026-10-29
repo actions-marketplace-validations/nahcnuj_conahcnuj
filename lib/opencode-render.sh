@@ -885,41 +885,41 @@ render_block_tool() {
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
   [[ "${fed}" == "true" ]] && print_newline
-  # Close the collapsible group BEFORE the verdict line so the result (✅/❌️)
-  # stays visible even when GitHub Actions collapses the command's group; the
-  # verdict then precedes the next model name (header) instead of being hidden.
+  # Close the collapsible group before the (now omitted) recap line. The
+  # result sign is redundant here: success/failure shows on the next header
+  # line (🟢/🔴), so print nothing after the group closes.
   if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
     if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
       echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
     fi
-    label=""
-  fi
-  if [[ "${timed_out}" == "true" ]]; then
-    if [[ -n "${label}" ]]; then
-      printf '❌️ %s (timed out)\n' "${label}"
-    else
-      printf '❌️ (timed out)\n'
-    fi
-  elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
-    if [[ -n "${code}" ]]; then
-      if [[ -n "${label}" ]]; then
-        printf '❌️ %s (exit %s)\n' "${label}" "${code}"
-      else
-        printf '❌️ (exit %s)\n' "${code}"
-      fi
-    else
-      if [[ -n "${label}" ]]; then
-        printf '❌️ %s\n' "${label}"
-      else
-        printf '❌️\n'
-      fi
-    fi
   else
-    if [[ -n "${label}" ]]; then
-      printf '✅ %s\n' "${label}"
+    if [[ "${timed_out}" == "true" ]]; then
+      if [[ -n "${label}" ]]; then
+        printf '❌️ %s (timed out)\n' "${label}"
+      else
+        printf '❌️ (timed out)\n'
+      fi
+    elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
+      if [[ -n "${code}" ]]; then
+        if [[ -n "${label}" ]]; then
+          printf '❌️ %s (exit %s)\n' "${label}" "${code}"
+        else
+          printf '❌️ (exit %s)\n' "${code}"
+        fi
+      else
+        if [[ -n "${label}" ]]; then
+          printf '❌️ %s\n' "${label}"
+        else
+          printf '❌️\n'
+        fi
+      fi
     else
-      printf '✅\n'
+      if [[ -n "${label}" ]]; then
+        printf '✅ %s\n' "${label}"
+      else
+        printf '✅\n'
+      fi
     fi
   fi
   # Remember this command's exit code so the next header (the model name) can
