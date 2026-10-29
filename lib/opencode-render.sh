@@ -924,9 +924,9 @@ render_block_tool() {
     if [[ "${closed_group_here}" == "1" ]]; then
       :
     elif [[ -n "${label}" ]]; then
-      printf '✅ %s\\n' "${label}"
+      printf '✅ %s\n' "${label}"
     else
-      printf '✅\\n'
+      printf '✅\n'
     fi
   fi
   # Remember this command's exit code so the next header (the model name) can
