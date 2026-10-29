@@ -2,29 +2,23 @@
 
 > GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
 
-**GitHub App 名義**で Git 操作を行うための GitHub Actions です。
-issue から PR 作成・レビュー対応までを自律的に進めます。
+**GitHub App 名義**で Git 操作を行うための GitHub Actions です。issue から PR を作成し、
+レビュー対応まで行います。`gh` CLI・GitHub API・opencode 内の git 操作を App 名義
+(`<slug>[bot]`) で動かすための設定とスクリプトも含みます。
 
-`conahcnuj` は @nahcnuj のインスタンスです。他のユーザーは自分の GitHub App
-（`<slug>`）を作成して利用します。bot アカウントは `<slug>[bot]` です。
+`conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の GitHub App を
+作成し、そのスラッグ (`<slug>`) で利用します（bot アカウントは `<slug>[bot]`）。
 
-> **Marketplace での利用に `git clone` は不要です。** reusable workflow は
-> `uses: nahcnuj/conahcnuj/.github/workflows/...@main` で呼び出します
-> （下記「GitHub Actions として使う」）。clone / install はローカルで opencode を
-> bot 名義で動かす場合のみ必要です。
+> **Marketplace での利用に `git clone` は不要です。** 実体は reusable workflow で、
+> 利用側リポジトリから `uses:` で呼び出します（下記「Marketplace で使う」）。
+> clone と `install.ps1` は、ローカルで opencode を bot 名義で動かす場合だけ必要です。
 
-## できること
-
-- `gh` CLI / GitHub API を **App 名義（`<slug>[bot]`）** で実行
-- opencode 内の git 操作を **App 名義**で実行
-- issue → PR・レビュー依頼・owner の Approve までを自律的に運ぶドライバ
-
-## GitHub Actions として使う
+## Marketplace で使う
 
 `.github/workflows/issue-driver.yml` と
 `.github/workflows/owner-approved-auto-merge.yml` は **reusable workflow** です。
-Marketplace のページはこの README を表示しますが、直接 `uses:` するものではなく、
-利用側リポジトリから呼び出して使います（clone は不要です）。
+Marketplace のページにはこの README が表示されますが、利用側リポジトリから
+呼び出して使います（clone は不要です）。
 
 ### issue の自動対応
 
@@ -49,14 +43,16 @@ jobs:
     secrets: inherit
 ```
 
-タイムアウトは Actions 側で制御（`timeout-minutes: 60`）し、
-`CONAHCNUJ_MAX_SECONDS=3540` を設定します。必要な repo secrets:
-`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`（`APP_SLUG` はシークレットにしない）。
-詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
+タイムアウトは Actions 側で制御します（`timeout-minutes: 60`）。
+`CONAHCNUJ_MAX_SECONDS=3540` を設定し、ジョブ強制終了の前にドライバが自己終了して
+バグ報告を残せるようにします。必要な repo secrets は `APP_ID` / `INSTALLATION_ID` /
+`PRIVATE_KEY` です（`APP_SLUG` はシークレットにしません）。詳細は
+[docs/workflows.md](docs/workflows.md) を参照してください。
 
 ### owner 承認後の自動マージ
 
-owner の approve をトリガーに auto-merge を有効化します。利用側リポジトリに次を追加します。
+owner の approve をトリガーに auto-merge を有効化します。利用側リポジトリに次を
+追加します。
 
 ```yaml
 name: Owner-approved auto-merge
@@ -83,37 +79,53 @@ jobs:
 
 ## ローカルで使う (opencode セットアップ)
 
-clone と `install.ps1` で配置し、`app.env` を設定して opencode を再起動します。
-詳細は [docs/installation.md](docs/installation.md) と
-[docs/configuration.md](docs/configuration.md) を参照してください。
+ローカルで opencode を bot 名義で動かす場合の手順です。
 
-```sh
-git clone <repo>.git
-cd <repo>
-powershell -ExecutionPolicy Bypass -File install.ps1
-```
+前提: Windows + Git for Windows (`C:/Program Files/Git/bin/bash.exe`)、
+opencode が `~/.config/opencode/` をグローバル設定として使うこと。
 
-設定後、opencode を再起動し、`gh auth status` が bot アカウント（`<slug>[bot]`）を
-示すことを確認します。
+1. このリポジトリを clone し、`install.ps1` を実行します（隔離実行には
+   `docker-run.sh` も使えます）。
+
+   ```sh
+   git clone <repo>.git
+   cd <repo>
+   powershell -ExecutionPolicy Bypass -File install.ps1
+   ```
+
+2. `~/.config/opencode/gh-app/app.env`（またはリポジトリの `gh-app/app.env`）に
+   `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を
+   設定します。キーの説明・キャッシュ・セキュリティは
+   [docs/configuration.md](docs/configuration.md) を参照してください。
+3. opencode を再起動し、`gh auth status` が bot アカウント (`<slug>[bot]`) を
+   示すことを確認します。
+4. 対象リポジトリで issue を開くか、`conahcnuj <issue番号>` を実行します。
+   ドライバがブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進めます。
+5. owner が Approve すると、auto-merge workflow がマージします。
+
+配置と実行の詳細は [docs/installation.md](docs/installation.md) を参照してください。
 
 ## 仕組み
 
-1. `get-token.sh` が GitHub App の秘密鍵で JWT を署名し、インストールトークン（約 1 時間有効）を取得。
-   取得済みなら有効期限内はキャッシュ（`gh-app/token.cache`）を返す。
+1. `get-token.sh` が GitHub App の秘密鍵で JWT を署名し、インストールトークン
+   （約 1 時間有効）を取得します。取得済みなら有効期限内はキャッシュ
+   (`gh-app/token.cache`) を返します。
 2. opencode プラグインが `shell.env` フックで `GH_TOKEN` と `GIT_CONFIG_*`
-   （bot 名義 + `alias.vc`）を注入。
-3. `experimental.chat.system.transform` フックで「コミットは `git vc`」「GitHub は `GH_TOKEN` で
-   認証済み」を全セッションのシステムプロンプトへ常時注入し、`tool.execute.before` で
-   `git commit` / `api-commit.sh` の直接実行を `git vc` へ誘導する。
+   (bot 名義 + `alias.vc`) を注入します。
+3. `experimental.chat.system.transform` フックで「コミットは `git vc`」「GitHub は
+   `GH_TOKEN` で認証済み」を全セッションのシステムプロンプトへ常時注入し、
+   `tool.execute.before` で `git commit` / `api-commit.sh` の直接実行を `git vc` へ
+   誘導します。
 4. `install.ps1` は `opencode/AGENTS.md` を `~/.config/opencode/AGENTS.md` へ
-   管理ブロックとしてマージする（既存内容は保持）。
+   管理ブロックとしてマージします（既存内容は保持）。
 
-## Verified コミット（`git vc`）
+## Verified コミット (`git vc`)
 
-コーディングエージェントは `git vc` でコミットする。`git vc` はプラグインが注入する git alias で、
-GitHub GraphQL の `createCommitOnBranch` を使い **Verified 署名付きコミット**をブランチに作成する。
-opencode 上の git は App 名義で動き署名鍵を持たないため、普通の `git commit` では
-ブランチルール（"Commits must have verified signatures"）を満たせない。
+コーディングエージェントは `git vc` でコミットします。`git vc` はプラグインが注入する
+git alias で、GitHub GraphQL の `createCommitOnBranch` を使い **Verified 署名付き
+コミット**をブランチに作成します。opencode 上の git は App 名義で動き署名鍵を持たない
+ため、普通の `git commit` ではブランチルール
+("Commits must have verified signatures") を満たせません。
 
 ```sh
 git vc -m "message"        # staged の内容をコミット
@@ -123,13 +135,14 @@ git vc -m "message" -a     # tracked の作業ツリー変更をコミット
 ## トラブルシューティング
 
 - **`gh auth status` が自分のアカウントを表示する**: プラグインがトークンを取得できていない。
-  `BASH_EXE` が正しい Git Bash 経路か、`app.env` の値を確認。変更後は opencode を再起動。
-- **トークンが取れない**: `bash gh-app/get-token.sh` を直接実行して出力を確認
-  （`token.cache` 削除後に再実行）。
+  `BASH_EXE` が正しい Git Bash 経路か、`app.env` の値を確認してください。
+  変更後は opencode を再起動します。
+- **トークンが取れない**: `bash gh-app/get-token.sh` を直接実行して出力を確認します
+  (`token.cache` 削除後に再実行)。
 - **CI で実トークンの検証が無い**: CI の `mock-test` は秘密鍵・ネットワーク不要の
-  offline 検証のみ。実トークンの動作確認はローカルで行う。
+  offline 検証のみです。実トークンの動作確認はローカルで行ってください。
 
-## 隔離環境で実行する（Docker）
+## 隔離環境で実行する (Docker)
 
 ```sh
 cd <対象リポジトリ>
