@@ -1,13 +1,8 @@
 # conahcnuj
 
-GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
-
 **GitHub App 名義**で Git 操作を行う GitHub Actions です。issue から PR を
 作成し、レビュー対応まで行います。
 
-> `action.yml` は Marketplace 掲載用の shim です。実際の利用は reusable
-> workflow（`issue-driver.yml` / `owner-approved-auto-merge.yml`）の呼び出しで行い、
-> Marketplace 利用に `git clone` は不要です。
 
 ## Getting started
 
