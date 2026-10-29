@@ -78,7 +78,7 @@ opencode_effort_variant() {
   v="${v#"${v%%[![:space:]]*}"}"
   v="${v%"${v##*[![:space:]]}"}"
   case "${v}" in
-    max|MAX|Max|max|1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+    max|MAX|Max|1|true|TRUE|True|yes|YES|Yes|on|ON|On)
       printf 'max'
       ;;
   esac
