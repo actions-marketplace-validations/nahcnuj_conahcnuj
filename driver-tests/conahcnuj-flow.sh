@@ -127,6 +127,14 @@ WAIT_LINE="$(grep -n "waiting for the reviewer's decision" "${LOG}" | head -1 | 
 [[ -n "${READY_LINE}" && "${ASSIGNED_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 [[ "${WAIT_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the driver must wait for the verdict before it sees the approval"; exit 1; }
 grep -q "Created draft PR #123" "${LOG}" || { echo "FAIL: PR #123 was not created"; exit 1; }
+# The draft PR is opened before the implementation round, not after it: its
+# number must be stable for the whole run (the template's concurrency group and
+# review/resume triggers key on it). The empty initial commit is what lets
+# GitHub open the PR before any real change exists.
+grep -q "Creating an empty initial commit" "${LOG}" || { echo "FAIL: no empty initial commit was created before the early PR"; exit 1; }
+EARLY_PR_LINE="$(grep -n 'Early draft PR: #123' "${LOG}" | head -1 | cut -d: -f1)"
+IMPLEMENT_LINE="$(grep -n 'Implementing with available models' "${LOG}" | head -1 | cut -d: -f1)"
+[[ -n "${EARLY_PR_LINE}" && -n "${IMPLEMENT_LINE}" && "${EARLY_PR_LINE}" -lt "${IMPLEMENT_LINE}" ]] || { echo "FAIL: the draft PR must be opened before implementation"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" && { echo "FAIL: a fresh PR must not fire an implementation round"; exit 1; }
 grep -q "Model opencode/first failed before completing the work; handing off to the next model" "${LOG}" || { echo "FAIL: failed model did not hand off"; exit 1; }
 grep -q "Handing off session ses_mock from opencode/first to opencode/second" "${LOG}" || { echo "FAIL: session was not handed to the second model"; exit 1; }
