@@ -397,7 +397,7 @@ EOF
   assert_contains "${out}" "::group::\$ cat tracked.txt" "group marker opens on first sighting"
   assert_contains "${out}" "  one" "partial output is inside the group"
   assert_contains "${out}" "  three" "tail is inside the group"
-  assert_contains "${out}" "✅ cat tracked.txt" "verdict is inside the group"
+  assert_contains "${out}" "✅" "verdict is inside the group"
   assert_contains "${out}" "::endgroup::" "group is closed at the verdict"
   [[ "$(printf '%s\n' "${out}" | grep -c '::group::')" == "1" ]] || fail "group opened more than once" "${out}"
   rm -rf "${tmp}"

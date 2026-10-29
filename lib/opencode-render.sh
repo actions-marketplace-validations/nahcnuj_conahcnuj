@@ -893,17 +893,34 @@ render_block_tool() {
       echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
     fi
+    label=""
   fi
   if [[ "${timed_out}" == "true" ]]; then
-    printf '❌️ %s (timed out)\n' "${label}"
+    if [[ -n "${label}" ]]; then
+      printf '❌️ %s (timed out)\n' "${label}"
+    else
+      printf '❌️ (timed out)\n'
+    fi
   elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
     if [[ -n "${code}" ]]; then
-      printf '❌️ %s (exit %s)\n' "${label}" "${code}"
+      if [[ -n "${label}" ]]; then
+        printf '❌️ %s (exit %s)\n' "${label}" "${code}"
+      else
+        printf '❌️ (exit %s)\n' "${code}"
+      fi
     else
-      printf '❌️ %s\n' "${label}"
+      if [[ -n "${label}" ]]; then
+        printf '❌️ %s\n' "${label}"
+      else
+        printf '❌️\n'
+      fi
     fi
   else
-    printf '✅ %s\n' "${label}"
+    if [[ -n "${label}" ]]; then
+      printf '✅ %s\n' "${label}"
+    else
+      printf '✅\n'
+    fi
   fi
   # Remember this command's exit code so the next header (the model name) can
   # show whether the previous command succeeded (🟢) or failed (🔴).
