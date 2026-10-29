@@ -9,9 +9,10 @@ issue（または PR）の解決を最後まで自律的に運ぶドライバで
 ## 使い方
 
 ```sh
-conahcnuj <issue番号>     # issue から開始
-conahcnuj <PR番号>        # PR なら自動で引き継いで再開
-bash bin/conahcnuj.sh <番号>   # インストールせずリポジトリ内から直接実行する場合
+conahcnuj <issue番号>                 # issue から開始
+conahcnuj <PR番号>                    # PR なら自動で引き継いで再開
+conahcnuj --max-effort <issue番号>    # max effort モード（モデルの最大 effort を使用）
+bash bin/conahcnuj.sh <番号>          # インストールせずリポジトリ内から直接実行する場合
 ```
 
 - 対象リポジトリは `origin` remote から自動検出。remote が無い場合は
@@ -157,6 +158,7 @@ provider の rate limit（`Rate limit exceeded. Please try again later.`）で�
 | `CONAHCNUJ_HANDOFF_RETRY_SECONDS` | `15` | レビュー依頼リトライ前の待機（`0` で禁止） |
 | `CONAHCNUJ_POLL_CONDITIONS_MIN` / `_MAX` | `15` / `300` | 制約ポーリングの間隔幅（秒・ジッター付き） |
 | `CONAHCNUJ_COMMIT_MODEL` | 未設定 | コミット trailer（`Co-Authored-By: <値>`。プラグインが `provider (model/effort)` を設定する） |
+| `CONAHCNUJ_MAX_EFFORT` | 未設定 | 非空で max effort モード（opencode に `--variant max` を渡す）。`--max-effort` フラグまたは `CONAHCNUJ_EFFORT=max` でも有効 |
 | `CONAHCNUJ_OPENCODE_LOG_LEVEL` | `WARN` | opencode の `--log-level`（デバッグは `DEBUG`） |
 | `CONAHCNUJ_OWN_WORKFLOWS` | `Issue auto-drive,Owner-approved auto-merge` | 制約チェックから除外する自 workflow（デッドロック防止）。空で無効。issue driver の job 名（`Attempt to resolve issue`）と auto-merge の job 名（`enable`）も除外し、reusable workflow として他リポジトリから呼ばれ workflow 名が呼び出し側になる場合も待たない |
 | `CONAHCNUJ_CONTEXT_FILES` | `README.md AGENTS.md` | プロンプトへ同梱する作業ツリーファイル（スペース区切り。空で無効） |

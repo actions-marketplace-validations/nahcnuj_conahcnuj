@@ -1801,10 +1801,41 @@ main() {
     cd "${CONAHCNUJ_ORIG_PWD_WIN}" 2>/dev/null || true
   fi
   if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <issue-or-pr-number>" >&2
+    echo "Usage: $0 [--max-effort] <issue-or-pr-number>" >&2
     exit 1
   fi
-  local input="${1}" repo_info owner repo
+  local input="" repo_info owner repo
+  local max_effort=""
+  local -a positional=()
+  while [[ $# -gt 0 ]]; do
+    case "${1}" in
+      --max-effort)
+        max_effort="1"
+        shift
+        ;;
+      --)
+        shift
+        positional+=("$@")
+        break
+        ;;
+      -*)
+        echo "Unknown option: ${1}" >&2
+        exit 1
+        ;;
+      *)
+        positional+=("${1}")
+        shift
+        ;;
+    esac
+  done
+  if [[ ${#positional[@]} -ne 1 ]]; then
+    echo "Usage: $0 [--max-effort] <issue-or-pr-number>" >&2
+    exit 1
+  fi
+  input="${positional[0]}"
+  if [[ "${max_effort}" == "1" ]]; then
+    export CONAHCNUJ_MAX_EFFORT="1"
+  fi
   if [[ "${input}" == -* ]]; then
     echo "Unknown option: ${input}" >&2
     exit 1
