@@ -6,16 +6,15 @@
 作成し、レビュー対応まで行います。
 
 `conahcnuj` は @nahcnuj のインスタンス名です。他のユーザーは自分用の
-GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot アカウントは
-`<slug>[bot]`）。
+GitHub App を作成する必要があります。スラッグは `<slug>` で、bot アカウントは
+`<slug>[bot]` です。
 
 ## Marketplace で使う
 
-利用側リポジトリから reusable workflow を呼び出して使います。`action.yml`
-は Marketplace 掲載用の shim なので、直接 `uses: nahcnuj/conahcnuj@…` では
-動きません。
+利用側リポジトリから reusable workflow を呼び出して使います（`git clone` は
+不要です）。
 
-### Getting Started
+### 前提条件
 
 1. 自分用の GitHub App を作成し、対象リポジトリにインストールする
    （App ID / Installation ID / 秘密鍵 / スラッグが必要）。
@@ -28,7 +27,7 @@ GitHub App を作成し、そのスラッグ (`<slug>`) で利用します（bot
 
 ### 使い方
 
-1. 上記の Getting Started を完了する。
+1. 上記の前提条件を満たす。
 2. 利用側リポジトリで issue を開く（タスクを本文に書く）。
 3. `Issue auto-drive` workflow が自動で走り、ドライバがブランチ作成・Verified
    コミット・PR 作成・レビュー依頼まで進める。
@@ -111,32 +110,20 @@ opencode が `~/.config/opencode/` をグローバル設定として使うこと
    Verified コミット・PR 作成・レビュー依頼まで進め、owner の Approve で
    auto-merge workflow がマージする。
 
-## 仕組み
-
-1. `get-token.sh` が GitHub App の秘密鍵で JWT を署名し、インストールトークン
-   （約 1 時間有効）を取得・キャッシュする。
-2. opencode プラグインが `shell.env` フックで `GH_TOKEN` と `GIT_CONFIG_*`
-   (bot 名義 + `alias.vc`) を注入する。
-3. `experimental.chat.system.transform` フックで「コミットは `git vc`」「GitHub は
-   `GH_TOKEN` で認証済み」を常時注入し、`tool.execute.before` で `git commit` /
-   `api-commit.sh` の直接実行を `git vc` へ誘導する。
-4. `install.ps1` は `opencode/AGENTS.md` を `~/.config/opencode/AGENTS.md` へ
-   管理ブロックとしてマージする。
-
-詳細は [docs/plugin.md](docs/plugin.md)。
+opencode プラグインの仕組みは [docs/plugin.md](docs/plugin.md) を参照。
 
 ## Verified コミット (`git vc`)
 
 コーディングエージェントは `git vc` でコミットします。プラグインが注入する
 git alias で、GitHub GraphQL の `createCommitOnBranch` を使い **Verified 署名付き
-コミット**をブランチに作成します。opencode 上の git は App 名義で動き署名鍵を
-持たないため、普通の `git commit` ではブランチルール
-("Commits must have verified signatures") を満たせません。
+コミット**をブランチに作成します。
 
 ```sh
 git vc -m "message"        # staged の内容をコミット
 git vc -m "message" -a     # tracked の作業ツリー変更をコミット
 ```
+
+詳細は [docs/cli.md](docs/cli.md)。
 
 ## トラブルシューティング
 
@@ -167,4 +154,23 @@ GitHub Pages で配信しています。
 - 機械可読な索引: <https://nahcnuj.github.io/conahcnuj/llms.txt>
 
 AI エージェント向けの詳細ルールは [AGENTS.md](AGENTS.md) を参照してください。
+
+## リポジトリ構成
+
+```
+.
+├── gh-app/                    # シェルスクリプト群（App トークン発行・認証まわり）
+├── bin/conahcnuj.sh           # issue駆動自律開発ドライバ本体
+├── lib/                       # ドライバ用ライブラリ
+├── plugins/gh-app-token.ts    # opencode プラグイン
+├── opencode/AGENTS.md         # opencode グローバルルール
+├── plugin-tests/              # プラグインのテスト
+├── driver-tests/              # ドライバの offline モックテスト
+├── Dockerfile / docker-run.sh # 隔離実行
+├── install.ps1                # 配置スクリプト
+├── docs/                      # リファレンス（GitHub Pages で配信）
+├── .github/workflows/         # GitHub Actions
+├── .gitignore
+└── AGENTS.md                  # AI エージェント向けルール
+```
 filePath: /home/runner/work/conahcnuj/conahcnuj/README.md
