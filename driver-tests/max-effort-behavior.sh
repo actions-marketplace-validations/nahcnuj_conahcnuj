@@ -13,29 +13,25 @@ REPO="$(cd "${HERE}/.." && pwd)"
 . "${REPO}/lib/opencode.sh"
 
 # 1. opencode_effort_variant
-(
-  export CONAHCNUJ_MAX_EFFORT="1"
-  unset CONAHCNUJ_EFFORT
-  out="$(opencode_effort_variant)"
-  [[ "${out}" == "max" ]] || { echo "FAIL: MAX_EFFORT=1 did not yield max (got '${out}')"; exit 1; }
-)
-(
-  unset CONAHCNUJ_MAX_EFFORT CONAHCNUJ_EFFORT
-  out="$(opencode_effort_variant)"
-  [[ -z "${out}" ]] || { echo "FAIL: normal mode yielded '${out}' (expected empty)"; exit 1; }
-)
-(
-  unset CONAHCNUJ_MAX_EFFORT
-  export CONAHCNUJ_EFFORT="max"
-  out="$(opencode_effort_variant)"
-  [[ "${out}" == "max" ]] || { echo "FAIL: CONAHCNUJ_EFFORT=max did not yield max (got '${out}')"; exit 1; }
-)
-(
-  unset CONAHCNUJ_MAX_EFFORT
-  export CONAHCNUJ_EFFORT="high"
-  out="$(opencode_effort_variant)"
-  [[ -z "${out}" ]] || { echo "FAIL: arbitrary level 'high' leaked through (got '${out}')"; exit 1; }
-)
+export CONAHCNUJ_MAX_EFFORT="1"
+unset CONAHCNUJ_EFFORT
+out="$(opencode_effort_variant)"
+[[ "${out}" == "max" ]] || { echo "FAIL: MAX_EFFORT=1 did not yield max (got '${out}')"; exit 1; }
+
+unset CONAHCNUJ_MAX_EFFORT CONAHCNUJ_EFFORT
+out="$(opencode_effort_variant)"
+[[ -z "${out}" ]] || { echo "FAIL: normal mode yielded '${out}' (expected empty)"; exit 1; }
+
+export CONAHCNUJ_EFFORT="max"
+unset CONAHCNUJ_MAX_EFFORT
+out="$(opencode_effort_variant)"
+[[ "${out}" == "max" ]] || { echo "FAIL: CONAHCNUJ_EFFORT=max did not yield max (got '${out}')"; exit 1; }
+
+export CONAHCNUJ_EFFORT="high"
+out="$(opencode_effort_variant)"
+[[ -z "${out}" ]] || { echo "FAIL: arbitrary level 'high' leaked through (got '${out}')"; exit 1; }
+unset CONAHCNUJ_EFFORT
+
 echo "opencode_effort_variant (max effort) passed"
 
 # 2. opencode_run mock output carries the variant only in max mode.
@@ -44,6 +40,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
 export CONAHCNUJ_MAX_EFFORT="1"
+unset CONAHCNUJ_EFFORT
 out="$(opencode_run "Issue" "Body" "${tmp}" "opencode/m" 2>/dev/null)"
 [[ "${out}" == *"--variant max"* ]] || { echo "FAIL: max mode did not pass --variant max"; echo "${out}" | head -1; exit 1; }
 
