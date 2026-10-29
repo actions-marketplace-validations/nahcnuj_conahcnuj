@@ -1,11 +1,37 @@
 # conahcnuj
 
-GitHub App として git 操作・認証を行うための、Git + opencode 設定をまとめたリポジトリ。
+> GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
 
-GitHub App「conahcnuj」のインストールトークンを発行し、それを利用して:
+GitHub App「conahcnuj」のインストールトークンを発行し、`gh` CLI・GitHub API・opencode 内の
+git 操作を **App 名義（`conahcnuj[bot]`）** で動かすための設定・スクリプト・
+GitHub Actions です。
+
+## For human users / 人間向けガイド
+
+### Quick start (クイックスタート)
+
+1. このリポジトリを clone し、`powershell -ExecutionPolicy Bypass -File install.ps1` を実行します
+   （隔離実行には `docker-run.sh` も使えます）。
+2. `~/.config/opencode/gh-app/app.env` に `APP_ID` / `INSTALLATION_ID` /
+   `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を設定します。
+3. opencode を再起動し、`gh auth status` が bot アカウント（`conahcnuj[bot]`）を
+   示すことを確認します。
+4. 対象リポジトリで issue を開くか、`conahcnuj <issue番号>` を実行します。
+   ドライバがブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進めます。
+5. owner が Approve すると、auto-merge workflow がマージします。
+
+### Marketplace での利用
+
+Marketplace のページはこの README を表示します。このリポジトリは GitHub Action として
+直接 `uses:` するものではなく、`.github/workflows/issue-driver.yml` と
+`.github/workflows/owner-approved-auto-merge.yml` の **reusable workflow** を
+呼び出して使います（利用例は下記「issue の自動対応（GitHub Actions）」を参照）。
+
+### 何ができるか
 
 - `gh` CLI / GitHub API が **App 名義（`conahcnuj[bot]`）** で動く
 - opencode 内の git 操作が **App 名義** で行われる
+- issue を PR・レビュー依頼・owner の Approve まで自律的に運ぶドライバを含む
 
 ## 構成
 
