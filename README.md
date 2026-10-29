@@ -218,6 +218,34 @@ submit・編集・dismiss された場合も、PR 番号でドライバを再開
 - このワークフローは `workflow_call` で他リポジトリから再利用できます
   （`number` + App の secrets を渡す。詳細は [workflows.md](docs/workflows.md)）。
 
+### 他のリポジトリで使う（Reusable Workflow）
+
+`.github/workflows/issue-driver.yml` は、`workflow_call` で再利用できる Workflow
+です。イベント検知は利用側で行い、中央の Workflow が issue / PR を駆動します。
+対象リポジトリには次のファイルを追加します。
+
+```yaml
+name: Issue auto-drive
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  drive:
+    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
+    with:
+      number: ${{ github.event.issue.number }}
+    secrets: inherit
+```
+
+Reusable Workflow は App のインストールトークンで書き込みを行うため、
+`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY` を持つ environment（既定
+`conahcnuj`）を呼び出し側リポジトリに用意し、`secrets: inherit`（同一
+organization / enterprise）または名前付きで渡してください。呼び出し側に
+`bin/` / `gh-app/` / `lib/` は不要です（ドライバの checkout はこの
+リポジトリ自身から行われます）。詳細は [workflows.md](docs/workflows.md) を参照。
+
 ## owner 承認後の自動マージ（GitHub Actions）
 
 `.github/workflows/auto-merge.yml` は、owner が open 中の draft でない PR を
