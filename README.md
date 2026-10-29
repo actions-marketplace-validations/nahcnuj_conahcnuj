@@ -3,25 +3,25 @@
 > GitHub Marketplace: <https://github.com/marketplace/actions/conahcnuj>
 
 **GitHub App 名義**で Git 操作を行うための GitHub Actions です。
-issue から PR を作成し、レビュー対応まで行います。
+issue から PR 作成・レビュー対応までを自律的に進めます。
 
 `conahcnuj` は @nahcnuj のインスタンスです。他のユーザーは自分の GitHub App
 （`<slug>`）を作成して利用します。bot アカウントは `<slug>[bot]` です。
 
 > **Marketplace での利用に `git clone` は不要です。** reusable workflow は
 > `uses: nahcnuj/conahcnuj/.github/workflows/...@main` で呼び出します
-> （下記「GitHub Actions として使う」参照）。以下の clone / install 手順は、
-> ローカルで opencode を bot 名義で動かす場合のみ必要です。
+> （下記「GitHub Actions として使う」）。clone / install はローカルで opencode を
+> bot 名義で動かす場合のみ必要です。
 
-## 何ができるか
+## できること
 
-- `gh` CLI / GitHub API が **App 名義（`<slug>[bot]`）** で動く
-- opencode 内の git 操作が **App 名義** で行われる
-- issue を PR・レビュー依頼・owner の Approve まで自律的に運ぶドライバを含む
+- `gh` CLI / GitHub API を **App 名義（`<slug>[bot]`）** で実行
+- opencode 内の git 操作を **App 名義**で実行
+- issue → PR・レビュー依頼・owner の Approve までを自律的に運ぶドライバ
 
 ## GitHub Actions として使う
 
-このリポジトリの `.github/workflows/issue-driver.yml` と
+`.github/workflows/issue-driver.yml` と
 `.github/workflows/owner-approved-auto-merge.yml` は **reusable workflow** です。
 Marketplace のページはこの README を表示しますが、直接 `uses:` するものではなく、
 利用側リポジトリから呼び出して使います（clone は不要です）。
@@ -52,7 +52,7 @@ jobs:
 タイムアウトは Actions 側で制御（`timeout-minutes: 60`）し、
 `CONAHCNUJ_MAX_SECONDS=3540` を設定します。必要な repo secrets:
 `APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`（`APP_SLUG` はシークレットにしない）。
-詳細は [docs/workflows.md](docs/workflows.md) を参照。
+詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
 
 ### owner 承認後の自動マージ
 
@@ -79,26 +79,13 @@ jobs:
 ```
 
 対象リポジトリの Settings → General → Pull Requests で **Allow auto-merge** を有効に
-してください。詳細は [docs/workflows.md](docs/workflows.md) を参照。
+してください。詳細は [docs/workflows.md](docs/workflows.md) を参照してください。
 
 ## ローカルで使う (opencode セットアップ)
 
-### Quick start (クイックスタート)
-
-1. このリポジトリを clone し、`powershell -ExecutionPolicy Bypass -File install.ps1` を実行します
-   （隔離実行には `docker-run.sh` も使えます）。
-2. `~/.config/opencode/gh-app/app.env` に `APP_ID` / `INSTALLATION_ID` /
-   `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を設定します。
-3. opencode を再起動し、`gh auth status` が bot アカウント（`<slug>[bot]`）を
-   示すことを確認します。
-4. 対象リポジトリで issue を開くか、`conahcnuj <issue番号>` を実行します。
-   ドライバがブランチ作成・Verified コミット・PR 作成・レビュー依頼まで進めます。
-5. owner が Approve すると、auto-merge workflow がマージします。
-
-### インストールと設定
-
-前提: Windows + Git for Windows（`C:/Program Files/Git/bin/bash.exe`）、
-opencode が `~/.config/opencode/` をグローバル設定として使うこと。
+clone と `install.ps1` で配置し、`app.env` を設定して opencode を再起動します。
+詳細は [docs/installation.md](docs/installation.md) と
+[docs/configuration.md](docs/configuration.md) を参照してください。
 
 ```sh
 git clone <repo>.git
@@ -106,10 +93,8 @@ cd <repo>
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-`~/.config/opencode/gh-app/app.env`（またはリポジトリの `gh-app/app.env`）に
-`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を設定します。
-キーの説明・キャッシュ・セキュリティは [docs/configuration.md](docs/configuration.md) と
-[docs/installation.md](docs/installation.md) を参照してください。
+設定後、opencode を再起動し、`gh auth status` が bot アカウント（`<slug>[bot]`）を
+示すことを確認します。
 
 ## 仕組み
 
@@ -153,7 +138,7 @@ bash <このリポジトリ>/docker-run.sh <issue-or-PR番号>
 
 対象リポジトリは `/work` にバインドマウントされ、秘密鍵と `app.env` はイメージに
 焼き込まず実行時に読み取り専用でマウントします。詳細は
-[docs/installation.md](docs/installation.md) を参照。
+[docs/installation.md](docs/installation.md) を参照してください。
 
 ## 構成
 
