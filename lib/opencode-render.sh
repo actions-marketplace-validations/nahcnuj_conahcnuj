@@ -892,6 +892,7 @@ render_block_tool() {
     if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
       echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
+      label=""
     fi
   fi
   if [[ "${timed_out}" == "true" ]]; then
