@@ -342,16 +342,6 @@ cd <repo>
 
 `gh-app/app.env` に実値を入れてから OpenCode を再起動する。
 
-## GitHub Marketplace での利用
-
-このリポジトリは GitHub Marketplace に **Action** として公開されます（ルートの
-`action.yml` が Marketplace 公開要件を満たすメタデータです）。Marketplace には
-composite action しか掲載できないため、`action.yml` 自体はエントリポイントの
-shim で、issue 駆動・auto-merge の実体は reusable workflow
-（`.github/workflows/issue-driver.yml` / `owner-approved-auto-merge.yml`）側に
-あります。利用時は `uses: nahcnuj/conahcnuj/.github/workflows/<name>.yml@<tag>`
-の形で呼び出してください（詳細は上記「他のリポジトリで使う」を参照）。
-
 ## トラブルシューティング
 
 - **`gh auth status` が 自分のアカウントを表示する**
