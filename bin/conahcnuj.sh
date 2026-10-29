@@ -1755,20 +1755,21 @@ start_issue() {
   # fail when the branch has no real diff yet (e.g. only the empty initial
   # commit); recover the same way drive() does instead of dying.
   local early_pr=""
-  if ! early_pr="$(ensure_pr "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}" "true")"; then
-    echo "PR could not be created for ${branch} -> ${default_branch}; running an implementation round." >&2
-    if implement "${title}" "${body}" "The pull request for ${branch} could not be opened; GitHub rejects a PR with no changes between the branches. Make a real change so the PR can be created." "${default_branch}"; then
-      :
-    fi
-    rm -f .branch-name
-    if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
-      commit_changes
-    fi
     if ! early_pr="$(ensure_pr "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}" "true")"; then
-      echo "No PR could be created; backing off before retrying." >&2
-      rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      echo "PR could not be created for ${branch} -> ${default_branch}; running an implementation round." >&2
+      if ! implement "${title}" "${body}" "The pull request for ${branch} could not be opened; GitHub rejects a PR with no changes between the branches. Make a real change so the PR can be created." "${default_branch}"; then
+        echo "ERROR: could not implement issue #${num} with any available model." >&2
+        exit 1
+      fi
+      rm -f .branch-name
+      if workdir_changed "$(pwd)" && [[ -f ".commit-msg" ]]; then
+        commit_changes
+      fi
+      if ! early_pr="$(ensure_pr "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}" "true")"; then
+        echo "No PR could be created; backing off before retrying." >&2
+        rate_limit_poll_sleep "${POLL_CONDITIONS_MIN}" "${POLL_CONDITIONS_MAX}"
+      fi
     fi
-  fi
   echo "Early draft PR: #${early_pr}" >&2
 
   # An earlier run may have already committed the implementation to this
