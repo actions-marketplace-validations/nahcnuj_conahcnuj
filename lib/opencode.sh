@@ -194,7 +194,7 @@ opencode_round_is_environment() {
 # that merely writes the words is not quota-exhausted.
 opencode_round_is_quota_exhausted() {
   local output_file="${1}" err_file="${2:-}"
-  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent|free usage limit'
+  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent'
   if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi
@@ -229,10 +229,10 @@ opencode_round_is_model_gone() {
 opencode_round_is_rate_limited() {
   local output_file="${1}" err_file="${2:-}"
   local pattern='rate limit|rate_limit|too many requests|please try again later|retry-after|retry after|quota exceeded|usage limit|resource_exhausted|\b429\b'
-  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiv 'free usage limit' | grep -Eiq "${pattern}"; then
+  if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi
-  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiv 'free usage limit' "${err_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
+  if [[ -n "${err_file}" && -f "${err_file}" ]] && grep -Eiq "${pattern}" "${err_file}" 2>/dev/null; then
     return 0
   fi
   return 1
@@ -323,11 +323,21 @@ opencode_run() {
     if [[ " ${MOCK_OPENCODE_RATE_LIMIT:-} " == *" ${model} "* ]]; then
       OPENCODE_ROUND_RATE_LIMITED="true"
     fi
+    # OpenCode's free-tier usage limit behaves like a rate limit: try the
+    # next model immediately without dropping the provider (#653).
+    for _free_var in MOCK_OPENCODE_FREE_USAGE_LIMIT MOCK_OPENCODE_FREE_LIMIT MOCK_OPENCODE_FREE_USAGE; do
+      if [[ " ${!_free_var:-} " == *" ${model} "* ]]; then
+        OPENCODE_ROUND_RATE_LIMITED="true"
+      fi
+    done
+    unset _free_var
     if [[ "${MOCK_OPENCODE_ERROR:-}" == "${model}" || "${OPENCODE_ROUND_ENVIRONMENT}" == "true" || "${OPENCODE_ROUND_MODEL_GONE}" == "true" || "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" || "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
       if [[ -d "${workdir}" && -w "${workdir}" ]]; then
         printf 'partial change from %s\n' "${model}" >> "${workdir}/conahcnuj.mock"
       fi
-      if [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
+      if [[ " ${MOCK_OPENCODE_FREE_USAGE_LIMIT:-} ${MOCK_OPENCODE_FREE_LIMIT:-} ${MOCK_OPENCODE_FREE_USAGE:-} " == *" ${model} "* ]]; then
+        echo "opencode: mock free usage limit for ${model} (rate limit; round stops immediately)" >&2
+      elif [[ "${OPENCODE_ROUND_RATE_LIMITED}" == "true" ]]; then
         echo "opencode: mock rate limit for ${model} (round stops immediately)" >&2
       elif [[ "${OPENCODE_ROUND_QUOTA_EXHAUSTED}" == "true" ]]; then
         echo "opencode: mock quota/billing exhaustion for ${model} (leaves an incomplete change)" >&2
