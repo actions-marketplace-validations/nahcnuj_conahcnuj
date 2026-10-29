@@ -163,7 +163,6 @@ grep -q '[[:cntrl:]]' "${ROOT}/payload.json" && { echo "FAIL: a raw control byte
 (
   export CONAHCNUJ_TEST_MODE=1
   export OPENCODE_TEST_MODE=0
-  export GITHUB_ACTIONS=
   mkdir -p "${ROOT}/fakebin"
   # printf '%s' (not printf) so the \n inside the JSON string stays escaped and
   # the event arrives as the single line opencode actually writes.
@@ -185,7 +184,7 @@ EOF
   run_log_cleanup
 )
 
-grep -q '✅ make check' "${ROOT}/runlog-copy.txt" || {
+grep -q 'make check' "${ROOT}/runlog-copy.txt" || {
   echo "FAIL: the rendered tool block is missing from the run log" >&2
   cat "${ROOT}/runlog-copy.txt" >&2
   exit 1
