@@ -22,6 +22,16 @@ unset CONAHCNUJ_MAX_EFFORT CONAHCNUJ_EFFORT
 out="$(opencode_effort_variant)"
 [[ -z "${out}" ]] || { echo "FAIL: normal mode yielded '${out}' (expected empty)"; exit 1; }
 
+export CONAHCNUJ_MAX_EFFORT=""
+unset CONAHCNUJ_EFFORT
+out="$(opencode_effort_variant)"
+[[ -z "${out}" ]] || { echo "FAIL: empty MAX_EFFORT yielded '${out}' (expected empty)"; exit 1; }
+
+export CONAHCNUJ_EFFORT="true"
+unset CONAHCNUJ_MAX_EFFORT
+out="$(opencode_effort_variant)"
+[[ -z "${out}" ]] || { echo "FAIL: CONAHCNUJ_EFFORT=true leaked through (got '${out}')"; exit 1; }
+
 export CONAHCNUJ_EFFORT="max"
 unset CONAHCNUJ_MAX_EFFORT
 out="$(opencode_effort_variant)"
