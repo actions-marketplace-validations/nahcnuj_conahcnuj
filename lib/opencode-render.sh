@@ -892,8 +892,11 @@ render_block_tool() {
     if [[ "${GROUP_DEPTH}" -gt 0 ]]; then
       echo '::endgroup::'
       GROUP_DEPTH=$((GROUP_DEPTH - 1))
-      label=""
     fi
+    # On GitHub Actions the group header already carries the command name, so
+    # never recap it in the verdict line after ::endgroup:: (success stays
+    # silent, failure keeps only the result sign/exit code).
+    label=""
   fi
   if [[ "${timed_out}" == "true" ]]; then
     if [[ -n "${label}" ]]; then
