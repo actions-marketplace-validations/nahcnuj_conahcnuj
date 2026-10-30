@@ -2,9 +2,9 @@
 # opencode user-level config directory.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File install.ps1                # -> $HOME/.config/opencode
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Destination C:\path\to\dir
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -InstallPath C:\path\to\bin
+#   pwsh -ExecutionPolicy Bypass -File install.ps1                # -> $HOME/.config/opencode
+#   pwsh -ExecutionPolicy Bypass -File install.ps1 -Destination C:\path\to\dir
+#   pwsh -ExecutionPolicy Bypass -File install.ps1 -InstallPath C:\path\to\bin
 #
 # Deploys two gh-app trees:
 #   - <Destination>/gh-app/...          used by the opencode plugin (resolves

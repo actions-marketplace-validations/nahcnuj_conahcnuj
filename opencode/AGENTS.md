@@ -46,9 +46,11 @@
   ようになったので、シェルコマンドとして使ってよい）。Windows 環境では
   PowerShell を使うこと: PowerShell のコマンドレットや組み込み機能を優先し、
   コマンドの有無は `Get-Command` で確認し、空白を含むパスは引用符で囲むこと。
-  ファイルの読み取りは read ツール、検索は grep/glob ツールを優先すること。
-  シェルコマンドが避けられない場合は PowerShell の同等コマンドや
-  node を使うこと。コマンドが存在するか分からないときは先に確認すること。
+  Windows 以外の環境ではそのシェル自身のコマンドや node/python を使うこと:
+  コマンドの有無は `command -v` で確認すること。ファイルの読み取りは read
+  ツール、検索は grep/glob ツールを優先すること。シェルコマンドが避けられない
+  場合は、その環境で利用可能なコマンドや node/python を使うこと。
+  コマンドが存在するか分からないときは先に確認すること。
 - **`/dev/null` は Unix の null デバイスであり、Windows の PowerShell には
   存在しません。** PowerShell では `$null`（例: `2>$null`）や `Out-Null` を
   使ってください。`/dev/null` や `2>/dev/null` を PowerShell で使うと
