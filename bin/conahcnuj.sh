@@ -243,6 +243,15 @@ driver_relaunch() {
   trap 'kill -TERM "${child}" 2>/dev/null || true' INT TERM
   rc=0
   wait "${child}" || rc=$?
+  # The wait above may return early because it was interrupted by the signal
+  # that triggered the trap, even though the child is still running its own
+  # trap. Reap the child here so an interrupt actually waits for it to finish
+  # (otherwise the caller can clean up (e.g. delete temp files) before the
+  # child's trap has written its marker, racing the test/report).
+  for ((i=0; i<100; i++)); do
+    kill -0 "${child}" 2>/dev/null || break
+    sleep 0.1
+  done
   wait "${child}" 2>/dev/null || true
   trap - INT TERM
   exit "${rc}"
