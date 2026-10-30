@@ -120,7 +120,7 @@ bash gh-app/api-commit.sh -m "message" -a --dry-run   # owner/repo/branch 自動
 
 - `install.ps1` や `plugins/` を変更したら、実機のグローバル設定（`~/.config/opencode/`）にも反映が必要：
   ```powershell
-  powershell -ExecutionPolicy Bypass -File install.ps1
+  pwsh -ExecutionPolicy Bypass -File install.ps1
   ```
   その後 opencode を再起動。CI（`install-test` / `lint-ps`）にも同じ検証がある。
   `bin/`・`lib/` を変更したら `conahcnuj` 本体（既定 `~/.local/bin/conahcnuj`）と
