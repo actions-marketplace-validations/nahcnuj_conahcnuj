@@ -393,7 +393,7 @@ const SHELL_RULES = [
   `Null device: ${NULL_DEVICE_AVAILABLE}.`,
   `Line continuation: ${LINE_CONTINUATION_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
-  "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node.",
+  "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node/python.",
   POWERSHELL_USE,
 ].join(" ")
 
