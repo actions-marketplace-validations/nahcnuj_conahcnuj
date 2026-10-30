@@ -919,16 +919,6 @@ render_block_tool() {
       fi
     fi
   else
-    # On GitHub Actions the success sign is redundant: success/failure is
-    # already shown on the next header line (🟢/🔴), so print nothing after
-    # ::endgroup::. Outside GitHub Actions keep the full verdict.
-    if [[ "${GITHUB_ACTIONS:-}" == "true" || "${GITHUB_ACTIONS:-}" == "1" ]]; then
-      :
-    elif [[ -n "${label}" ]]; then
-      printf '✅ %s\n' "${label}"
-    else
-      printf '✅\n'
-    fi
   fi
   # Remember this command's exit code so the next header (the model name) can
   # show whether the previous command succeeded (🟢) or failed (🔴).
