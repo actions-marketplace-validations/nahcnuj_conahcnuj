@@ -382,15 +382,15 @@ const NULL_DEVICE_AVAILABLE =
     : "`/dev/null` is the null device and may be used for redirection"
 const LINE_CONTINUATION_AVAILABLE =
   process.platform === "win32"
-    ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\\\)"
-    : "a backslash (\\\\) continues a command onto the next line"
+    ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\)"
+    : "a backslash (\\) continues a command onto the next line"
 // On Windows PowerShell 5.1 `&&` is not a valid statement separator, so a
 // command chained with `&&` fails with "The token '&&' is not a valid
 // statement separator in this version.". Chain with `;` (or run the
 // commands separately) instead. Issue #1516.
 const STATEMENT_SEPARATOR_AVAILABLE =
   process.platform === "win32"
-    ? "in this version `The token '&&' is not a valid statement separator`; on this PowerShell `&&` is not a valid statement separator, so chain commands with `;` (or run them separately) instead of `&&`"
+    ? "on this PowerShell `&&` is NOT a valid statement separator and fails with \"The token '&&' is not a valid statement separator in this version.\"; chain commands with `;` or run them separately instead of `&&`"
     : "`&&` may be used to chain commands"
 const POWERSHELL_USE =
   process.platform === "win32"
