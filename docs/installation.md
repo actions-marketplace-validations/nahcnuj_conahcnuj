@@ -22,8 +22,11 @@ opencode は既定で `~/.config/opencode/` をグローバル設定として読
 ```sh
 git clone <repo>.git
 cd <repo>
-powershell -ExecutionPolicy Bypass -File install.ps1
+pwsh -ExecutionPolicy Bypass -File install.ps1
 ```
+
+PowerShell 7 (`pwsh`) が無い Windows では `powershell` に読み替えてください。
+Linux / macOS には `powershell` コマンドは無いので `pwsh` を使います。
 
 | パラメータ | 既定 | 内容 |
 | --- | --- | --- |
