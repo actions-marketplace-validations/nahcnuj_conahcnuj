@@ -39,6 +39,7 @@ runs:
         INSTALLATION_ID: ${{ inputs.installation-id }}
         PRIVATE_KEY: ${{ inputs.private-key }}
         APP_SLUG: ${{ inputs.app-slug }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         if [[ -z "${APP_ID}" ]]; then echo "::error::Missing app-id input (pass secrets.APP_ID). See Getting started step 3." >&2; exit 1; fi
@@ -47,8 +48,8 @@ runs:
         pem="${RUNNER_TEMP}/conahcnuj-app.pem"
         printf '%s\n' "${PRIVATE_KEY}" > "${pem}"
         chmod 600 "${pem}"
-        mkdir -p "${{ github.action_path }}/gh-app"
-        cat > "${{ github.action_path }}/gh-app/app.env" <<EOF
+        mkdir -p "${ACTION_PATH}/gh-app"
+        cat > "${ACTION_PATH}/gh-app/app.env" <<EOF
         APP_ID="${APP_ID}"
         INSTALLATION_ID="${INSTALLATION_ID}"
         PRIVATE_KEY_PATH="${pem}"
@@ -62,26 +63,32 @@ runs:
     # installation token.
     - name: Verify App installation token
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        bash "${{ github.action_path }}/gh-app/get-token.sh" >/dev/null
+        bash "${ACTION_PATH}/gh-app/get-token.sh" >/dev/null
         echo "App installation token acquired successfully."
         echo "- App secrets and installation: OK" >> "${GITHUB_STEP_SUMMARY}"
 
     - name: Verify App slug
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        SLUG="$(bash "${{ github.action_path }}/gh-app/app-slug.sh")"
+        SLUG="$(bash "${ACTION_PATH}/gh-app/app-slug.sh")"
         if [[ -z "${SLUG}" ]]; then echo "::error::Could not resolve the App slug." >&2; exit 1; fi
         echo "App slug resolved: ${SLUG}"
         echo "- App slug: ${SLUG}" >> "${GITHUB_STEP_SUMMARY}"
 
     - name: Verify bot user id
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        BOT_ID="$(bash "${{ github.action_path }}/gh-app/bot-user-id.sh")"
+        BOT_ID="$(bash "${ACTION_PATH}/gh-app/bot-user-id.sh")"
         echo "Bot user id resolved: ${BOT_ID}"
         echo "- Bot user id: ${BOT_ID}" >> "${GITHUB_STEP_SUMMARY}"
 
