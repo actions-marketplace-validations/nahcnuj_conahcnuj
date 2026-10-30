@@ -51,9 +51,18 @@
   ツール、検索は grep/glob ツールを優先すること。シェルコマンドが避けられない
   場合は、その環境で利用可能なコマンドや node/python を使うこと。
   コマンドが存在するか分からないときは先に確認すること。
+- **`node` / `npm` は PATH に入っています。** conahcnuj のプラグインが opencode
+  自身を動かしている Node のディレクトリを PATH に追加するので、`node` や
+  `npm` を使うためにファイルシステムを再帰検索したり fnm/nvm を手動で有効化
+  する必要はありません。コマンドの有無は `Get-Command` / `command -v` で確認
+  してください。
 - **`/dev/null` は Unix の null デバイスであり、Windows の PowerShell には
   存在しません。** PowerShell では `$null`（例: `2>$null`）や `Out-Null` を
   使ってください。`/dev/null` や `2>/dev/null` を PowerShell で使うと
   `C:\dev\null` というファイル作成を試みて失敗します。
 - **行継続もシェル依存です。** PowerShell ではバッククォート (`` ` ``) を使い、
   バックスラッシュ (`\`) は使えません（Unix シェルの継続文字です）。
+- **PowerShell では `&&` は文の区切り文字として使えません（このバージョンでは
+  `The token '&&' is not a valid statement separator in this version.` になります）。** コマンドを
+  連結するときは `;` を使うか、コマンドを別々に実行すること。`&&` を
+  PowerShell で使わないこと。
