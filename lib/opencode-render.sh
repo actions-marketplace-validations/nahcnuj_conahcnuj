@@ -905,24 +905,12 @@ render_block_tool() {
     label=""
   fi
   if [[ "${timed_out}" == "true" ]]; then
-    if [[ -n "${label}" ]]; then
-      printf '❌️ %s (timed out)\n' "${label}"
-    else
-      printf '❌️ (timed out)\n'
-    fi
+    printf '❌️ (timed out)\\n'
   elif [[ "${status}" == "error" ]] || { [[ -n "${code}" ]] && [[ "${code}" != "0" ]]; }; then
     if [[ -n "${code}" ]]; then
-      if [[ -n "${label}" ]]; then
-        printf '❌️ %s (exit %s)\n' "${label}" "${code}"
-      else
-        printf '❌️ (exit %s)\n' "${code}"
-      fi
+      printf '❌️ (exit %s)\\n' "${code}"
     else
-      if [[ -n "${label}" ]]; then
-        printf '❌️ %s\n' "${label}"
-      else
-        printf '❌️\n'
-      fi
+      printf '❌️\\n'
     fi
   fi
   # Remember this command's exit code so the next header (the model name) can
