@@ -384,6 +384,14 @@ const LINE_CONTINUATION_AVAILABLE =
   process.platform === "win32"
     ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\)"
     : "a backslash (\\) continues a command onto the next line"
+// On Windows PowerShell 5.1 `&&` is not a valid statement separator, so a
+// command chained with `&&` fails with "The token '&&' is not a valid
+// statement separator in this version.". Chain with `;` (or run the
+// commands separately) instead. Issue #1516.
+const STATEMENT_SEPARATOR_AVAILABLE =
+  process.platform === "win32"
+    ? "on this PowerShell `&&` is NOT a valid statement separator and fails with \"The token '&&' is not a valid statement separator in this version.\"; chain commands with `;` or run them separately instead of `&&`"
+    : "`&&` is a valid statement separator here and may be used to chain commands"
 const POWERSHELL_USE =
   process.platform === "win32"
     ? "On Windows, use PowerShell (the shell this session runs in) for shell commands: prefer PowerShell cmdlets and built-ins, check availability with Get-Command before relying on a command, and quote paths that contain spaces."
@@ -396,6 +404,7 @@ const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
   `Null device: ${NULL_DEVICE_AVAILABLE}.`,
   `Line continuation: ${LINE_CONTINUATION_AVAILABLE}.`,
+  `Statement separator: ${STATEMENT_SEPARATOR_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   `Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, ${SHELL_EQUIVALENTS}.`,
   POWERSHELL_USE,
