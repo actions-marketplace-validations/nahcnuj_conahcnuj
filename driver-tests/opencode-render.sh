@@ -138,7 +138,7 @@ EOF
     GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ cat tracked.txt' "command line rendered"
   assert_contains "${out}" "  three" "tool output rendered"
-  assert_contains "${out}" "✅" "success verdict"
+  assert_not_contains "${out}" "✅" "command success is silent"
   assert_not_contains "${out}" "exit " "no exit code on success"
   # The verdict is printed (visible outside any collapsed group).
   rm -rf "${tmp}"
@@ -184,7 +184,7 @@ test_tool_no_output_sentinel_suppressed() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"true"},"output":"(no output)","metadata":{"exit":0},"title":"true"}}}' |
     GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo}")"
   assert_not_contains "${out}" "(no output)" "sentinel is not a real no-op output"
-  assert_contains "${out}" "✅" "empty command still succeeds"
+  assert_not_contains "${out}" "✅" "empty command is silent on success"
   rm -rf "${tmp}"
   echo "render tool no-output sentinel passed"
 }
@@ -235,7 +235,7 @@ test_tool_title_fallback() {
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"make check"},"output":"","metadata":{"exit":0}}}}' |
     GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" '$ make check' "falls back to the command"
-  assert_contains "${out}" "✅" "verdict uses the command"
+  assert_not_contains "${out}" "✅" "command success is silent"
   # A tool that is not a command execution is not a prompt: no `$` line at all,
   # the tool name carries the verdict line by itself (issue #375).
   out="$(printf '%s\n' '{"type":"tool_use","part":{"type":"tool","tool":"todowrite","state":{"status":"completed","input":{},"output":"","metadata":{}}}}' |
@@ -346,7 +346,7 @@ EOF
   assert_contains "${out}" "  three" "the tail is appended"
   ones="$(printf '%s\n' "${out}" | grep -c '  one' || true)"
   [[ "${ones}" == "1" ]] || fail "running output printed again (${ones} copies)" "${out}"
-  [[ "$(printf '%s\n' "${out}" | grep -c '✅')" == "1" ]] || fail "verdict printed twice" "${out}"
+  [[ "$(printf '%s\n' "${out}" | grep -c '✅')" == "0" ]] || fail "command success is silent" "${out}"
   headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
   [[ "${headers}" == "1" ]] || fail "a streaming tool block re-opened (${headers} headers)" "${out}"
   rm -rf "${tmp}"
@@ -525,7 +525,6 @@ test_tool_input_does_not_shadow_state() {
     GITHUB_ACTIONS='' bash "${RENDER}" --model "m" --dir "${tmp}/repo")"
   assert_contains "${out}" "  real output" "state.output wins over the tool argument"
   assert_not_contains "${out}" "decoy output" "tool argument output ignored"
-  assert_contains "${out}" "✅" "state.title wins over the tool argument"
   assert_not_contains "${out}" "decoy title" "tool argument title ignored"
   rm -rf "${tmp}"
   echo "render tool input does not shadow state passed"
@@ -642,7 +641,7 @@ EOF
   headers="$(printf '%s\n' "${out}" | grep -c '\[main\]' || true)"
   [[ "${headers}" == "2" ]] || fail "replayed part printed again (${headers} headers)" "${out}"
   [[ "$(printf '%s\n' "${out}" | grep -c 'hello once')" == "1" ]] || fail "text duplicated" "${out}"
-  [[ "$(printf '%s\n' "${out}" | grep -c '✅')" == "1" ]] || fail "tool duplicated" "${out}"
+  [[ "$(printf '%s\n' "${out}" | grep -c '\$ pwd')" == "1" ]] || fail "tool duplicated" "${out}"
   rm -rf "${tmp}"
   echo "render replayed part once passed"
 }

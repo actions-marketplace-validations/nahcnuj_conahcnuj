@@ -884,6 +884,12 @@ render_block_tool() {
   label="${F[title]}"
   [[ -n "${label}" ]] || label="${F[command]}"
   [[ -n "${label}" ]] || label="${tool}"
+  # A command never recaps its own name in the verdict line: the group header
+  # (or the `$ <command>` caption outside GitHub Actions) already carries it,
+  # and the result is shown on the next header line (🟢/🔴).
+  if [[ "${is_cmd}" == "true" ]]; then
+    label=""
+  fi
   [[ "${fed}" == "true" ]] && print_newline
   # Close the collapsible group BEFORE the verdict line so the result (✅/❌️)
   # stays visible even when GitHub Actions collapses the command's group; the
@@ -918,7 +924,6 @@ render_block_tool() {
         printf '❌️\n'
       fi
     fi
-  else
   fi
   # Remember this command's exit code so the next header (the model name) can
   # show whether the previous command succeeded (🟢) or failed (🔴).
