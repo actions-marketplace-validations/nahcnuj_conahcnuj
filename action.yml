@@ -49,13 +49,13 @@ runs:
         printf '%s\n' "${PRIVATE_KEY}" > "${pem}"
         chmod 600 "${pem}"
         mkdir -p "${ACTION_PATH}/gh-app"
-        cat > "${ACTION_PATH}/gh-app/app.env" <<EOF
-        APP_ID="${APP_ID}"
-        INSTALLATION_ID="${INSTALLATION_ID}"
-        PRIVATE_KEY_PATH="${pem}"
-        BASH_EXE="/usr/bin/bash"
-        APP_SLUG="${APP_SLUG}"
-        EOF
+        {
+          printf 'APP_ID="%s"\n' "${APP_ID}"
+          printf 'INSTALLATION_ID="%s"\n' "${INSTALLATION_ID}"
+          printf 'PRIVATE_KEY_PATH="%s"\n' "${pem}"
+          printf 'BASH_EXE="/usr/bin/bash"\n'
+          printf 'APP_SLUG="%s"\n' "${APP_SLUG}"
+        } > "${ACTION_PATH}/gh-app/app.env"
         echo "Required inputs are present and app.env is staged."
 
     # Getting started steps 1-3: the App exists, is installed on this
