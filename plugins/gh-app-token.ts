@@ -155,6 +155,13 @@ async function resolveBotUserId(slug: string): Promise<string> {
     throw new Error(`Unexpected user lookup response for ${slug}[bot].`)
   }
   const id = String((data as { id: number }).id)
+  // The value written below is the bot account's numeric user ID, validated
+  // as digits only; it is not arbitrary response data.
+  // codeql[js/http-to-file-access]
+  // lgtm[js/http-to-file-access]
+  if (!/^\d+$/.test(id)) {
+    throw new Error(`Unexpected bot user ID in lookup response: ${id}`)
+  }
   try {
     fs.writeFileSync(BOT_ID_CACHE_FILE, id, "utf8")
   } catch {
@@ -322,6 +329,8 @@ const COMMIT_RULES = [
   `them. Commit with the \`git vc\` alias instead (${VC_USAGE}): it collects the`,
   "same content as `git commit` (add files with `git add` first; `-a` for",
   "tracked worktree changes) but GitHub creates and verifies the commit.",
+  "`git vc` is a git alias (not a separate executable): run it directly as `git vc ...`;",
+  "do not search for a `git-vc` binary and do not try `git commit`.",
   "Prefer `git vc` over `git commit` and use it naturally. Do not run `git commit`,",
   "and do not run gh-app/api-commit.sh or any other gh-app script directly:",
   "`git vc` is the supported wrapper around it.",
@@ -367,8 +376,18 @@ const HEAD_TAIL_GREP_AVAILABLE =
   process.platform === "win32"
     ? "`head`, `tail`, and `grep` are available as commands here (provided by Git for Windows), so you may use them in shell commands"
     : "`head`, `tail`, and `grep` are available as commands here"
+const NULL_DEVICE_AVAILABLE =
+  process.platform === "win32"
+    ? "there is no `/dev/null` device on PowerShell: redirect to `$null` (for example `2>$null`) or pipe to `Out-Null` instead of `>/dev/null` or `2>/dev/null`"
+    : "`/dev/null` is the null device and may be used for redirection"
+const LINE_CONTINUATION_AVAILABLE =
+  process.platform === "win32"
+    ? "PowerShell uses a backtick (`) for line continuation, not a backslash (\\)"
+    : "a backslash (\\) continues a command onto the next line"
 const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
+  `Null device: ${NULL_DEVICE_AVAILABLE}.`,
+  `Line continuation: ${LINE_CONTINUATION_AVAILABLE}.`,
   "First determine the OS and shell you are actually running in before relying on any command, and re-check availability if they differ from the above.",
   "Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, use PowerShell equivalents or node.",
 ].join(" ")

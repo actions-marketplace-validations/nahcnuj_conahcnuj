@@ -416,6 +416,14 @@ gh_api_rollup_state() {
           check_name="$(gh_api_json_str "${node%%\"checkSuite\"*}" "name")"
           case "${check_name}" in
             *"Attempt to resolve issue"*) continue ;;
+            # The auto-merge job keeps the same called job name ("enable")
+            # whether it runs in this repository or as a reusable workflow
+            # called by another repository. Its check run is reported under the
+            # caller's workflow name and prefixed with the caller's job name, so
+            # the workflow-name filter below misses it. Exclude it by job name
+            # too, so a cross-repo run does not wait for the merge job that is
+            # itself waiting for this run (issue #574).
+            *enable) continue ;;
           esac
         fi
         if [[ -n "${workflow}" && ",${skip}," == *",${workflow},"* ]]; then

@@ -47,3 +47,9 @@
   read ツール、検索は grep/glob ツールを優先すること。シェルコマンドが
   避けられない場合は PowerShell の同等コマンドや node を使うこと。
   コマンドが存在するか分からないときは先に確認すること。
+- **`/dev/null` は Unix の null デバイスであり、Windows の PowerShell には
+  存在しません。** PowerShell では `$null`（例: `2>$null`）や `Out-Null` を
+  使ってください。`/dev/null` や `2>/dev/null` を PowerShell で使うと
+  `C:\dev\null` というファイル作成を試みて失敗します。
+- **行継続もシェル依存です。** PowerShell ではバッククォート (`` ` ``) を使い、
+  バックスラッシュ (`\`) は使えません（Unix シェルの継続文字です）。
