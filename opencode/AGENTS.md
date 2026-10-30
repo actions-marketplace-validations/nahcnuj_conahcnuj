@@ -62,3 +62,7 @@
   `C:\dev\null` というファイル作成を試みて失敗します。
 - **行継続もシェル依存です。** PowerShell ではバッククォート (`` ` ``) を使い、
   バックスラッシュ (`\`) は使えません（Unix シェルの継続文字です）。
+- **PowerShell では `&&` は文の区切り文字として使えません（このバージョンでは
+  `The token '&&' is not a valid statement separator in this version.` になります）。** コマンドを
+  連結するときは `;` を使うか、コマンドを別々に実行すること。`&&` を
+  PowerShell で使わないこと。
