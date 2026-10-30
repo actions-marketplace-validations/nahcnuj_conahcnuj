@@ -220,14 +220,14 @@ driver_relaunch() {
   # #309-era env propagation).
   local wslenv_add=""
   local v
-  for v in $(compgen -v); do
+  for v in $(compgen -e); do
     case "${v}" in
-      CONAHCNUJ_*|GH_*|OPENCODE_*|MOCK_*) 
-        if [[ -n "${!v:-}" ]]; then
-          wslenv_add="${wslenv_add:+${wslenv_add}:}${v}"
-        fi
-        ;;
+      CONAHCNUJ_ORIG_PWD_WIN) continue ;;
+      PATH|HOME|USER|SHELL|TERM|LANG|LC_*|PWD|OLDPWD|SHLVL|_) continue ;;
     esac
+    if [[ -n "${!v:-}" ]]; then
+      wslenv_add="${wslenv_add:+${wslenv_add}:}${v}"
+    fi
   done
   # Preserve the caller's working directory across the WSL -> Git Bash boundary.
   local orig_pwd_win
