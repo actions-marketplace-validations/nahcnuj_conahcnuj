@@ -1,0 +1,54 @@
+name: conahcnuj setup
+
+# Reusable workflow that verifies a repository is ready to run conahcnuj.
+# It follows the Getting started steps (App secrets, installation, auto-merge)
+# and finishes successfully once the workflows can run. Call it from another
+# repository with `secrets: inherit` (same organization/enterprise) or by name:
+#
+#   jobs:
+#     setup:
+#       uses: nahcnuj/conahcnuj/.github/workflows/setup.yml@main
+#       secrets: inherit
+#
+# The called workflow checks out this repository (job.workflow_repository at
+# job.workflow_sha), never the caller, so the caller needs no copy of the
+# driver. The `environment` input is resolved in the caller repository.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment holding the GitHub App secrets.'
+        required: false
+        type: string
+        default: conahcnuj
+    secrets:
+      APP_ID:
+        required: true
+      INSTALLATION_ID:
+        required: true
+      PRIVATE_KEY:
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Verify conahcnuj setup
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'conahcnuj' }}
+    steps:
+      - name: Check out the conahcnuj repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ${{ job.workflow_repository || github.repository }}
+          ref: ${{ job.workflow_sha || github.sha }}
+
+      - name: Verify setup
+        uses: ./
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          installation-id: ${{ secrets.INSTALLATION_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
