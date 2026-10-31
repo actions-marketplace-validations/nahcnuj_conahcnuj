@@ -46,6 +46,11 @@ Linux / macOS には `powershell` コマンドは無いので `pwsh` を使い�
 `gh-app/tests` などのテスト資材は**配備しません**（型チェック用・検証用に
 リポジトリ内だけに置く）。
 
+`install.ps1` は opencode の既定シェルを `&&` を受け付けるシェル（Windows では
+`pwsh`、無ければ `cmd`、それ以外では `bash`）に設定します。PowerShell 5.1 の
+`The token '&&' is not a valid statement separator in this version.` エラーを避けるためです。
+既に `pwsh` / `cmd` / `bash` など `&&` 対応シェルが設定されている場合は上書きしません。
+
 手順:
 
 1. `<Destination>/gh-app/app.env` に実値を書く

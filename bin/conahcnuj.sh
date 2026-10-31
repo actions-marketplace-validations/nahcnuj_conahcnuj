@@ -72,6 +72,13 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_MODE="${CONAHCNUJ_TEST_MODE:-0}"
+# In GitHub Actions (or with an explicit opt-in) the run ends as soon as the
+# PR has been handed to the reviewer: waiting for a human approval is not
+# realistic in CI, and the pull_request_review trigger starts the next run.
+CI_MODE="false"
+case "${GITHUB_ACTIONS:-}" in true|1) CI_MODE="true" ;; esac
+case "${CONAHCNUJ_GITHUB_ACTIONS:-}" in true|1) CI_MODE="true" ;; esac
+case "${CONAHCNUJ_CI:-}" in true|1) CI_MODE="true" ;; esac
 
 MAX_DURATION="${CONAHCNUJ_MAX_SECONDS:-259200}"
 POLL_CONDITIONS_MIN="${CONAHCNUJ_POLL_CONDITIONS_MIN:-15}"
@@ -488,7 +495,10 @@ commit_changes() {
     fi
     return 0
   fi
-  bash "${HERE}/../gh-app/api-commit.sh" -m "${message}"
+  if ! bash "${HERE}/../gh-app/api-commit.sh" -m "${message}"; then
+    echo "WARNING: verified commit failed; leaving changes uncommitted." >&2
+    return 0
+  fi
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   git fetch origin "${branch}" >/dev/null 2>&1 || true
@@ -1662,6 +1672,10 @@ ${summary}"
       fi
       request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
       log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+      if [[ "${CI_MODE}" == "true" ]]; then
+        echo "CI mode: review requested; ending the run." >&2
+        exit 0
+      fi
       handed_off="true"
       continue
     fi
@@ -1722,6 +1736,10 @@ ${summary}"
     # run does not end here; the next loop iteration waits for the verdict.
     request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
     log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+    if [[ "${CI_MODE}" == "true" ]]; then
+      echo "CI mode: review requested; ending the run." >&2
+      exit 0
+    fi
     handed_off="true"
     continue
   done
