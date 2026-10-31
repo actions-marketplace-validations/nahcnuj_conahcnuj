@@ -859,24 +859,24 @@ ensure_issue_branch() {
   # commits that no longer exist upstream (issue #115). A failed query leaves
   # the answer unknown, in which case recreating would be unsafe, so the run
   # stops with the same message as a failed fetch.
-  local remote_state=2  # 0=absent 1=present 2=unknown
+  local remote_state="unknown"
   local remote_ref=""
   if remote_ref="$(git ls-remote origin "refs/heads/${branch}" 2>/dev/null)"; then
     if [[ -n "${remote_ref}" ]]; then
-      remote_state=1
+      remote_state="present"
     else
-      remote_state=0
+      remote_state="absent"
     fi
   else
-    remote_state=2
+    remote_state="unknown"
   fi
-  if [[ "${remote_state}" == "1" ]]; then
+  if [[ "${remote_state}" == "present" ]]; then
     # `|| return 1` rather than relying on errexit: this function runs inside a
     # command substitution, where bash does not honour it, and every command
     # after the checkout would otherwise run on the stale head.
     checkout_branch_head "${branch}" || return 1
     echo "Using existing feature branch ${branch} (resume)." >&2
-  elif [[ "${remote_state}" == "2" ]]; then
+  elif [[ "${remote_state}" == "unknown" ]]; then
     echo "ERROR: could not fetch ${branch} from origin; refusing to work on a stale branch head." >&2
     return 1
   else
