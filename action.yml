@@ -12,18 +12,17 @@ branding:
 # INSTALLATION_ID / PRIVATE_KEY secrets through `with:`.
 inputs:
   app-id:
-    description: 'GitHub App ID. Pass the APP_ID secret.'
+    description: 'GitHub App ID'
     required: true
   installation-id:
-    description: 'GitHub App installation ID. Pass the INSTALLATION_ID secret.'
+    description: 'GitHub App installation ID'
     required: true
   private-key:
-    description: 'GitHub App private key (PEM). Pass the PRIVATE_KEY secret.'
+    description: 'GitHub App private key (PEM)'
     required: true
   app-slug:
-    description: 'GitHub App slug (APP_SLUG). Optional; resolved from the App API when empty.'
-    required: false
-    default: ''
+    description: 'GitHub App slug'
+    required: true
 
 runs:
   using: composite
