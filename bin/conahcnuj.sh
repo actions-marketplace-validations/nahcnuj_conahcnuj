@@ -486,7 +486,10 @@ commit_changes() {
     fi
     return 0
   fi
-  bash "${HERE}/../gh-app/api-commit.sh" -m "${message}"
+  if ! bash "${HERE}/../gh-app/api-commit.sh" -m "${message}"; then
+    echo "WARNING: verified commit failed; leaving changes uncommitted." >&2
+    return 0
+  fi
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   git fetch origin "${branch}" >/dev/null 2>&1 || true
