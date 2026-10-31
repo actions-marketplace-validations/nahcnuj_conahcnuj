@@ -1,19 +1,5 @@
 name: conahcnuj setup
 
-# Reusable workflow that verifies a repository is ready to run conahcnuj.
-# It follows the Getting started steps (App secrets, installation, auto-merge)
-# and finishes successfully once the workflows can run. Call it from another
-# repository with `secrets: inherit` (same organization/enterprise) or by name:
-#
-#   jobs:
-#     setup:
-#       uses: nahcnuj/conahcnuj/.github/workflows/setup.yml@main
-#       secrets: inherit
-#
-# The called workflow checks out this repository (job.workflow_repository at
-# job.workflow_sha), never the caller, so the caller needs no copy of the
-# driver. The `environment` input is resolved in the caller repository.
-
 on:
   workflow_call:
     inputs:
