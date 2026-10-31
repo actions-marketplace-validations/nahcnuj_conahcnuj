@@ -837,11 +837,54 @@ gh_api_post_comment() {
   gh_api_json_num "${json}" "id"
 }
 
+# Build a JSON array of label strings from a comma-separated list.
+gh_api_labels_json() {
+  local input="${1}" IFS=,
+  local -a parts=()
+  read -ra parts <<< "${input}"
+  local out="["
+  local first=1 p
+  for p in "${parts[@]}"; do
+    p="$(printf '%s' "${p}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [[ -z "${p}" ]] && continue
+    if [[ "${first}" == "1" ]]; then
+      first=0
+    else
+      out="${out},"
+    fi
+    out="${out}\"$(gh_api_escape "${p}")\""
+  done
+  out="${out}]"
+  printf '%s' "${out}"
+}
+
 # Create an issue. Args: owner repo title body. Output: issue number.
 gh_api_create_issue() {
   local owner="${1}" repo="${2}" title="${3}" body="${4}"
+  shift 4 2>/dev/null || true
+  local labels_input=""
+  local arg
+  for arg in "$@"; do
+    if [[ -n "${arg}" ]]; then
+      if [[ -z "${labels_input}" ]]; then
+        labels_input="${arg}"
+      else
+        labels_input="${labels_input},${arg}"
+      fi
+    fi
+  done
   local payload
-  payload="{\"title\":\"$(gh_api_escape "${title}")\",\"body\":\"$(gh_api_escape "${body}")\"}"
+  if [[ -n "${labels_input}" ]]; then
+    local labels_json
+    if [[ "${labels_input}" == \[* ]]; then
+      labels_json="${labels_input}"
+    else
+      labels_json="$(gh_api_labels_json "${labels_input}")"
+    fi
+    payload="{\"title\":\"$(gh_api_escape "${title}")\",\"body\":\"$(gh_api_escape "${body}")\",\"labels\":${labels_json}}"
+  else
+    payload="{\"title\":\"$(gh_api_escape "${title}")\",\"body\":\"$(gh_api_escape "${body}")\"}"
+  fi
   local json
   json="$(gh_api_call POST "https://api.github.com/repos/${owner}/${repo}/issues" "${payload}")"
   gh_api_json_num "${json}" "number"

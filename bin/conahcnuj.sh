@@ -227,14 +227,14 @@ driver_relaunch() {
   # #309-era env propagation).
   local wslenv_add=""
   local v
-  for v in $(compgen -v); do
+  for v in $(compgen -e); do
     case "${v}" in
-      CONAHCNUJ_*|GH_*|OPENCODE_*|MOCK_*) 
-        if [[ -n "${!v:-}" ]]; then
-          wslenv_add="${wslenv_add:+${wslenv_add}:}${v}"
-        fi
-        ;;
+      CONAHCNUJ_ORIG_PWD_WIN) continue ;;
+      PATH|HOME|USER|SHELL|TERM|LANG|LC_*|PWD|OLDPWD|SHLVL|_) continue ;;
     esac
+    if [[ -n "${!v:-}" ]]; then
+      wslenv_add="${wslenv_add:+${wslenv_add}:}${v}"
+    fi
   done
   # Preserve the caller's working directory across the WSL -> Git Bash boundary.
   local orig_pwd_win
@@ -250,6 +250,15 @@ driver_relaunch() {
   trap 'kill -TERM "${child}" 2>/dev/null || true' INT TERM
   rc=0
   wait "${child}" || rc=$?
+  # The wait above may return early because it was interrupted by the signal
+  # that triggered the trap, even though the child is still running its own
+  # trap. Reap the child here so an interrupt actually waits for it to finish
+  # (otherwise the caller can clean up (e.g. delete temp files) before the
+  # child's trap has written its marker, racing the test/report).
+  for ((i=0; i<100; i++)); do
+    kill -0 "${child}" 2>/dev/null || break
+    sleep 0.1
+  done
   wait "${child}" 2>/dev/null || true
   trap - INT TERM
   exit "${rc}"
@@ -679,8 +688,18 @@ report_bug_on_exit() {
   oid="$(git rev-parse --short HEAD 2>/dev/null || true)"
   title="$(report_bug_title "${code}" "${input}")"
   body="$(report_bug_body "${code}" "${label_owner}" "${label_repo}" "${input}" "${branch}" "${oid}")"
+  # Labels for the bug report issue (issue #46): always `bug`, plus an
+  # environment label based on where the driver ran.
+  local bug_labels="bug"
+  if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+    bug_labels="${bug_labels},os/ubuntu"
+  elif [[ "${OS:-}" == "Windows_NT" || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || "${OSTYPE:-}" == win32* ]]; then
+    bug_labels="${bug_labels},os/windows"
+  elif [[ "${OSTYPE:-}" == linux* ]]; then
+    bug_labels="${bug_labels},os/ubuntu"
+  fi
   echo "Driver exited abnormally (code ${code}); filing a bug report issue in ${owner}/${repo}." >&2
-  if num="$(gh_api_create_issue "${owner}" "${repo}" "${title}" "${body}")"; then
+  if num="$(gh_api_create_issue "${owner}" "${repo}" "${title}" "${body}" "${bug_labels}")"; then
     if [[ -n "${num}" ]]; then
       echo "Bug report issue #${num} created: https://github.com/${owner}/${repo}/issues/${num}" >&2
       BUG_REPORTED="1"
