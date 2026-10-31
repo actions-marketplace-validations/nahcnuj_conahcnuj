@@ -1024,7 +1024,7 @@ ${threads}"
   file_list="${CONAHCNUJ_CONTEXT_FILES-README.md AGENTS.md}"
   while IFS= read -r file; do
     [[ -f "${file}" ]] || continue
-    content="$(cat -- "${file}")"
+    content="$(cat -- "${file}" | sed 's/[[:space:]]*$//')"
     [[ -n "${content}" ]] || continue
     if [[ -n "${out}" ]]; then
       out="${out}
