@@ -170,5 +170,3 @@ out="$(
 [[ "${out}" == "${STALE_BRANCH}" ]] || { echo "FAIL: ensure_issue_branch did not return the branch name: ${out}" >&2; exit 1; }
 [[ "$(git -C "${WORK}" rev-parse HEAD)" == "${BASE_HEAD}" ]] || { echo "FAIL: the stale branch was not restarted from the base" >&2; exit 1; }
 [[ "$(git -C "${WORK}" branch --show-current)" == "${STALE_BRANCH}" ]] || { echo "FAIL: wrong current branch after the stale-ref fallback" >&2; exit 1; }
-
-echo "conahcnuj branch-head checkout passed"
