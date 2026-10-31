@@ -3,7 +3,7 @@ description: 'Verify that a repository is set up to run conahcnuj (GitHub App, s
 author: 'nahcnuj'
 
 branding:
-  icon: 'check-circle'
+  icon: 'command'
   color: 'gray-dark'
 
 # Composite actions cannot read the `secrets` context (GitHub withholds it),
