@@ -1,5 +1,5 @@
 name: 'conahcnuj'
-description: 'Verify that a repository is set up to run conahcnuj (GitHub App, secrets, installation, auto-merge).'
+description: 'Issue-driven development behalf of you.'
 author: 'nahcnuj'
 
 branding:
