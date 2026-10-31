@@ -675,7 +675,7 @@ transform_reasoning_body() {
   local raw="${1:-}" style="${2:-expanded}"
   local first_prefix rest_prefix
   if [[ "${style}" == "basic" ]]; then
-    first_prefix="🤖⎨ "
+    first_prefix="🤖 ⎨ "
     rest_prefix="   ⎜ "
   else
     first_prefix=".oO⎜ "
