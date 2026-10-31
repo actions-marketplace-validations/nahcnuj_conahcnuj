@@ -215,11 +215,13 @@ README の Getting started の手順に沿って検証する composite action �
 jobs:
   setup:
     uses: nahcnuj/conahcnuj/.github/workflows/setup.yml@main
+    with:
+      environment: conahcnuj
     secrets: inherit
 ```
 
-`setup.yml` の `environment` 入力で secrets を持つ environment を指定できます
-（既定 `conahcnuj`）。composite action は `secrets` context を読めないため、
+`setup.yml` の `environment` 入力（必須）で secrets を持つ environment を指定します。
+composite action は `secrets` context を読めないため、
 action へは必ず入力として渡します（`setup.yml` も同じ）。action だけを通常の
 workflow step として使うこともできます:
 

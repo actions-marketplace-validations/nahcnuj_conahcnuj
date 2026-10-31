@@ -4,10 +4,9 @@ on:
   workflow_call:
     inputs:
       environment:
-        description: 'Environment holding the GitHub App secrets.'
-        required: false
+        description: 'Environment name holding the GitHub App secrets.'
+        required: true
         type: string
-        default: conahcnuj
     secrets:
       APP_ID:
         required: true
@@ -24,7 +23,7 @@ jobs:
   setup:
     name: Verify conahcnuj setup
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'conahcnuj' }}
+    environment: ${{ inputs.environment }}
     steps:
       - name: Check out the conahcnuj repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
