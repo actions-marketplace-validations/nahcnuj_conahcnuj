@@ -111,6 +111,4 @@ runs:
     - name: Setup complete
       shell: bash
       run: |
-        echo "conahcnuj setup verified: ready to run."
         echo "conahcnuj setup verified: ready to run." >> "${GITHUB_STEP_SUMMARY}"
-        exit 0
