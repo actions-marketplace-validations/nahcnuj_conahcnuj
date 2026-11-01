@@ -53,16 +53,58 @@ OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
 # other models stay in the pool.
 OPENCODE_ROUND_RATE_LIMITED="false"
 
+# Resolve the opencode executable, even when it is installed in a location that
+# is not on PATH (e.g. ~/.opencode/bin under WSL, or Windows scoop under a
+# WSL mount). Prints the path and returns 0 on success, 1 when opencode cannot
+# be found.
+opencode_command() {
+  local c candidate
+  for c in opencode opencode.exe opencode.cmd; do
+    if command -v "${c}" >/dev/null 2>&1; then
+      printf '%s\n' "${c}"
+      return 0
+    fi
+  done
+  # Linux / opencode installer locations.
+  for candidate in \
+    "${HOME}/.opencode/bin/opencode" \
+    /root/.opencode/bin/opencode \
+    /home/*/.opencode/bin/opencode \
+    "${HOME}/.local/bin/opencode" \
+    /usr/local/bin/opencode \
+    /usr/bin/opencode ; do
+    for c in ${candidate}; do
+      if [[ -n "${c}" && -f "${c}" ]]; then
+        printf '%s\n' "${c}"
+        return 0
+      fi
+    done
+  done
+  # WSL-mounted Windows locations (scoop and the .opencode installer).
+  for candidate in \
+    /mnt/[a-zA-Z]/Users/*/.opencode/bin/opencode \
+    /mnt/[a-zA-Z]/Users/*/scoop/shims/opencode.exe \
+    /mnt/[a-zA-Z]/Users/*/scoop/apps/opencode/*/opencode.exe \
+    /mnt/[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe ; do
+    for c in ${candidate}; do
+      if [[ -n "${c}" && -f "${c}" ]]; then
+        printf '%s\n' "${c}"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
 # List available models, one per line. Test mode: $MOCK_OPENCODE_MODELS.
 opencode_get_models() {
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
     printf '%s\n' "${MOCK_OPENCODE_MODELS:-}"
     return 0
   fi
-  if ! command -v opencode >/dev/null 2>&1; then
-    return 1
-  fi
-  opencode models 2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  local oc
+  oc="$(opencode_command)" || return 1
+  "${oc}" models 2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 }
 
 
@@ -451,9 +493,11 @@ opencode_run() {
   # $PIPESTATUS stays aligned with opencode.
   prompt_file="$(mktemp)"
   printf '%s\n' "${prompt}" > "${prompt_file}"
-  executable=(opencode)
+  local oc_bin
+  oc_bin="$(opencode_command)" || oc_bin="opencode"
+  executable=("${oc_bin}")
   if [[ -n "${CONAHCNUJ_RUN_TIMEOUT_SECONDS:-}" ]]; then
-    executable=(timeout --signal=TERM --kill-after=30s "${CONAHCNUJ_RUN_TIMEOUT_SECONDS}s" opencode)
+    executable=(timeout --signal=TERM --kill-after=30s "${CONAHCNUJ_RUN_TIMEOUT_SECONDS}s" "${oc_bin}")
   fi
   # --thinking makes opencode emit its reasoning parts as JSON events; without
   # it the log shows only tool calls and final answers.
