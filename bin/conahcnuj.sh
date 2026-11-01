@@ -1166,6 +1166,12 @@ implement() {
   OPENCODE_SESSION_ID=""
   load_missing_models
   model_list="$(opencode_get_models)"
+  if [[ -z "${model_list//[[:space:]]/}" ]]; then
+    echo "ERROR: no models available from \`opencode models\` (is opencode installed and on PATH?); cannot implement." >&2
+    ENVIRONMENT_DOWN="1"
+    echo "ERROR: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted; providers given up on:${dead_providers}${quota_providers}). Nothing the driver can do about that -- re-run it once its providers are usable again." >&2
+    return 1
+  fi
   for model in ${model_list}; do
     [[ -z "${model}" ]] && continue
     is_missing_model "${model}" && known_skipped="${known_skipped} ${model}"

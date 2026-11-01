@@ -59,7 +59,10 @@ opencode_get_models() {
     printf '%s\n' "${MOCK_OPENCODE_MODELS:-}"
     return 0
   fi
-  opencode models 2>/dev/null | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  if ! command -v opencode >/dev/null 2>&1; then
+    return 1
+  fi
+  opencode models 2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 }
 
 
