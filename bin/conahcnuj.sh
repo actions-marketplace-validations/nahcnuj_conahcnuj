@@ -316,6 +316,38 @@ verify_repo_alignment() {
   fi
 }
 
+# Fail fast when the GitHub App installation cannot reach the target repository.
+# An installation token only sees the repositories selected for the
+# installation; for any other repository GitHub rejects branch and pull-request
+# creation with FORBIDDEN. The run used to discover that only after creating the
+# branch and the empty initial commit, then spend a whole implementation round
+# and file a misleading "no model completed" bug report (#841). The installation
+# is the source of truth, so this stops before the bug-report trap like the
+# alignment guard: the clear error is the report. An unreadable answer is not
+# fatal (the run may still work), so only a definite "not in the installation"
+# stops it. Args: target (owner/repo)
+verify_app_repo_access() {
+  local target="${1}" owner repo access
+  [[ -n "${target}" ]] || return 0
+  owner="${target%%/*}"
+  repo="${target#*/}"
+  access="$(gh_api_installation_repo_access "${owner}" "${repo}")"
+  case "${access}" in
+    no)
+      echo "ERROR: the GitHub App installation cannot access ${target}." >&2
+      echo "       The App is installed on the account but not on this repository" >&2
+      echo "       (or it was removed from the installation's selected repositories)," >&2
+      echo "       so the feature branch and pull request cannot be created (GitHub" >&2
+      echo "       answers FORBIDDEN). Install the App on ${target} with Contents and" >&2
+      echo "       Pull requests write access, then re-run." >&2
+      exit 1
+      ;;
+    unknown)
+      echo "WARNING: could not confirm the App installation can access ${target}; continuing." >&2
+      ;;
+  esac
+}
+
 # True when the overall time budget is exhausted. Split out from check_timeout
 # so drive() can word the exhaustion differently once the PR is with the
 # reviewer: running out of time while waiting for a human is not a driver
@@ -1983,12 +2015,14 @@ main() {
   BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
 
-  # A target/origin mismatch is a configuration error (a stale workflow pin or
-  # a hand-rolled CONAHCNUJ_REPO override), not a driver bug, so it stops the
-  # run before the bug-report trap is registered: the clear error on stderr is
-  # the report, and filing an issue for it would only add noise (#309).
+  # A target/origin mismatch (a stale workflow pin or a hand-rolled
+  # CONAHCNUJ_REPO override) and a target the App installation cannot reach are
+  # configuration errors, not driver bugs, so they stop the run before the
+  # bug-report trap is registered: the clear error on stderr is the report, and
+  # filing an issue for it would only add noise (#309 / #841).
   if [[ "${TEST_MODE}" != "1" ]]; then
     verify_repo_alignment "${repo_info}"
+    verify_app_repo_access "${repo_info}"
   fi
 
   # File a bug report issue when the run terminates abnormally. Registered only
