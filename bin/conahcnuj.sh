@@ -160,6 +160,12 @@ driver_bash_exe() {
     printf '%s\n' "${BASH_EXE}"
     return 0
   fi
+  # When running in WSL, use WSL's bash instead of the Windows Git Bash binary,
+  # which cannot be executed from WSL (issue #835).
+  if [[ -n "${WSL_DISTRO_NAME:-}" || -n "${MSYSTEM:-}" ]]; then
+    printf '%s\n' "bash"
+    return 0
+  fi
   env_file="${GH_APP_DIR:-${HERE}/../gh-app}/app.env"
   if [[ ! -f "${env_file}" ]]; then
     env_file="${HERE}/../gh-app/app.env.example"
