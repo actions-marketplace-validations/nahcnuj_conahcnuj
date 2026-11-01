@@ -338,17 +338,16 @@ workdir_changed() {
   [[ -n "${changes}" ]]
 }
 
-# Whether the per-issue progress file TODO.jsonl still has unfinished tasks.
-# The coding agent creates it when it starts an issue (one line per task),
+# Whether the per-issue progress file TODO.jsonl still has outstanding tasks.
+# The coding agent creates it (one task per line) when it starts an issue,
 # removes lines as tasks are completed and leaves it empty (no line) once the
 # issue is resolved and ready to hand over (AGENTS.md tells it so). Its
 # lifetime is the issue's, so the driver keys the PR's draft state on it: while
-# the file has a line the PR is a draft and is never handed to the reviewer,
+# the file has any line the PR is a draft and is never handed to the reviewer,
 # which is what keeps an unfinished issue from being presented as a non-draft
-# (ready) pull request. An empty file (no line) counts as finished.
+# (ready) pull request.
 todo_present() {
-  [[ -f "TODO.jsonl" ]] || return 1
-  grep -q '[^[:space:]]' "TODO.jsonl" 2>/dev/null
+  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]]
 }
 
 # Resolve the base ref to compare the feature branch against. Shared by the
@@ -505,6 +504,24 @@ commit_changes() {
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   git fetch origin "${branch}" >/dev/null 2>&1 || true
   git reset --hard "origin/${branch}" >/dev/null 2>&1 || true
+}
+
+# Remove an empty TODO.jsonl from the branch head. The progress file is
+# WIP-only (issue #668): an agent that empties it but forgets to delete it must
+# not merge it into main. The driver treats "no line" as done, so this is
+# metadata cleanup, not implementation work, and it may use a fixed message.
+remove_empty_todo() {
+  [[ -f "TODO.jsonl" ]] || return 0
+  [[ -s "TODO.jsonl" ]] && return 0
+  echo "Removing the empty TODO.jsonl so it never reaches main." >&2
+  rm -f TODO.jsonl
+  git add -A -- TODO.jsonl >/dev/null 2>&1 || true
+  if [[ "${TEST_MODE}" == "1" ]]; then
+    git config commit.gpgsign false
+    git commit -q -m "Remove empty TODO.jsonl before hand-off" 2>/dev/null || true
+    return 0
+  fi
+  bash "${HERE}/../gh-app/api-commit.sh" -m "Remove empty TODO.jsonl before hand-off" || echo "WARNING: could not remove the empty TODO.jsonl; continuing." >&2
 }
 
 # --- bug reporting ----------------------------------------------------------
@@ -1026,7 +1043,7 @@ ${threads}"
   file_list="${CONAHCNUJ_CONTEXT_FILES-README.md AGENTS.md}"
   while IFS= read -r file; do
     [[ -f "${file}" ]] || continue
-    content="$(cat -- "${file}")"
+    content="$(cat -- "${file}" | sed 's/[[:space:]]*$//')"
     [[ -n "${content}" ]] || continue
     if [[ -n "${out}" ]]; then
       out="${out}
@@ -1514,10 +1531,10 @@ drive() {
   local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" initial_draft="${9:-false}"
   local last_sig=""
   # Whether the PR is currently a draft. The driver keeps it in sync with the
-  # per-issue TODO.jsonl: created as a draft while the file has a line, marked
-  # ready once it is clean (see the TODO.jsonl gate below). A resumed PR's
-  # state comes from resume_pr (its isDraft field); a fresh one is set right
-  # after ensure_pr creates it.
+  # per-issue TODO.jsonl: a draft while the file has an unfinished task line,
+  # marked ready once it has no line (see the TODO.jsonl gate below). A resumed
+  # PR's state comes from resume_pr (its isDraft field); a fresh one is set
+  # right after ensure_pr creates it.
   local pr_draft="${initial_draft}"
   # Whether this run has already handed the PR to the owner by asking for a
   # review, and is now only waiting for the verdict. Once true the driver never
@@ -1553,8 +1570,8 @@ drive() {
       continue
     fi
 
-    # The PR is a draft exactly while the per-issue TODO.jsonl has a line: the
-    # agent's progress file outlives the issue only if the issue is unfinished,
+    # The PR is a draft exactly while the per-issue TODO.jsonl has a task line:
+    # the agent's progress file has a line only while the issue is unfinished,
     # and a draft cannot be handed to the reviewer, so an unfinished issue can
     # never be presented as a ready (non-draft) PR. want_draft is the state this
     # iteration wants; pr_draft tracks what the PR actually is.
@@ -1593,23 +1610,23 @@ drive() {
     fi
 
     # --- TODO.jsonl gate ---
-    # TODO.jsonl is the coding agent's per-issue progress file: it has a line
-    # per unfinished task, and is clean (no line) once the issue is resolved
-    # and ready for review. It gates the hand-off: while it has a line the PR
-    # stays a draft and no review is requested, and the agent gets another round
-    # to finish (and clean it). Once it is clean the PR is marked ready and the
+    # TODO.jsonl is the coding agent's per-issue progress file: one JSON line
+    # per unfinished task, empty (or deleted) when the issue is resolved and
+    # ready for review. It gates the hand-off: while it has a line the PR stays
+    # a draft and no review is requested, and the agent gets another round to
+    # finish (and empty it). Once it has no line the PR is marked ready and the
     # normal hand-off runs. This makes "the issue is done" a property of the
-    # work tree, not a claim in a chat message, so an unfinished issue cannot
-    # be presented as ready.
+    # work tree, not a claim in a chat message, so an unfinished issue cannot be
+    # presented as ready.
     if [[ "${want_draft}" == "true" ]]; then
       if [[ "${pr_draft}" != "true" ]]; then
-        echo "PR #${pr} is not a draft while TODO.jsonl still has unfinished tasks; converting it back to a draft." >&2
+        echo "PR #${pr} is not a draft while TODO.jsonl has unfinished tasks; converting it back to a draft." >&2
         gh_api_convert_pr_to_draft "${owner}" "${repo}" "${pr}" || echo "WARNING: could not convert PR #${pr} to a draft; continuing without requesting review." >&2
         pr_draft="true"
       fi
       echo "TODO.jsonl still has unfinished tasks; keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl still has unfinished tasks, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current (remove lines as tasks are completed), and leave it clean (no line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
@@ -1625,26 +1642,16 @@ drive() {
       continue
     fi
 
-    # TODO.jsonl is clean: the issue is finished, so a draft can become a real
-    # PR. Only the driver lifts the draft, never the agent, and only once the
-    # file is actually clean on the branch head.
+    # TODO.jsonl has no line: the issue is finished, so a draft can become a
+    # real PR. Only the driver lifts the draft, never the agent, and only once
+    # the branch head has no unfinished task line. An empty file is done but
+    # must not land on main, so remove it before the hand-off.
+    remove_empty_todo
+
     if [[ "${pr_draft}" == "true" ]]; then
       echo "TODO.jsonl is clean; marking PR #${pr} ready for review." >&2
       gh_api_ready_pr "${owner}" "${repo}" "${pr}" || echo "WARNING: could not mark PR #${pr} ready for review; continuing." >&2
       pr_draft="false"
-    fi
-
-    # Remove an empty TODO.jsonl so it never reaches main: a clean (line-less)
-    # file must not be carried into the base branch.
-    if [[ -f "TODO.jsonl" ]] && ! todo_present; then
-      echo "Removing the empty TODO.jsonl so it never reaches main." >&2
-      rm -f "TODO.jsonl"
-      git add -A
-      if [[ "${TEST_MODE}" == "1" ]]; then
-        git commit -q -m "Remove empty TODO.jsonl" 2>/dev/null || true
-      else
-        bash "${HERE}/../gh-app/api-commit.sh" -m "Remove empty TODO.jsonl" >/dev/null 2>&1 || true
-      fi
     fi
 
     # --- review feedback phase ---
@@ -1835,9 +1842,9 @@ start_issue() {
   fi
 
   # Open the draft PR now, before implementation, so its number is available
-  # from the start. It stays a draft while TODO.jsonl has unfinished tasks. PR creation can
-  # fail when the branch has no real diff yet (e.g. only the empty initial
-  # commit); recover the same way drive() does instead of dying.
+  # from the start. It stays a draft while TODO.jsonl has unfinished tasks. PR
+  # creation can fail when the branch has no real diff yet (e.g. only the empty
+  # initial commit); recover the same way drive() does instead of dying.
   local early_pr=""
   if ! early_pr="$(ensure_pr "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}" "true")"; then
     echo "PR could not be created for ${branch} -> ${default_branch}; running an implementation round." >&2

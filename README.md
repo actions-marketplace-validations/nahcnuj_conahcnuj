@@ -46,7 +46,6 @@ Windows のみです。配置せずに `bash bin/conahcnuj.sh` / `bash gh-app/*.
 
    PowerShell 7 (`pwsh`) が無い Windows では `powershell` に読み替える
    （Linux / macOS には `powershell` コマンドは無いので `pwsh` を使う）。
-
 2. `~/.config/opencode/gh-app/app.env` に `APP_ID` / `INSTALLATION_ID` /
    `PRIVATE_KEY_PATH` / `APP_SLUG` / `BASH_EXE` を設定する。
 3. opencode を再起動し、`gh auth status` が bot アカウント (`<slug>[bot]`) を
