@@ -682,7 +682,7 @@ gh_api_installation_repo_access() {
       printf 'unknown\n'
       return 0
     fi
-    if printf '%s' "${json}" | grep -q "\"full_name\"[[:space:]]*:[[:space:]]*\"${full}\""; then
+    if printf '%s' "${json}" | grep -Fq "\"${full}\""; then
       printf 'yes\n'
       return 0
     fi

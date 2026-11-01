@@ -76,6 +76,16 @@ mock_reset
   exit 1
 }
 
+# 2b. A near-miss name must not match: dots in a repository name are literal,
+#     not "any character" (a regex match would let a run proceed only to fail
+#     with FORBIDDEN again).
+MOCK_RESPONSES=("$(page_with 2 "nahcnuj/vigilantXfiesta")")
+mock_reset
+[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant.fiesta")" == "no" ]] || {
+  echo "FAIL: a similar repository name was taken for the target" >&2
+  exit 1
+}
+
 # 3. Pagination: the target is on the second page, so the first page's absence
 #    must not be taken as the answer.
 MOCK_RESPONSES=("$(page_without 150)" "$(page_with 150 "nahcnuj/vigilant-fiesta")")
