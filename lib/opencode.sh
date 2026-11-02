@@ -80,12 +80,16 @@ opencode_command() {
       fi
     done
   done
-  # WSL-mounted Windows locations (scoop and the .opencode installer).
+  # Windows installs reached from WSL (/mnt/<drive>) and from Git Bash (/<drive>).
   for candidate in \
     /mnt/[a-zA-Z]/Users/*/.opencode/bin/opencode \
+    /[a-zA-Z]/Users/*/.opencode/bin/opencode \
     /mnt/[a-zA-Z]/Users/*/scoop/shims/opencode.exe \
+    /[a-zA-Z]/Users/*/scoop/shims/opencode.exe \
     /mnt/[a-zA-Z]/Users/*/scoop/apps/opencode/*/opencode.exe \
-    /mnt/[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe ; do
+    /[a-zA-Z]/Users/*/scoop/apps/opencode/*/opencode.exe \
+    /mnt/[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe \
+    /[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe ; do
     for c in ${candidate}; do
       if [[ -n "${c}" && -f "${c}" ]]; then
         printf '%s\n' "${c}"
