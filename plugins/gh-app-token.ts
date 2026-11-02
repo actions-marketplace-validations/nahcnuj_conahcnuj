@@ -402,6 +402,12 @@ const SHELL_EQUIVALENTS =
     : "use the shell's own commands or node/python"
 const NODE_AVAILABLE =
   "Node and npm are on PATH (the plugin adds the directory of the node binary opencode runs on), so use `node`/`npm` directly instead of searching the filesystem for them."
+// The shell tool kills a command after 120000 ms unless the call passes its
+// own `timeout` (milliseconds). A model that instead wraps the command in a
+// shell `timeout` or sleeps to wait for output still gets killed at 120000 ms
+// and loses the round (#629), so name the tool parameter explicitly.
+const SHELL_TIMEOUT =
+  "Long-running commands: the shell tool stops a command after 120000 ms unless the call sets a larger `timeout` in milliseconds; for commands that legitimately take longer (test suites, builds), pass that `timeout` to the shell tool itself instead of using a shell `timeout` command, and do not sleep (for example `Start-Sleep`/`sleep`) just to wait for output."
 const SHELL_RULES = [
   `Shell environment: this session runs on ${SHELL_PLATFORM} (${process.platform}) in ${SHELL_NAME}; ${HEAD_TAIL_GREP_AVAILABLE}.`,
   `Null device: ${NULL_DEVICE_AVAILABLE}.`,
@@ -411,6 +417,7 @@ const SHELL_RULES = [
   `Read files with the read tool and search with the grep/glob tools instead; if a shell command is unavoidable, ${SHELL_EQUIVALENTS}.`,
   POWERSHELL_USE,
   NODE_AVAILABLE,
+  SHELL_TIMEOUT,
 ].join(" ")
 
 import {

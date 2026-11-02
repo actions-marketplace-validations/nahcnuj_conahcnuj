@@ -666,6 +666,43 @@ gh_api_find_pr_by_head_any() {
   fi
 }
 
+# Whether the App installation behind the current token can reach a repository.
+# An installation token only sees the repositories selected for the installation;
+# for any other repository every write (branch ref, commit, pull request) comes
+# back FORBIDDEN, so a run that targets one cannot succeed no matter which model
+# works on it. Prints "yes", "no", or "unknown" (the API could not be read), so
+# the caller can treat only a definite "no" as fatal. The list is paginated:
+# "all repositories" installations can expose many pages. Args: owner repo
+gh_api_installation_repo_access() {
+  local owner="${1}" repo="${2}"
+  local full="${owner}/${repo}"
+  local page=1 per_page=100 total json
+  while :; do
+    if ! json="$(gh_api_call GET "${GH_APP_API_BASE:-https://api.github.com}/installation/repositories?per_page=${per_page}&page=${page}")"; then
+      printf 'unknown\n'
+      return 0
+    fi
+    if printf '%s' "${json}" | grep -Fq "\"${full}\""; then
+      printf 'yes\n'
+      return 0
+    fi
+    total="$(gh_api_json_num "${json}" "total_count")"
+    if [[ -z "${total}" ]]; then
+      printf 'unknown\n'
+      return 0
+    fi
+    if (( page * per_page >= total )); then
+      printf 'no\n'
+      return 0
+    fi
+    page=$((page + 1))
+    if (( page > 100 )); then
+      printf 'unknown\n'
+      return 0
+    fi
+  done
+}
+
 # Create a branch ref from a base OID. Args: owner repo branch base_oid
 gh_api_create_branch() {
   local owner="${1}" repo="${2}" branch="${3}" base_oid="${4}"

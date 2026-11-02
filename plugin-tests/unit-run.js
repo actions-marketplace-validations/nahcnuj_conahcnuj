@@ -826,6 +826,13 @@ test("system prompt: the git vc, GitHub-auth and shell rules are appended once a
   const shellRules = output.system[3]
   assert.ok(!/[\r\n]/.test(shellRules), "shell rules must be a single line")
   assert.ok(shellRules.includes(process.platform), shellRules)
+  // A command that legitimately outlives the 120000 ms default must raise the
+  // shell tool's own `timeout`; wrapping it in a shell `timeout` command or
+  // sleeping does not stop opencode from killing it (#629).
+  assert.ok(shellRules.includes("120000"), shellRules)
+  assert.ok(shellRules.includes("`timeout`"), shellRules)
+  assert.ok(shellRules.includes("Start-Sleep"), shellRules)
+  assert.ok(shellRules.includes("sleep"), shellRules)
   // The "fallback to PowerShell" guidance must be platform-gated (issue #702):
   // on Linux/macOS the model must not be told to run `powershell`, which
   // does not exist there ("The term 'powershell' is not recognized").
