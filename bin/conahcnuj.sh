@@ -191,6 +191,14 @@ driver_needs_relaunch() {
     echo "WARNING: BASH_EXE ${bash_exe} is not reachable from WSL; continuing (paths may not resolve)." >&2
     return 1
   fi
+  # Existence/executable-bit alone is not enough under WSL: a Windows binary
+  # (Git Bash) may be present on a /mnt mount yet fail to run because WSL
+  # interop is unavailable (Exec format error). Probe an actual invocation so
+  # we fall back to running under WSL instead of crashing on relaunch.
+  if ! "${bash_mnt}" -c 'exit 0' >/dev/null 2>&1; then
+    echo "WARNING: BASH_EXE ${bash_exe} cannot be executed from WSL (interop unavailable); continuing under WSL." >&2
+    return 1
+  fi
   return 0
 }
 
