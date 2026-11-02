@@ -191,6 +191,14 @@ driver_needs_relaunch() {
     echo "WARNING: BASH_EXE ${bash_exe} is not reachable from WSL; continuing (paths may not resolve)." >&2
     return 1
   fi
+  # Existence/executable-bit alone is not enough under WSL: a Windows binary
+  # (Git Bash) may be present on a /mnt mount yet fail to run because WSL
+  # interop is unavailable (Exec format error). Probe an actual invocation so
+  # we fall back to running under WSL instead of crashing on relaunch.
+  if ! "${bash_mnt}" -c 'exit 0' >/dev/null 2>&1; then
+    echo "WARNING: BASH_EXE ${bash_exe} cannot be executed from WSL (interop unavailable); continuing under WSL." >&2
+    return 1
+  fi
   return 0
 }
 
@@ -308,6 +316,38 @@ verify_repo_alignment() {
     echo "       ${target}." >&2
     exit 1
   fi
+}
+
+# Fail fast when the GitHub App installation cannot reach the target repository.
+# An installation token only sees the repositories selected for the
+# installation; for any other repository GitHub rejects branch and pull-request
+# creation with FORBIDDEN. The run used to discover that only after creating the
+# branch and the empty initial commit, then spend a whole implementation round
+# and file a misleading "no model completed" bug report (#841). The installation
+# is the source of truth, so this stops before the bug-report trap like the
+# alignment guard: the clear error is the report. An unreadable answer is not
+# fatal (the run may still work), so only a definite "not in the installation"
+# stops it. Args: target (owner/repo)
+verify_app_repo_access() {
+  local target="${1}" owner repo access
+  [[ -n "${target}" ]] || return 0
+  owner="${target%%/*}"
+  repo="${target#*/}"
+  access="$(gh_api_installation_repo_access "${owner}" "${repo}")"
+  case "${access}" in
+    no)
+      echo "ERROR: the GitHub App installation cannot access ${target}." >&2
+      echo "       The App is installed on the account but not on this repository" >&2
+      echo "       (or it was removed from the installation's selected repositories)," >&2
+      echo "       so the feature branch and pull request cannot be created (GitHub" >&2
+      echo "       answers FORBIDDEN). Install the App on ${target} with Contents and" >&2
+      echo "       Pull requests write access, then re-run." >&2
+      exit 1
+      ;;
+    unknown)
+      echo "WARNING: could not confirm the App installation can access ${target}; continuing." >&2
+      ;;
+  esac
 }
 
 # True when the overall time budget is exhausted. Split out from check_timeout
@@ -1147,6 +1187,15 @@ implement() {
   OPENCODE_SESSION_ID=""
   load_missing_models
   model_list="$(opencode_get_models)"
+  if [[ -z "${model_list//[[:space:]]/}" ]]; then
+    echo "ERROR: no models available from \`opencode models\` (is opencode installed and on PATH?); cannot implement." >&2
+    if [[ -n "${WSL_DISTRO_NAME:-}" ]] && ! opencode_command >/dev/null 2>&1; then
+      echo "HINT: running under WSL without a runnable opencode (interop may be unavailable); run the driver under Git Bash instead: \"C:/Program Files/Git/bin/bash.exe\" conahcnuj <number>" >&2
+    fi
+    ENVIRONMENT_DOWN="1"
+    echo "ERROR: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted; providers given up on:${dead_providers}${quota_providers}). Nothing the driver can do about that -- re-run it once its providers are usable again." >&2
+    return 1
+  fi
   for model in ${model_list}; do
     [[ -z "${model}" ]] && continue
     is_missing_model "${model}" && known_skipped="${known_skipped} ${model}"
@@ -2000,12 +2049,14 @@ main() {
   BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
 
-  # A target/origin mismatch is a configuration error (a stale workflow pin or
-  # a hand-rolled CONAHCNUJ_REPO override), not a driver bug, so it stops the
-  # run before the bug-report trap is registered: the clear error on stderr is
-  # the report, and filing an issue for it would only add noise (#309).
+  # A target/origin mismatch (a stale workflow pin or a hand-rolled
+  # CONAHCNUJ_REPO override) and a target the App installation cannot reach are
+  # configuration errors, not driver bugs, so they stop the run before the
+  # bug-report trap is registered: the clear error on stderr is the report, and
+  # filing an issue for it would only add noise (#309 / #841).
   if [[ "${TEST_MODE}" != "1" ]]; then
     verify_repo_alignment "${repo_info}"
+    verify_app_repo_access "${repo_info}"
   fi
 
   # File a bug report issue when the run terminates abnormally. Registered only

@@ -53,13 +53,72 @@ OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
 # other models stay in the pool.
 OPENCODE_ROUND_RATE_LIMITED="false"
 
+# Probe whether a candidate opencode binary actually runs. Under WSL with
+# interop unavailable a Windows binary is "found" (it sits on a /mnt path and
+# command -v / -f succeed) but executing it fails with "Exec format error", so
+# existence alone is not enough.
+opencode_runs() {
+  local c="${1}"
+  "${c}" --version >/dev/null 2>&1
+}
+
+# Resolve the opencode executable, even when it is installed in a location that
+# is not on PATH (e.g. ~/.opencode/bin under WSL, or Windows scoop under a
+# WSL mount). Prints the path and returns 0 on success, 1 when opencode cannot
+# be found.
+opencode_command() {
+  local c candidate
+  for c in opencode opencode.exe opencode.cmd; do
+    if command -v "${c}" >/dev/null 2>&1 && opencode_runs "${c}"; then
+      printf '%s\n' "${c}"
+      return 0
+    fi
+  done
+  # Linux / opencode installer locations.
+  for candidate in \
+    "${HOME}/.opencode/bin/opencode" \
+    /root/.opencode/bin/opencode \
+    /home/*/.opencode/bin/opencode \
+    "${HOME}/.local/bin/opencode" \
+    /usr/local/bin/opencode \
+    /usr/bin/opencode ; do
+    for c in ${candidate}; do
+      if [[ -n "${c}" && -f "${c}" ]] && opencode_runs "${c}"; then
+        printf '%s\n' "${c}"
+        return 0
+      fi
+    done
+  done
+  # Windows installs reached from WSL (/mnt/<drive>) and from Git Bash (/<drive>).
+  for candidate in \
+    /mnt/[a-zA-Z]/Users/*/.opencode/bin/opencode \
+    /[a-zA-Z]/Users/*/.opencode/bin/opencode \
+    /mnt/[a-zA-Z]/Users/*/scoop/shims/opencode.exe \
+    /[a-zA-Z]/Users/*/scoop/shims/opencode.exe \
+    /mnt/[a-zA-Z]/Users/*/scoop/apps/opencode/*/opencode.exe \
+    /[a-zA-Z]/Users/*/scoop/apps/opencode/*/opencode.exe \
+    /mnt/[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe \
+    /[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe ; do
+    for c in ${candidate}; do
+      if [[ -n "${c}" && -f "${c}" ]] && opencode_runs "${c}"; then
+        printf '%s\n' "${c}"
+        return 0
+      fi
+    done
+  done
+  echo "opencode: no runnable opencode found (under WSL this usually means interop is unavailable; run the driver under Git Bash instead)" >&2
+  return 1
+}
+
 # List available models, one per line. Test mode: $MOCK_OPENCODE_MODELS.
 opencode_get_models() {
   if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
     printf '%s\n' "${MOCK_OPENCODE_MODELS:-}"
     return 0
   fi
-  opencode models 2>/dev/null | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+  local oc
+  oc="$(opencode_command)" || return 1
+  "${oc}" models 2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
 }
 
 
@@ -450,9 +509,11 @@ opencode_run() {
   # $PIPESTATUS stays aligned with opencode.
   prompt_file="$(mktemp)"
   printf '%s\n' "${prompt}" > "${prompt_file}"
-  executable=(opencode)
+  local oc_bin
+  oc_bin="$(opencode_command)" || oc_bin="opencode"
+  executable=("${oc_bin}")
   if [[ -n "${CONAHCNUJ_RUN_TIMEOUT_SECONDS:-}" ]]; then
-    executable=(timeout --signal=TERM --kill-after=30s "${CONAHCNUJ_RUN_TIMEOUT_SECONDS}s" opencode)
+    executable=(timeout --signal=TERM --kill-after=30s "${CONAHCNUJ_RUN_TIMEOUT_SECONDS}s" "${oc_bin}")
   fi
   # --thinking makes opencode emit its reasoning parts as JSON events; without
   # it the log shows only tool calls and final answers.
@@ -518,7 +579,14 @@ opencode_run() {
         kill -TERM "${opencode_pid}" 2>/dev/null || true
         break
       fi
-      sleep "${CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS:-1}"
+      # Wait for either opencode to exit or the watch interval to elapse,
+      # whichever comes first: a fixed sleep would keep the round (and the
+      # offline tests that drive it with a fast-exiting fake opencode) blocked
+      # for the whole interval even after the process is gone.
+      ( sleep "${CONAHCNUJ_RATE_LIMIT_WATCH_SECONDS:-1}" ) & local _watch_sleeper=$!
+      wait -n "${opencode_pid}" "${_watch_sleeper}" 2>/dev/null || true
+      kill "${_watch_sleeper}" 2>/dev/null || true
+      wait "${_watch_sleeper}" 2>/dev/null || true
     done
     wait "${opencode_pid}" 2>/dev/null || status=$?
     # The FIFO consumers exit once opencode's write ends close; reap them so
