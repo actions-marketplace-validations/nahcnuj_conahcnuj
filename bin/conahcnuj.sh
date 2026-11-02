@@ -378,15 +378,16 @@ workdir_changed() {
   [[ -n "${changes}" ]]
 }
 
-# Whether the per-issue progress file TODO.md is still in the working tree. The
-# coding agent creates it when it starts an issue, updates it as the work
-# proceeds and deletes it once the issue is resolved and ready to hand over
-# (AGENTS.md tells it so). Its lifetime is the issue's, so the driver keys the
-# PR's draft state on it: while the file is present the PR is a draft and is
-# never handed to the reviewer, which is what keeps an unfinished issue from
-# being presented as a non-draft (ready) pull request.
+# Whether the per-issue progress file TODO.jsonl still has outstanding tasks.
+# The coding agent creates it (one task per line) when it starts an issue,
+# removes lines as tasks are completed and leaves it empty (no line) once the
+# issue is resolved and ready to hand over (AGENTS.md tells it so). Its
+# lifetime is the issue's, so the driver keys the PR's draft state on it: while
+# the file has any line the PR is a draft and is never handed to the reviewer,
+# which is what keeps an unfinished issue from being presented as a non-draft
+# (ready) pull request.
 todo_present() {
-  [[ -f "TODO.md" ]]
+  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]]
 }
 
 # Resolve the base ref to compare the feature branch against. Shared by the
@@ -543,6 +544,24 @@ commit_changes() {
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   git fetch origin "${branch}" >/dev/null 2>&1 || true
   git reset --hard "origin/${branch}" >/dev/null 2>&1 || true
+}
+
+# Remove an empty TODO.jsonl from the branch head. The progress file is
+# WIP-only (issue #668): an agent that empties it but forgets to delete it must
+# not merge it into main. The driver treats "no line" as done, so this is
+# metadata cleanup, not implementation work, and it may use a fixed message.
+remove_empty_todo() {
+  [[ -f "TODO.jsonl" ]] || return 0
+  [[ -s "TODO.jsonl" ]] && return 0
+  echo "Removing the empty TODO.jsonl so it never reaches main." >&2
+  rm -f TODO.jsonl
+  git add -A -- TODO.jsonl >/dev/null 2>&1 || true
+  if [[ "${TEST_MODE}" == "1" ]]; then
+    git config commit.gpgsign false
+    git commit -q -m "Remove empty TODO.jsonl before hand-off" 2>/dev/null || true
+    return 0
+  fi
+  bash "${HERE}/../gh-app/api-commit.sh" -m "Remove empty TODO.jsonl before hand-off" || echo "WARNING: could not remove the empty TODO.jsonl; continuing." >&2
 }
 
 # --- bug reporting ----------------------------------------------------------
@@ -1152,7 +1171,7 @@ persist_missing_model() {
 # model that answers with only a .commit-msg can be complete: the branch already
 # carries the implementation, so the message (and any thread replies) is the
 # whole deliverable, not a stand-in for missing work. Rounds that objectively
-# need a change (a fresh branch, the TODO.md gate, failing constraints) pass no
+# need a change (a fresh branch, the TODO.jsonl gate, failing constraints) pass no
 # base, so a message-only round there stays no work and still falls through to
 # the other models.
 implement() {
@@ -1354,7 +1373,7 @@ ${body}"
     return 1
   fi
   if [[ "${draft}" == "true" ]]; then
-    echo "Created draft PR #${num} (${branch} -> ${base}): TODO.md is still present, so the issue is not ready to hand over." >&2
+    echo "Created draft PR #${num} (${branch} -> ${base}): TODO.jsonl still has unfinished tasks, so the issue is not ready to hand over." >&2
   else
     echo "Created PR #${num} (${branch} -> ${base})." >&2
   fi
@@ -1561,10 +1580,10 @@ drive() {
   local owner="${1}" repo="${2}" pr="${3}" branch="${4}" base="${5}" title="${6}" body="${7}" closes="${8}" initial_draft="${9:-false}"
   local last_sig=""
   # Whether the PR is currently a draft. The driver keeps it in sync with the
-  # per-issue TODO.md: created as a draft while the file exists, marked ready
-  # once it is gone (see the TODO.md gate below). A resumed PR's state comes
-  # from resume_pr (its isDraft field); a fresh one is set right after
-  # ensure_pr creates it.
+  # per-issue TODO.jsonl: a draft while the file has an unfinished task line,
+  # marked ready once it has no line (see the TODO.jsonl gate below). A resumed
+  # PR's state comes from resume_pr (its isDraft field); a fresh one is set
+  # right after ensure_pr creates it.
   local pr_draft="${initial_draft}"
   # Whether this run has already handed the PR to the owner by asking for a
   # review, and is now only waiting for the verdict. Once true the driver never
@@ -1600,8 +1619,8 @@ drive() {
       continue
     fi
 
-    # The PR is a draft exactly while the per-issue TODO.md is present: the
-    # agent's progress file outlives the issue only if the issue is unfinished,
+    # The PR is a draft exactly while the per-issue TODO.jsonl has a task line:
+    # the agent's progress file has a line only while the issue is unfinished,
     # and a draft cannot be handed to the reviewer, so an unfinished issue can
     # never be presented as a ready (non-draft) PR. want_draft is the state this
     # iteration wants; pr_draft tracks what the PR actually is.
@@ -1639,23 +1658,24 @@ drive() {
       pr_draft="${want_draft}"
     fi
 
-    # --- TODO.md gate ---
-    # TODO.md is the coding agent's per-issue progress file: present while the
-    # issue is unfinished, deleted when it is resolved and ready for review. It
-    # gates the hand-off: while it is present the PR stays a draft and no review
-    # is requested, and the agent gets another round to finish (and delete it).
-    # Once it is gone the PR is marked ready and the normal hand-off runs. This
-    # makes "the issue is done" a property of the work tree, not a claim in a
-    # chat message, so an unfinished issue cannot be presented as ready.
+    # --- TODO.jsonl gate ---
+    # TODO.jsonl is the coding agent's per-issue progress file: one JSON line
+    # per unfinished task, empty (or deleted) when the issue is resolved and
+    # ready for review. It gates the hand-off: while it has a line the PR stays
+    # a draft and no review is requested, and the agent gets another round to
+    # finish (and empty it). Once it has no line the PR is marked ready and the
+    # normal hand-off runs. This makes "the issue is done" a property of the
+    # work tree, not a claim in a chat message, so an unfinished issue cannot be
+    # presented as ready.
     if [[ "${want_draft}" == "true" ]]; then
       if [[ "${pr_draft}" != "true" ]]; then
-        echo "PR #${pr} is not a draft while TODO.md is present; converting it back to a draft." >&2
+        echo "PR #${pr} is not a draft while TODO.jsonl has unfinished tasks; converting it back to a draft." >&2
         gh_api_convert_pr_to_draft "${owner}" "${repo}" "${pr}" || echo "WARNING: could not convert PR #${pr} to a draft; continuing without requesting review." >&2
         pr_draft="true"
       fi
-      echo "TODO.md is still present; the issue is not finished. Keeping PR #${pr} a draft and continuing the work." >&2
+      echo "TODO.jsonl still has unfinished tasks; keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.md is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.md current, and delete it once the issue is fully resolved and the pull request is ready for review." "${base}"; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
@@ -1671,11 +1691,14 @@ drive() {
       continue
     fi
 
-    # TODO.md is gone: the issue is finished, so a draft can become a real PR.
-    # Only the driver lifts the draft, never the agent, and only once the file
-    # is actually deleted from the branch head.
+    # TODO.jsonl has no line: the issue is finished, so a draft can become a
+    # real PR. Only the driver lifts the draft, never the agent, and only once
+    # the branch head has no unfinished task line. An empty file is done but
+    # must not land on main, so remove it before the hand-off.
+    remove_empty_todo
+
     if [[ "${pr_draft}" == "true" ]]; then
-      echo "TODO.md is gone; marking PR #${pr} ready for review." >&2
+      echo "TODO.jsonl is clean; marking PR #${pr} ready for review." >&2
       gh_api_ready_pr "${owner}" "${repo}" "${pr}" || echo "WARNING: could not mark PR #${pr} ready for review; continuing." >&2
       pr_draft="false"
     fi
@@ -1868,9 +1891,9 @@ start_issue() {
   fi
 
   # Open the draft PR now, before implementation, so its number is available
-  # from the start. It stays a draft while TODO.md is present. PR creation can
-  # fail when the branch has no real diff yet (e.g. only the empty initial
-  # commit); recover the same way drive() does instead of dying.
+  # from the start. It stays a draft while TODO.jsonl has unfinished tasks. PR
+  # creation can fail when the branch has no real diff yet (e.g. only the empty
+  # initial commit); recover the same way drive() does instead of dying.
   local early_pr=""
   if ! early_pr="$(ensure_pr "${owner}" "${repo}" "" "${branch}" "${default_branch}" "${title}" "${body}" "${num}" "true")"; then
     echo "PR could not be created for ${branch} -> ${default_branch}; running an implementation round." >&2
@@ -1964,7 +1987,7 @@ resume_pr() {
   # waiting for the review phase to hand them over mid-run.
   COLLECTED_CONTEXT="$(collect_initial_context "${owner}" "${repo}" "${pr}")"
   # Pass the PR's current draft state so drive() knows whether closing the
-  # TODO.md gate has to lift the draft; an empty field (older payload) is not a
+  # TODO.jsonl gate has to lift the draft; an empty field (older payload) is not a
   # draft.
   [[ "${draft}" == "true" ]] || draft="false"
   drive "${owner}" "${repo}" "${pr}" "${head}" "${base}" "${title}" "${body}" "${closes}" "${draft}"

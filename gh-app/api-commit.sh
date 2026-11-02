@@ -31,6 +31,8 @@
 #   --delete path     Delete path from the branch.
 #   --dry-run         Print what would be committed without calling the API
 #                     (no token/network needed; usable for offline tests).
+#   --allow-empty     Create a commit with no file changes. Used only to open
+#                     a draft PR before the first real implementation commit.
 #
 # Attribution trailer (optional): when CONAHCNUJ_COMMIT_MODEL is a
 # non-empty single-line value, the commit body gains a
@@ -126,7 +128,7 @@ fi
 
 if [[ -z "${MESSAGE}" ]]; then
   echo "ERROR: -m/--message is required" >&2
-  echo "Usage: bash gh-app/api-commit.sh [-m <message>] [-a] [--delete path] [options]" >&2
+  echo "Usage: bash gh-app/api-commit.sh [-m <message>] [-a] [--delete path] [--allow-empty] [options]" >&2
   exit 1
 fi
 # No collection flag and no explicit deletions: commit staged changes like
