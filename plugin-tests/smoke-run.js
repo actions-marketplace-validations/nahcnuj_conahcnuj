@@ -61,6 +61,42 @@ async function main() {
       tools: {},
     })
   }
+  plugin["chat.message"] = async (input) => {
+    const model = input.model
+      ? {
+          providerID: input.model.providerID,
+          id: input.model.modelID,
+          variant: input.variant,
+        }
+      : undefined
+    await hooks["context"]({
+      sessionID: input.sessionID,
+      model,
+      system: [],
+      messages: [],
+      options: {},
+      agent: "a",
+      tools: {},
+    })
+  }
+  plugin["chat.params"] = async (input) => {
+    const model = input.model
+      ? {
+          providerID: input.model.providerID,
+          id: input.model.id,
+          variant: input.model.variant,
+        }
+      : undefined
+    await hooks["context"]({
+      sessionID: (input && input.sessionID) || "s",
+      model,
+      system: [],
+      messages: [],
+      options: {},
+      agent: "a",
+      tools: {},
+    })
+  }
   assert(plugin["shell.env"], "missing shell.env hook")
   assert(plugin["tool.execute.before"], "missing tool.execute.before hook")
 
