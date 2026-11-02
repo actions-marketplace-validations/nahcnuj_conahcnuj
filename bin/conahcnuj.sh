@@ -1170,6 +1170,9 @@ implement() {
   model_list="$(opencode_get_models)"
   if [[ -z "${model_list//[[:space:]]/}" ]]; then
     echo "ERROR: no models available from \`opencode models\` (is opencode installed and on PATH?); cannot implement." >&2
+    if [[ -n "${WSL_DISTRO_NAME:-}" ]] && ! opencode_command >/dev/null 2>&1; then
+      echo "HINT: running under WSL without a runnable opencode (interop may be unavailable); run the driver under Git Bash instead: \"C:/Program Files/Git/bin/bash.exe\" conahcnuj <number>" >&2
+    fi
     ENVIRONMENT_DOWN="1"
     echo "ERROR: every model round died on an environment error (provider unreachable, credentials rejected, or quota/billing exhausted; providers given up on:${dead_providers}${quota_providers}). Nothing the driver can do about that -- re-run it once its providers are usable again." >&2
     return 1

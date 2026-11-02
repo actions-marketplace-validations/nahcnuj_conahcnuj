@@ -53,6 +53,15 @@ OPENCODE_ROUND_QUOTA_EXHAUSTED="false"
 # other models stay in the pool.
 OPENCODE_ROUND_RATE_LIMITED="false"
 
+# Probe whether a candidate opencode binary actually runs. Under WSL with
+# interop unavailable a Windows binary is "found" (it sits on a /mnt path and
+# command -v / -f succeed) but executing it fails with "Exec format error", so
+# existence alone is not enough.
+opencode_runs() {
+  local c="${1}"
+  "${c}" --version >/dev/null 2>&1
+}
+
 # Resolve the opencode executable, even when it is installed in a location that
 # is not on PATH (e.g. ~/.opencode/bin under WSL, or Windows scoop under a
 # WSL mount). Prints the path and returns 0 on success, 1 when opencode cannot
@@ -60,7 +69,7 @@ OPENCODE_ROUND_RATE_LIMITED="false"
 opencode_command() {
   local c candidate
   for c in opencode opencode.exe opencode.cmd; do
-    if command -v "${c}" >/dev/null 2>&1; then
+    if command -v "${c}" >/dev/null 2>&1 && opencode_runs "${c}"; then
       printf '%s\n' "${c}"
       return 0
     fi
@@ -74,7 +83,7 @@ opencode_command() {
     /usr/local/bin/opencode \
     /usr/bin/opencode ; do
     for c in ${candidate}; do
-      if [[ -n "${c}" && -f "${c}" ]]; then
+      if [[ -n "${c}" && -f "${c}" ]] && opencode_runs "${c}"; then
         printf '%s\n' "${c}"
         return 0
       fi
@@ -91,12 +100,13 @@ opencode_command() {
     /mnt/[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe \
     /[a-zA-Z]/Users/*/AppData/Local/Programs/opencode/opencode.exe ; do
     for c in ${candidate}; do
-      if [[ -n "${c}" && -f "${c}" ]]; then
+      if [[ -n "${c}" && -f "${c}" ]] && opencode_runs "${c}"; then
         printf '%s\n' "${c}"
         return 0
       fi
     done
   done
+  echo "opencode: no runnable opencode found (under WSL this usually means interop is unavailable; run the driver under Git Bash instead)" >&2
   return 1
 }
 
