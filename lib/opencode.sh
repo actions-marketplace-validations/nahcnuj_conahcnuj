@@ -67,6 +67,10 @@ opencode_runs() {
 # WSL mount). Prints the path and returns 0 on success, 1 when opencode cannot
 # be found.
 opencode_command() {
+  if [[ "${OPENCODE_TEST_MODE:-0}" == "1" ]]; then
+    printf 'opencode\n'
+    return 0
+  fi
   local c candidate
   for c in opencode opencode.exe opencode.cmd; do
     if command -v "${c}" >/dev/null 2>&1 && opencode_runs "${c}"; then
@@ -681,4 +685,18 @@ opencode_run() {
     echo "opencode exceeded the remaining driver time budget; stopping this model." >&2
   fi
   return "${status}"
+}
+
+opencode_environment_ok() {
+  local oc models
+  if ! oc="$(opencode_command 2>/dev/null)"; then
+    echo "ERROR: opencode backend environment check failed: no runnable opencode found (is opencode installed and on PATH?)." >&2
+    return 1
+  fi
+  models="$(opencode_get_models 2>/dev/null || true)"
+  if [[ -z "${models//[[:space:]]/}" ]]; then
+    echo "ERROR: opencode backend environment check failed: no models available from \`opencode models\` (is opencode installed and on PATH?)." >&2
+    return 1
+  fi
+  return 0
 }
