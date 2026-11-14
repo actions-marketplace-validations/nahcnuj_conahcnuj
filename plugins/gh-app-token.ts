@@ -443,7 +443,10 @@ async function injectShellEnv(
 ): Promise<void> {
   const token = await getInstallationToken().catch(() => null)
 
-  // GH_TOKEN: lets gh CLI / GitHub API calls run as the App.
+  // GH_TOKEN: lets gh CLI / GitHub API calls run as the App. Only set
+  // when an installation token is available; never copy an ambient
+  // GITHUB_TOKEN (avoids disclosing that secret to the model via tool
+  // output).
   if (token) {
     env.GH_TOKEN = token
   }
@@ -619,7 +622,9 @@ function redirectToVerifiedCommit(
   args: unknown,
   botName: string
 ): void {
-  if (tool !== "bash") {
+  // opencode v1 names this tool "bash"; v2 (the shipping CLI) renamed it
+  // to "shell". Accept both so the verified-commit redirect works on either.
+  if (tool !== "bash" && tool !== "shell") {
     return
   }
   const cmd = parseBashCommand(args)
