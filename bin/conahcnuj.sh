@@ -350,6 +350,16 @@ verify_app_repo_access() {
   esac
 }
 
+verify_opencode_environment() {
+  if ! opencode_environment_ok; then
+    echo "       The coding-agent backend (opencode) is not usable, so there is" >&2
+    echo "       nothing for the driver to run. Install or repair opencode and" >&2
+    echo "       confirm \`opencode models\` lists at least one model, then re-run." >&2
+    exit 1
+  fi
+  return 0
+}
+
 # True when the overall time budget is exhausted. Split out from check_timeout
 # so drive() can word the exhaustion differently once the PR is with the
 # reviewer: running out of time while waiting for a human is not a driver
@@ -2042,6 +2052,8 @@ main() {
     echo "Unknown option: ${input}" >&2
     exit 1
   fi
+
+  verify_opencode_environment
 
   repo_info="$(repo_detect)"
   owner="${repo_info%%/*}"
