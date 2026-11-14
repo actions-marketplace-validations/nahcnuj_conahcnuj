@@ -397,7 +397,14 @@ workdir_changed() {
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
 todo_present() {
-  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]]
+  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]] || return 1
+  # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
+  # work has landed; once the branch carries a real change it is stale and no
+  # longer blocks the hand-off (the agent may replace it with its own progress).
+  if [[ -n "${INITIAL_COMMIT_OID:-}" ]] && [[ "$(git rev-parse HEAD 2>/dev/null)" != "${INITIAL_COMMIT_OID}" ]] && [[ -n "${INITIAL_TODO_CONTENT:-}" ]] && [[ "$(cat TODO.jsonl 2>/dev/null)" == "${INITIAL_TODO_CONTENT}" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 # Resolve the base ref to compare the feature branch against. Shared by the
@@ -563,7 +570,13 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  [[ -s "TODO.jsonl" ]] && return 0
+  if [[ -s "TODO.jsonl" ]]; then
+    # Only the initial placeholder may be removed here; an agent-managed
+    # (non-empty) progress file is left for the agent to empty.
+    if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then
+      return 0
+    fi
+  fi
   echo "Removing the empty TODO.jsonl so it never reaches main." >&2
   rm -f TODO.jsonl
   git add -A -- TODO.jsonl >/dev/null 2>&1 || true
@@ -1894,15 +1907,16 @@ start_issue() {
   # top of the base counts here (even an initial one left by an interrupted
   # earlier run), so a second initial commit is never stacked on top of one.
   if [[ "$(branch_commit_count "${default_oid}" "${default_branch}")" == "0" ]]; then
-    echo "Creating an empty initial commit so a draft PR can be opened early." >&2
     echo "Creating an initial commit with TODO.jsonl so a draft PR can be opened early." >&2
-    printf '%s\n' "Implement issue #${num}: ${title}" > TODO.jsonl
+    printf '{"task":"Implement issue #%s: %s"}\\n' "${num}" "${title}" > TODO.jsonl
+    INITIAL_TODO_CONTENT="$(cat TODO.jsonl)"
     git add -A -- TODO.jsonl >/dev/null 2>&1 || true
     if [[ "${TEST_MODE}" == "1" ]]; then
       git commit -q -m "Initial commit" 2>/dev/null || true
     else
       bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" >/dev/null 2>&1 || echo "WARNING: could not create the initial commit; continuing." >&2
     fi
+    INITIAL_COMMIT_OID="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
 
   # Open the draft PR now, before implementation, so its number is available
