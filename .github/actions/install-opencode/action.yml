@@ -8,9 +8,8 @@ description: >
 
 inputs:
   version:
-    description: 'opencode version to install (e.g. 2.2.5)'
-    required: true
-    default: 2.2.5
+    description: 'opencode version to install (if omit, use the latest one)'
+    required: false
 
 runs:
   using: composite
