@@ -397,7 +397,14 @@ workdir_changed() {
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
 todo_present() {
-  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]]
+  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]] || return 1
+  # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
+  # work has landed; once the branch carries a real change it is stale and no
+  # longer blocks the hand-off (the agent may replace it with its own progress).
+  if [[ -n "${INITIAL_COMMIT_OID:-}" ]] && [[ "$(git rev-parse HEAD 2>/dev/null)" != "${INITIAL_COMMIT_OID}" ]] && [[ -n "${INITIAL_TODO_CONTENT:-}" ]] && [[ "$(cat TODO.jsonl 2>/dev/null)" == "${INITIAL_TODO_CONTENT}" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 # Resolve the base ref to compare the feature branch against. Shared by the
@@ -438,11 +445,12 @@ branch_has_commits() {
     return 1
   fi
   count="$(git rev-list --count "${ref}..HEAD" 2>/dev/null || printf '0')"
-  # An empty initial commit (no tree change) does not count as "implemented":
-  # it exists only to let a draft PR be opened early, and must not make the
-  # driver skip the implementation round.
+  # An initial commit that only adds the TODO.jsonl progress file (no real
+  # implementation) does not count as "implemented": it exists only to let a
+  # draft PR be opened early, and must not make the driver skip the
+  # implementation round.
   if [[ "${count}" -gt 0 ]]; then
-    if git diff --quiet "${ref}" HEAD 2>/dev/null; then
+    if ! git diff --name-only "${ref}" HEAD 2>/dev/null | grep -vE '^TODO(\..*)?$' | grep -q .; then
       return 1
     fi
     return 0
@@ -562,7 +570,13 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  [[ -s "TODO.jsonl" ]] && return 0
+  if [[ -s "TODO.jsonl" ]]; then
+    # Only the initial placeholder may be removed here; an agent-managed
+    # (non-empty) progress file is left for the agent to empty.
+    if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then
+      return 0
+    fi
+  fi
   echo "Removing the empty TODO.jsonl so it never reaches main." >&2
   rm -f TODO.jsonl
   git add -A -- TODO.jsonl >/dev/null 2>&1 || true
@@ -1887,17 +1901,22 @@ start_issue() {
   # Open a draft PR early so its number is stable for the whole run (the
   # concurrency group and review/resume triggers can key on it instead of the
   # issue number). That requires at least one commit on the branch, so create
-  # an empty initial commit first: it carries no file changes and only exists
-  # to let the PR be opened before the real implementation lands. Any commit on
-  # top of the base counts here (even an empty one left by an interrupted
-  # earlier run), so a second empty commit is never stacked on top of one.
+  # an initial commit carrying a TODO.jsonl progress file (instead of an empty
+  # commit, which is disallowed) first: it carries the task and only exists to
+  # let the PR be opened before the real implementation lands. Any commit on
+  # top of the base counts here (even an initial one left by an interrupted
+  # earlier run), so a second initial commit is never stacked on top of one.
   if [[ "$(branch_commit_count "${default_oid}" "${default_branch}")" == "0" ]]; then
-    echo "Creating an empty initial commit so a draft PR can be opened early." >&2
+    echo "Creating an initial commit with TODO.jsonl so a draft PR can be opened early." >&2
+    printf '{"task":"Implement issue #%s: %s"}\\n' "${num}" "${title}" > TODO.jsonl
+    INITIAL_TODO_CONTENT="$(cat TODO.jsonl)"
+    git add -A -- TODO.jsonl >/dev/null 2>&1 || true
     if [[ "${TEST_MODE}" == "1" ]]; then
-      git commit --allow-empty -q -m "Initial commit" 2>/dev/null || true
+      git commit -q -m "Initial commit" 2>/dev/null || true
     else
-      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" --allow-empty >/dev/null 2>&1 || echo "WARNING: could not create the empty initial commit; continuing." >&2
+      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" >/dev/null 2>&1 || echo "WARNING: could not create the initial commit; continuing." >&2
     fi
+    INITIAL_COMMIT_OID="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
 
   # Open the draft PR now, before implementation, so its number is available
