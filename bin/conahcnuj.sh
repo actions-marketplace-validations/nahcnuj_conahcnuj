@@ -438,11 +438,12 @@ branch_has_commits() {
     return 1
   fi
   count="$(git rev-list --count "${ref}..HEAD" 2>/dev/null || printf '0')"
-  # An empty initial commit (no tree change) does not count as "implemented":
-  # it exists only to let a draft PR be opened early, and must not make the
-  # driver skip the implementation round.
+  # An initial commit that only adds the TODO.jsonl progress file (no real
+  # implementation) does not count as "implemented": it exists only to let a
+  # draft PR be opened early, and must not make the driver skip the
+  # implementation round.
   if [[ "${count}" -gt 0 ]]; then
-    if git diff --quiet "${ref}" HEAD 2>/dev/null; then
+    if ! git diff --name-only "${ref}" HEAD 2>/dev/null | grep -vE '^TODO(\..*)?$' | grep -q .; then
       return 1
     fi
     return 0
@@ -1887,16 +1888,20 @@ start_issue() {
   # Open a draft PR early so its number is stable for the whole run (the
   # concurrency group and review/resume triggers can key on it instead of the
   # issue number). That requires at least one commit on the branch, so create
-  # an empty initial commit first: it carries no file changes and only exists
-  # to let the PR be opened before the real implementation lands. Any commit on
-  # top of the base counts here (even an empty one left by an interrupted
-  # earlier run), so a second empty commit is never stacked on top of one.
+  # an initial commit carrying a TODO.jsonl progress file (instead of an empty
+  # commit, which is disallowed) first: it carries the task and only exists to
+  # let the PR be opened before the real implementation lands. Any commit on
+  # top of the base counts here (even an initial one left by an interrupted
+  # earlier run), so a second initial commit is never stacked on top of one.
   if [[ "$(branch_commit_count "${default_oid}" "${default_branch}")" == "0" ]]; then
     echo "Creating an empty initial commit so a draft PR can be opened early." >&2
+    echo "Creating an initial commit with TODO.jsonl so a draft PR can be opened early." >&2
+    printf '%s\n' "Implement issue #${num}: ${title}" > TODO
+    git add -A -- TODO >/dev/null 2>&1 || true
     if [[ "${TEST_MODE}" == "1" ]]; then
-      git commit --allow-empty -q -m "Initial commit" 2>/dev/null || true
+      git commit -q -m "Initial commit" 2>/dev/null || true
     else
-      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" --allow-empty >/dev/null 2>&1 || echo "WARNING: could not create the empty initial commit; continuing." >&2
+      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" >/dev/null 2>&1 || echo "WARNING: could not create the initial commit; continuing." >&2
     fi
   fi
 
