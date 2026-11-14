@@ -1896,8 +1896,8 @@ start_issue() {
   if [[ "$(branch_commit_count "${default_oid}" "${default_branch}")" == "0" ]]; then
     echo "Creating an empty initial commit so a draft PR can be opened early." >&2
     echo "Creating an initial commit with TODO.jsonl so a draft PR can be opened early." >&2
-    printf '%s\n' "Implement issue #${num}: ${title}" > TODO
-    git add -A -- TODO >/dev/null 2>&1 || true
+    printf '%s\n' "Implement issue #${num}: ${title}" > TODO.jsonl
+    git add -A -- TODO.jsonl >/dev/null 2>&1 || true
     if [[ "${TEST_MODE}" == "1" ]]; then
       git commit -q -m "Initial commit" 2>/dev/null || true
     else
