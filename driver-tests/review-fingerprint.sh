@@ -51,4 +51,12 @@ f4="$(gh_api_review_fingerprint "${THREAD_FEEDBACK_AND_BOT_REPLY}")"
 [[ "${f3}" == "${f4}" ]] || fail "the bot's own reply must not change the fingerprint"
 echo "bot reply in a thread -> fingerprint unchanged: passed"
 
+# Resolving a thread is not new reviewer input: the same comments in a resolved
+# thread must fingerprint the same. Otherwise marking a conversation resolved
+# fires a feedback round for a conversation the agent has already handled.
+THREAD_RESOLVED='{"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":true,"comments":{"nodes":[{"databaseId":321,"body":"Inline note","author":{"login":"reviewer"}}]}}]}}}}'
+f5="$(gh_api_review_fingerprint "${THREAD_RESOLVED}")"
+[[ "${f3}" == "${f5}" ]] || fail "resolving a thread must not change the fingerprint"
+echo "resolving a thread -> fingerprint unchanged: passed"
+
 echo "All review-fingerprint tests passed"
