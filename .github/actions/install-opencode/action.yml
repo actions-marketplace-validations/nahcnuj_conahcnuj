@@ -17,6 +17,10 @@ runs:
     - name: Install opencode
       shell: bash
       run: |
-        curl -fsSL https://opencode.ai/v2/install | bash -s -- --version "${{ inputs.version }}"
+        if [ -n "${{ inputs.version }}" ]; then
+          curl -fsSL https://opencode.ai/v2/install | bash -s -- --version "${{ inputs.version }}"
+        else
+          curl -fsSL https://opencode.ai/v2/install | bash
+        fi
         echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"

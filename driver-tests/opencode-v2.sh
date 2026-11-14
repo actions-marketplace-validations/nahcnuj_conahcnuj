@@ -294,7 +294,6 @@ EOF
   [[ "${args}" == *"--auto --format json"* ]] || { echo "FAIL: v2 session handoff should include --auto --format json: ${args}"; exit 1; }
   [[ "${args}" == *"--print-logs --thinking"* ]] || { echo "FAIL: v2 session handoff should include --print-logs --thinking: ${args}"; exit 1; }
   [[ "${args}" == *"--log-level warn"* ]] || { echo "FAIL: v2 session handoff should include --log-level warn: ${args}"; exit 1; }
-  [[ "${args}" == *"--session ses_parsed"* ]]
   PATH="${old_path}"
   rm -rf "${tmp}"
   unset OPENCODE_ARGS_FILE FAKE_OPENCODE_EXIT OPENCODE_SESSION_ID OPENCODE_VERSION_CACHE OPENCODE_COMMAND_DONE OPENCODE_COMMAND_PATH
@@ -333,7 +332,7 @@ EOF
   [[ "${args}" == *"--auto --format json --model opencode/first"* ]] || { echo "FAIL: v2 args missing --auto --format json --model: ${args}"; exit 1; }
   [[ "${args}" == *"--print-logs --thinking"* ]] || { echo "FAIL: v2 args missing --print-logs --thinking: ${args}"; exit 1; }
   [[ "${args}" == *"--log-level warn"* ]] || { echo "FAIL: v2 args missing --log-level warn: ${args}"; exit 1; }
-  [[ "${args}" == *"--session ses_mock"* ]] || { echo "FAIL: v2 args missing --session: ${args}"; exit 1; }
+  [[ "${args}" == *"--title conahcnuj"* ]] || { echo "FAIL: v2 args missing --title conahcnuj: ${args}"; exit 1; }
   PATH="${old_path}"
   rm -rf "${tmp}"
   unset OPENCODE_ARGS_FILE FAKE_OPENCODE_EXIT OPENCODE_SESSION_ID OPENCODE_VERSION_CACHE

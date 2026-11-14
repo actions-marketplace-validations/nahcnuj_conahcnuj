@@ -307,9 +307,6 @@ jobs:
 
       - name: Install opencode
         uses: ./.github/actions/install-opencode
-        with:
-          version: 2.2.5
-
       - name: Install plugin via install.ps1
         shell: pwsh
         run: |
