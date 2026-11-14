@@ -622,7 +622,9 @@ function redirectToVerifiedCommit(
   args: unknown,
   botName: string
 ): void {
-  if (tool !== "bash") {
+  // opencode v1 names this tool "bash"; v2 (the shipping CLI) renamed it
+  // to "shell". Accept both so the verified-commit redirect works on either.
+  if (tool !== "bash" && tool !== "shell") {
     return
   }
   const cmd = parseBashCommand(args)

@@ -35,8 +35,8 @@ run_e2e_model() {
   # real opencode model run, or any network access. Controlled by
   # CONAHCNUJ_E2E_MOCK_MODEL.
   if [ -n "${CONAHCNUJ_E2E_MOCK_MODEL:-}" ] && [ "${model}" = "${CONAHCNUJ_E2E_MOCK_MODEL}" ]; then
-    printf '{"type":"tool_use","part":{"tool":"bash","state":{"status":"error","metadata":{"exit":1},"input":{"command":"git commit -m \"e2e test\""}}}\n' > "${slot_dir}/out.jsonl"
-    printf '{"type":"tool_use","part":{"tool":"bash","state":{"status":"success","metadata":{"exit":0},"input":{"command":"git vc -m \"e2e test\""}}}\n' >> "${slot_dir}/out.jsonl"
+    printf '{"type":"tool_use","part":{"tool":"shell","state":{"status":"error","metadata":{"exit":1},"input":{"command":"git commit -m \"e2e test\""}}}\n' > "${slot_dir}/out.jsonl"
+    printf '{"type":"tool_use","part":{"tool":"shell","state":{"status":"success","metadata":{"exit":0},"input":{"command":"git vc -m \"e2e test\""}}}\n' >> "${slot_dir}/out.jsonl"
     echo 0 > "${E2E_DIR}/results/r${round}-${slot}.rc"
     : > "${E2E_DIR}/results/r${round}-${slot}.output"
     echo ok > "${status_file}"
@@ -50,7 +50,7 @@ run_e2e_model() {
     OPENCODE_CONFIG_DIR="${slot_dir}/inst" \
       OPENCODE_DISABLE_AUTOUPDATE=true \
       OPENCODE_DISABLE_MODELS_FETCH=true \
-      timeout "${E2E_ATTEMPT_TIMEOUT}" opencode run --auto --format json --model "${model}" --title e2e \
+      timeout "${E2E_ATTEMPT_TIMEOUT}" opencode run --standalone --auto --format json --model "${model}" --title e2e \
       "Commit the staged changes with message e2e test. Execute the necessary commands." \
       > "${slot_dir}/out.jsonl" 2> "${slot_dir}/err.log"
   ) &
@@ -82,7 +82,7 @@ run_e2e_model() {
   # (exit 1 is expected). Calls with no exit (null) never concluded
   # and are benign: the model often interrupts a long command, and a
   # hook-blocked `git commit` likewise never executes.
-  BAD="$(echo "${JSONL}" | jq -c 'select(.type=="tool_use" and .part.tool=="bash") | {cmd: .part.state.input.command, exit: .part.state.metadata.exit} | select(.exit != null and .exit != 0 and .exit != 1 and .exit != 2) | [.cmd, .exit] | @tsv' || true)"
+  BAD="$(echo "${JSONL}" | jq -c 'select(.type=="tool_use" and (.part.tool=="bash" or .part.tool=="shell")) | {cmd: .part.state.input.command, exit: .part.state.metadata.exit} | select(.exit != null and .exit != 0 and .exit != 1 and .exit != 2) | [.cmd, .exit] | @tsv' || true)"
 
   # Record the raw exit status and whether this attempt emitted anything.
   # The orchestrator needs both to tell a regression from a service
