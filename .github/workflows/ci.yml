@@ -180,7 +180,7 @@ jobs:
           }
           Write-Host "all files deployed OK"
 
-  mock-test-v1:
+  mock-test:
     name: Mock tests v1 (no secrets / no network)
     runs-on: ${{ matrix.os }}
     strategy:
