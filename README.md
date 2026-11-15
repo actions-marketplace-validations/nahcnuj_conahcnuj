@@ -17,6 +17,8 @@
 ## Workflows
 
 reusable workflow の呼び出し方・入力は [docs/workflows.md](docs/workflows.md) を参照。
+利用側リポジトリへコピーして使うテンプレートは `templates/` および
+`.github/workflow-templates/` にあります（`auto-drive.yml` / `auto-merge.yml`）。
 
 - **issue の自動対応** (`issue-driver.yml`): issue の open/reopen などをトリガーに
   ドライバを実行し、PR 作成・レビュー依頼まで進める。
