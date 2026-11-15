@@ -189,9 +189,10 @@ jobs:
 - `auto-merge.yml`: `owner-approved-auto-merge.yml` を呼び出し、owner の approve を
   受けてマージする
 
-`secrets: inherit` は organization / fork を跨ぐと解決されない事例が複数あるため、
-テンプレートでは secret を**個別に**渡します（`APP_ID` / `INSTALLATION_ID` /
-`PRIVATE_KEY`）。`APP_SLUG` は secret にせず、`issue-driver.yml` 側で解決します。
+`secrets: inherit` は caller と同じ organization / enterprise 内の reusable
+workflow でしか使えないため、テンプレートでは secret を**個別に**渡します
+（`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`）。`APP_SLUG` は secret にせず、
+`issue-driver.yml` 側で解決します。
 
 
 ## GitHub Pages（`docs/` の配信）
