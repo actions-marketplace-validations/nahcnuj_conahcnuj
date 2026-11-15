@@ -307,8 +307,27 @@ function emit(tag, raw,  v, n, a, i, ends_nl) {
   # show what it rewrote.
   emit("diff", field(field(s, "metadata", after), "diff"))
   emit("toolerror", field(s, "error", after))
-  emit("errmsg", field(field(e, "data"), "message"))
-  emit("errname", field(e, "name"))
+  # opencode's real (v2.x) error shape is {"type":"...","message":"..."}
+  # rather than the {"name":...,"data":{"message":...}} shape older versions
+  # (and the test fixtures) use. Fall back through both so a session-level
+  # error never collapses to "unknown error" and hides its actual cause.
+  _e_is_obj = (substr(e, 1, 1) == "{")
+  _msg = ""
+  if (_e_is_obj) {
+    _msg = field(field(e, "data"), "message")
+    if (_msg == "") _msg = field(e, "message")
+  } else {
+    _msg = e
+  }
+  if (_msg == "") _msg = field($0, "message")
+  emit("errmsg", _msg)
+  _name = ""
+  if (_e_is_obj) {
+    _name = field(e, "name")
+    if (_name == "") _name = field(e, "type")
+  }
+  if (_name == "") _name = field($0, "name")
+  emit("errname", _name)
   emit("text", field(p, "text"))
   # opencode puts the part id at the top level for tool_use events and
   # inside part for text/reasoning events, so read both.
