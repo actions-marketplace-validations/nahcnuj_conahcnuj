@@ -1615,6 +1615,33 @@ log_review_handoff() {
   fi
 }
 
+# Resolve the human reviewer a run hands a PR to. An organisation cannot be
+# assigned as a reviewer ("Reviews may only be requested from collaborators"),
+# so when the repository owner is not itself an admin collaborator we pick the
+# first human (non-bot) admin instead, falling back to the owner when no admin
+# can be resolved. CONAHCNUJ_REVIEWER overrides the choice outright.
+# Args: owner repo  (prints the chosen login on stdout)
+resolve_reviewer() {
+  local owner="${1}" repo="${2}" admins candidate
+  if [[ -n "${CONAHCNUJ_REVIEWER:-}" ]]; then
+    printf '%s' "${CONAHCNUJ_REVIEWER}"
+    return 0
+  fi
+  admins="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null || true)"
+  if printf '%s\n' "${admins}" | grep -Fxq "${owner}"; then
+    printf '%s' "${owner}"
+    return 0
+  fi
+  candidate="$(printf '%s\n' "${admins}" | grep -v '\[bot\]$' | sed '/^$/d' | head -n 1 || true)"
+  if [[ -z "${candidate}" ]]; then
+    candidate="$(printf '%s\n' "${admins}" | sed '/^$/d' | head -n 1 || true)"
+  fi
+  if [[ -z "${candidate}" ]]; then
+    candidate="${owner}"
+  fi
+  printf '%s' "${candidate}"
+}
+
 # --- review fingerprint -----------------------------------------------------
 
 # Main state machine. Handles both the fresh-issue path and the resume path.
@@ -2109,17 +2136,7 @@ main() {
   # overrides the choice outright.
   REVIEWER="${CONAHCNUJ_REVIEWER:-}"
   if [[ -z "${REVIEWER}" ]]; then
-    # Prefer the owner when it is itself an admin collaborator (the common
-    # case for user-owned repositories, where requesting review from the owner
-    # works); otherwise take the first admin (organisation-owned repositories,
-    # whose owner is not a usable reviewer).
-    local admins
-    admins="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null || true)"
-    if printf '%s\n' "${admins}" | grep -Fxq "${owner}"; then
-      REVIEWER="${owner}"
-    else
-      REVIEWER="$(printf '%s\n' "${admins}" | sed '/^$/d' | head -n 1 || true)"
-    fi
+    REVIEWER="$(resolve_reviewer "${owner}" "${repo}")"
   fi
   if [[ -z "${REVIEWER}" ]]; then
     REVIEWER="${owner}"

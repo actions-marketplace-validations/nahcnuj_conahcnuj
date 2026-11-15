@@ -59,12 +59,14 @@ RC=0
   GITHUB_ACTIONS=true CONAHCNUJ_MAX_SECONDS=10 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj reviewer-override run log -----"
-cat "${LOG}"
-echo "----------------------------------------------"
+# Keep the run log silent on success; print it only when the run failed, so a
+# failure can be diagnosed without flooding successful CI output.
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj reviewer-override run log -----"
+  cat "${LOG}"
+  echo "----------------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 grep -q "Assigned alice as reviewer on PR #123" "${LOG}" || { echo "FAIL: the named reviewer was not assigned"; exit 1; }
 grep -q "Review requested on PR #123 (reviewer: alice)" "${LOG}" || { echo "FAIL: the PR was not handed to the named reviewer"; exit 1; }
-
-echo "conahcnuj reviewer-override passed"
