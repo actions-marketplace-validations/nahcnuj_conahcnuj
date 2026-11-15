@@ -313,7 +313,7 @@ fi
 # Installation token (cached by get-token.sh). The script is run by bash, so
 # just invoke it directly; BASH_EXE is only needed when spawning bash from
 # outside bash (e.g. PowerShell).
-TOKEN="$(bash "${DIR}/get-token.sh")"
+TOKEN="$(bash "${DIR}/get-token.sh" --refresh)"
 API="${API_BASE}/repos/${REPO}"
 
 # 2) Current HEAD sha of the branch (|| true: a missing branch must fall
