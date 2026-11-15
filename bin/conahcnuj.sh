@@ -1541,13 +1541,15 @@ constraint_fix_context() {
 # driver failure. Args: owner repo pr
 request_review_from_owner() {
   local owner="${1}" repo="${2}" pr="${3}" requested="" read_state="answered"
+  local reviewer="${REVIEWER:-${owner}}"
   REVIEW_HANDOFF_CONFIRMED="true"
-  if request_review_with_retry "${owner}" "${repo}" "${pr}" "${owner}"; then
-    echo "Assigned ${owner} as reviewer on PR #${pr}." >&2
+  if request_review_with_retry "${owner}" "${repo}" "${pr}" "${reviewer}"; then
+    echo "Assigned ${reviewer} as reviewer on PR #${pr}." >&2
     return 0
   fi
   if request_review_with_retry "${owner}" "${repo}" "${pr}"; then
-    echo "Review requested on PR #${pr} (${owner} is not assignable; asked for review instead)." >&2
+    echo "Review requested on PR #${pr} (${reviewer} is not assignable; asked for review instead)." >&2
+    REVIEW_HANDOFF_CONFIRMED="false"
     return 0
   fi
   # Reading the PR back is the only remaining evidence. Its answer has to be
@@ -1817,7 +1819,7 @@ ${summary}"
         continue
       fi
       request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-      log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+      log_review_handoff "${owner}" "${repo}" "${pr}" "${REVIEWER:-${owner}}"
       if [[ "${CI_MODE}" == "true" ]]; then
         echo "CI mode: review requested; ending the run." >&2
         exit 0
@@ -1881,7 +1883,7 @@ ${summary}"
     # The constraints pass, so the PR is ready for a human: hand it over. The
     # run does not end here; the next loop iteration waits for the verdict.
     request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-    log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+    log_review_handoff "${owner}" "${repo}" "${pr}" "${REVIEWER:-${owner}}"
     if [[ "${CI_MODE}" == "true" ]]; then
       echo "CI mode: review requested; ending the run." >&2
       exit 0
@@ -2098,6 +2100,21 @@ main() {
   repo="${repo_info#*/}"
   BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
+
+  # The reviewer a run hands the PR to is not always the repository owner: an
+  # organisation cannot be assigned as a reviewer ("Reviews may only be requested
+  # from collaborators"), and the human who owns the work is one of its admins.
+  # Resolve an admin collaborator when the owner itself is not usable, falling
+  # back to the owner for ordinary user-owned repositories. CONAHCNUJ_REVIEWER
+  # overrides the choice outright.
+  REVIEWER="${CONAHCNUJ_REVIEWER:-}"
+  if [[ -z "${REVIEWER}" && "${TEST_MODE:-0}" != "1" ]]; then
+    REVIEWER="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null | head -n 1 || true)"
+  fi
+  if [[ -z "${REVIEWER}" ]]; then
+    REVIEWER="${owner}"
+  fi
+  export REVIEWER
 
   # A target/origin mismatch (a stale workflow pin or a hand-rolled
   # CONAHCNUJ_REPO override) and a target the App installation cannot reach are
