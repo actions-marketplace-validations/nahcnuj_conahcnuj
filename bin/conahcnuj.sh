@@ -389,9 +389,12 @@ workdir_changed() {
 }
 
 # Whether the per-issue progress file TODO.jsonl still has outstanding tasks.
-# The coding agent creates it (one task per line) when it starts an issue,
-# removes lines as tasks are completed and leaves it empty (no line) once the
-# issue is resolved and ready to hand over (AGENTS.md tells it so). Its
+# The driver owns the file's lifecycle: it creates the initial placeholder
+# (as the commit anchor for the early draft PR), keys the PR's draft state on
+# it, removes the empty file before hand-off and requests review. The coding
+# agent only keeps the task lines current -- it adds/removes entries and
+# empties the file (removes every line) once the issue is resolved, but does
+# not create or delete the file itself. Its
 # lifetime is the issue's, so the driver keys the PR's draft state on it: while
 # the file has any line the PR is a draft and is never handed to the reviewer,
 # which is what keeps an unfinished issue from being presented as a non-draft
@@ -401,7 +404,9 @@ workdir_changed() {
 # or whitespace-only progress file is "done" and is removed before hand-off.
 todo_task_count() {
   [[ -f "TODO.jsonl" ]] || { printf '0'; return 0; }
-  grep -c '[^[:space:]]' "TODO.jsonl" 2>/dev/null || printf '0'
+  local count
+  count="$(grep -c '[^[:space:]]' "TODO.jsonl" 2>/dev/null)" || count=0
+  printf '%s' "${count}"
 }
 
 todo_present() {
@@ -1709,7 +1714,7 @@ drive() {
       fi
       echo "TODO.jsonl still has unfinished tasks; keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line, but do not delete the file; the driver removes the empty file) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
