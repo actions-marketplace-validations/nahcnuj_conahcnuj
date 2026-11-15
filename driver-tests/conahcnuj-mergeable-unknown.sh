@@ -45,6 +45,7 @@ git -C "${WORK}" commit -qm init
 # runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"A written description","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"OPEN","title":"Fix something","body":"A written description","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"REVIEW_REQUIRED","headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}

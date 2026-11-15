@@ -40,6 +40,7 @@ git -C "${WORK}" commit -qm init
 #   keeps polling and ends on the approval.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 21, "title": "agent answers with a message only", "body": "The change itself is the deliverable", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}

@@ -34,6 +34,7 @@ git -C "${WORK}" commit -qm init
 # request_review call (the `{}` after the successful conditions poll).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "CI mode", "body": "End at the review request.", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}

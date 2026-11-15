@@ -85,6 +85,7 @@ git -C "${WORK}" commit -qm init
 #   fetch_reviews (APPROVED -> the run ends on the approval, not the request).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "TODO.jsonl progress", "body": "# x\n", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}

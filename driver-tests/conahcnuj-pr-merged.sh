@@ -39,6 +39,7 @@ git -C "${WORK}" commit -qm init
 #   falls through to the poll that recognises the merge.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"OPEN","title":"Fix something","body":"# 背景\nPR が merge されたあとにもドライバがループしないこと。","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","reviewDecision":"APPROVED","headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}

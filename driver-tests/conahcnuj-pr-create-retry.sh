@@ -42,6 +42,7 @@ OID="$(git -C "${WORK}" rev-parse HEAD)"
 #   The APPROVED read exits as ready to merge before any constraints poll (#219).
 TAPE="${ROOT}/tape.txt"
 sed "s/OID_PLACEHOLDER/${OID}/" > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 18, "title": "fix racing driver", "body": "PR creation must be retried, not fatal", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"OID_PLACEHOLDER"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}

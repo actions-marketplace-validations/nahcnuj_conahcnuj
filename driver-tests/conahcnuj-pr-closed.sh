@@ -21,6 +21,7 @@ git -C "${WORK}" commit -qm init
 
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'TAPEEOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"CLOSED","title":"Fix something","body":"","isDraft":false,"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","reviewDecision":null,"headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}}
 TAPEEOF

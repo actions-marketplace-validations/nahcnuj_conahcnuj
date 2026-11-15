@@ -1290,18 +1290,18 @@ implement() {
       if workdir_changed "${workdir}"; then
         tree_changed="true"
       fi
-      if [[ "${committed}" == "true" && "${run_failed}" != "true" ]]; then
+      if [[ "${committed}" == "true" ]]; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} completed the work and committed it." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" && "${run_failed}" != "true" ]]; then
+      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
         echo "Model ${model} completed the work." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${wrote_message}" == "true" && "${run_failed}" != "true" ]] && branch_has_commits "" "${base_branch}"; then
+      if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
         OPENCODE_LAST_MODEL="${model}"
@@ -2108,8 +2108,18 @@ main() {
   # back to the owner for ordinary user-owned repositories. CONAHCNUJ_REVIEWER
   # overrides the choice outright.
   REVIEWER="${CONAHCNUJ_REVIEWER:-}"
-  if [[ -z "${REVIEWER}" && "${TEST_MODE:-0}" != "1" ]]; then
-    REVIEWER="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null | head -n 1 || true)"
+  if [[ -z "${REVIEWER}" ]]; then
+    # Prefer the owner when it is itself an admin collaborator (the common
+    # case for user-owned repositories, where requesting review from the owner
+    # works); otherwise take the first admin (organisation-owned repositories,
+    # whose owner is not a usable reviewer).
+    local admins
+    admins="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null || true)"
+    if printf '%s\n' "${admins}" | grep -Fxq "${owner}"; then
+      REVIEWER="${owner}"
+    else
+      REVIEWER="$(printf '%s\n' "${admins}" | sed '/^$/d' | head -n 1 || true)"
+    fi
   fi
   if [[ -z "${REVIEWER}" ]]; then
     REVIEWER="${owner}"
