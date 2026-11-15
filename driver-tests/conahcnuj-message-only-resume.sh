@@ -67,7 +67,7 @@ export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/talker"
 # The talker answers with only a .commit-msg; the branch is already implemented.
 export MOCK_OPENCODE_MESSAGE_ONLY="opencode/talker"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
@@ -95,7 +95,7 @@ grep -q "Handing off session" "${LOG}" && { echo "FAIL: the session was handed t
 grep -q "produced no complete work" "${LOG}" && { echo "FAIL: the round was reported as an ordinary empty round"; exit 1; }
 
 # The PR is still handed back to the reviewer.
-grep -q "Review requested on PR #15 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the PR was not handed back to the owner as reviewer"; exit 1; }
+grep -q "Review requested on PR #15 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the PR was not handed back to the owner as reviewer"; exit 1; }
 grep -q "filing a bug report issue" "${LOG}" && { echo "FAIL: an accepted message-only round must not file a bug report"; exit 1; }
 
 # The implemented branch is left as it was: init + implementation, no new

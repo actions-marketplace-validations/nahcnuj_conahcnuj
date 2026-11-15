@@ -57,7 +57,7 @@ cat > "${TAPE_OK}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 # Mocked response tape for a run that ends in a bug report:
@@ -76,7 +76,7 @@ EOF
 export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG1="${ROOT}/run1.log"
 RC1=0
@@ -100,7 +100,7 @@ grep -q "Skipping" "${LOG1}" && { echo "FAIL: the provider was skipped on a rate
 grep -q "Handing off session ses_mock from rlx/a to rlx/b" "${LOG1}" || { echo "FAIL: the session was not handed to the next model"; exit 1; }
 grep -q "Model rlx/b completed the work" "${LOG1}" || { echo "FAIL: the second model was not adopted"; exit 1; }
 grep -q "Created draft PR #126" "${LOG1}" || { echo "FAIL: PR #126 was not created"; exit 1; }
-grep -q "Review requested on PR #126 (reviewer: nahcnuj)" "${LOG1}" || { echo "FAIL: the PR was not handed to the owner as reviewer"; exit 1; }
+grep -q "Review requested on PR #126 (reviewer: conahcnuj)" "${LOG1}" || { echo "FAIL: the PR was not handed to the owner as reviewer"; exit 1; }
 grep -q "Ready to merge" "${LOG1}" || { echo "FAIL: the run did not keep polling to the approval"; exit 1; }
 grep -q "filing a bug report issue" "${LOG1}" && { echo "FAIL: a rate limit must not file a bug report when a later model finishes"; exit 1; }
 

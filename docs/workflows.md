@@ -86,7 +86,7 @@ organization / enterprise 内なら `secrets: inherit`、それ以外は名前�
 ```yaml
 jobs:
   drive:
-    uses: nahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
+    uses: conahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
     with:
       number: 123
     secrets: inherit
@@ -101,7 +101,7 @@ jobs:
   対象リポジトリを `target/` にも checkout し、ドライバをその中で実行する。
   するとブランチ作成・fetch・Verified コミットも、エージェントの編集も、
   ローカル実行と同じく対象リポジトリに対して行われる
-- バグ報告 issue は常にドライバのリポジトリ（`nahcnuj/conahcnuj`）へ作られるが、
+- バグ報告 issue は常にドライバのリポジトリ（`conahcnuj/conahcnuj`）へ作られるが、
   本文の「Issue/PR」行は実際に駆動した対象（`repository`）を指す（#306）
 - `number` が渡されればジョブは実行される（呼び出し側のイベント種別に
   依らない）。`repository` 未指定なら呼び出し側リポジトリを駆動する
@@ -156,7 +156,7 @@ owner が open 中の draft でない PR を approve すると auto-merge を有
 ```yaml
 jobs:
   enable:
-    uses: nahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge@main
+    uses: conahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge@main
     with:
       repository: ${{ github.repository }}
       pr-number: ${{ github.event.pull_request.number }}
@@ -214,7 +214,7 @@ README の Getting started の手順に沿って検証する composite action �
 ```yaml
 jobs:
   setup:
-    uses: nahcnuj/conahcnuj/.github/workflows/setup.yml@main
+    uses: conahcnuj/conahcnuj/.github/workflows/setup.yml@main
     with:
       environment: conahcnuj
     secrets: inherit
@@ -227,7 +227,7 @@ workflow step として使うこともできます:
 
 ```yaml
 steps:
-  - uses: nahcnuj/conahcnuj@main
+  - uses: conahcnuj/conahcnuj@main
     with:
       app-id: ${{ secrets.APP_ID }}
       installation-id: ${{ secrets.INSTALLATION_ID }}

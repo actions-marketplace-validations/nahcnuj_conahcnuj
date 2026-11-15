@@ -826,7 +826,7 @@ gh_api_requested_reviewers() {
   # and the one-line mock tape. A compact-only pattern finds nothing in a real
   # response, so the read-back reported "nobody was asked" on a PR GitHub had
   # already recorded a request on and the driver kept dying on the hand-off
-  # (issue #136: PR #687 carried reviewRequests=[nahcnuj] and the run still
+  # (issue #136: PR #687 carried reviewRequests=[conahcnuj] and the run still
   # exited 1 with "could not request review").
   logins="$(printf '%s' "${json}" |
     grep -oE '"login"[[:space:]]*:[[:space:]]*"[^"]*"' |

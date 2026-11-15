@@ -139,7 +139,7 @@ build_pr_api() {
 # run_block <scenario> [MERGE_RC] [AUTO_RC] [VIEW_STATE] [POST_MERGE_DISPATCH]
 run_block() {
   local scenario="$1" out rc
-  export REPOSITORY="nahcnuj/conahcnuj"
+  export REPOSITORY="conahcnuj/conahcnuj"
   export PR_NUMBER="42"
   export HEAD_SHA="deadbeef"
   export MERGE_METHOD="merge"
@@ -217,7 +217,7 @@ build_pr_api "${HEAD_SHA}" "OPEN" false
 out="$(run_block "merge-now" 0 0 MERGED "cd.yml")"
 rc="$(printf '%s\n' "${out}" | sed -n '1{s/^rc=//;s/ .*$//;p}')"
 expect_rc "an immediate merge succeeds" 0 "${rc}" "${out}" "Merged pull request"
-expect_dispatch "post-merge-dispatch fires after an immediate merge" "workflow run cd.yml --repo nahcnuj/conahcnuj"
+expect_dispatch "post-merge-dispatch fires after an immediate merge" "workflow run cd.yml --repo conahcnuj/conahcnuj"
 
 # post-merge-dispatch is only for when we observed the merge.
 build_pr_api "${HEAD_SHA}" "OPEN" false
@@ -241,7 +241,7 @@ build_pr_api "${HEAD_SHA}" "OPEN" false
 out="$(run_block "auto-merge-lands" 1 0 MERGED "cd.yml")"
 rc="$(printf '%s\n' "${out}" | sed -n '1{s/^rc=//;s/ .*$//;p}')"
 expect_rc "a queued auto-merge that lands immediately succeeds" 0 "${rc}" "${out}" "auto-merge is queued"
-expect_dispatch "post-merge-dispatch fires when auto-merge merged the PR" "workflow run cd.yml --repo nahcnuj/conahcnuj"
+expect_dispatch "post-merge-dispatch fires when auto-merge merged the PR" "workflow run cd.yml --repo conahcnuj/conahcnuj"
 
 echo "auto-merge merge-or-queue behavior passed"
 

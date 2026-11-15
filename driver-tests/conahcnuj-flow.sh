@@ -74,7 +74,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -83,7 +83,7 @@ export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first
 opencode/second"
 export MOCK_OPENCODE_ERROR="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 # A wrapping agent session (the conahcnuj opencode plugin) exports these for
 # the real driver runs; the mock trailer check below must not see them.
@@ -103,11 +103,11 @@ echo "-----------------------------"
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
-grep -q "Review requested on PR #123 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/123" "${LOG}" || { echo "FAIL: the driver did not hand the PR to the owner as reviewer"; exit 1; }
-grep -q "Assigned nahcnuj as reviewer on PR #123" "${LOG}" || { echo "FAIL: the owner was not assigned as reviewer"; exit 1; }
+grep -q "Review requested on PR #123 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/123" "${LOG}" || { echo "FAIL: the driver did not hand the PR to the owner as reviewer"; exit 1; }
+grep -q "Assigned conahcnuj as reviewer on PR #123" "${LOG}" || { echo "FAIL: the owner was not assigned as reviewer"; exit 1; }
 # The reviewer is asked only after the constraints pass: a fresh PR is handed
 # to the human once it merges and CI is green, not while CI still runs.
-ASSIGNED_LINE="$(grep -n 'Assigned nahcnuj as reviewer on PR #123' "${LOG}" | head -1 | cut -d: -f1)"
+ASSIGNED_LINE="$(grep -n 'Assigned conahcnuj as reviewer on PR #123' "${LOG}" | head -1 | cut -d: -f1)"
 PASS_LINE="$(grep -n 'All non-reviewer constraints pass.' "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${ASSIGNED_LINE}" && -n "${PASS_LINE}" && "${PASS_LINE}" -lt "${ASSIGNED_LINE}" ]] || { echo "FAIL: the review request must come after the constraints pass"; exit 1; }
 # The first poll finds CI still PENDING, so the driver must keep polling until

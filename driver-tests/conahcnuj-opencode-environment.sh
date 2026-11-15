@@ -127,7 +127,7 @@ RC=0
 (
   cd "${WORK2}"
   CONAHCNUJ_TEST_MODE=1 \
-  CONAHCNUJ_REPO="nahcnuj/conahcnuj" \
+  CONAHCNUJ_REPO="conahcnuj/conahcnuj" \
   GH_API_TEST_MODE=1 \
   OPENCODE_TEST_MODE=1 \
   MOCK_OPENCODE_MODELS="" \

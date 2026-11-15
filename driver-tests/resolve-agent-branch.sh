@@ -36,13 +36,13 @@ DEFAULT_OID="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 CURRENT="conahcnuj/10-issue"
 
 # 1. No .branch-name: the driver-derived name is kept.
-out="$(resolve_agent_branch_name "nahcnuj" "conahcnuj" "${DEFAULT_OID}" "${CURRENT}")"
+out="$(resolve_agent_branch_name "conahcnuj" "conahcnuj" "${DEFAULT_OID}" "${CURRENT}")"
 [[ "${out}" == "${CURRENT}" ]] || { echo "FAIL: expected ${CURRENT}, got ${out}" >&2; exit 1; }
 echo "resolve_agent_branch_name (no .branch-name) -> driver name: passed"
 
 # 2. Valid agent branch name is honoured (renamed locally).
 printf 'feature/agent-choice\n' > .branch-name
-out="$(resolve_agent_branch_name "nahcnuj" "conahcnuj" "${DEFAULT_OID}" "${CURRENT}")"
+out="$(resolve_agent_branch_name "conahcnuj" "conahcnuj" "${DEFAULT_OID}" "${CURRENT}")"
 if [[ "${out}" != "feature/agent-choice" ]]; then
   echo "FAIL: expected feature/agent-choice, got ${out}" >&2
   exit 1
@@ -59,7 +59,7 @@ echo "resolve_agent_branch_name (agent .branch-name) -> renamed: passed"
 
 # 3. Blank .branch-name: falls back to the current (already agent-named) branch.
 printf '   \n' > .branch-name
-out="$(resolve_agent_branch_name "nahcnuj" "conahcnuj" "${DEFAULT_OID}" "feature/agent-choice")"
+out="$(resolve_agent_branch_name "conahcnuj" "conahcnuj" "${DEFAULT_OID}" "feature/agent-choice")"
 [[ "${out}" == "feature/agent-choice" ]] || { echo "FAIL: expected feature/agent-choice, got ${out}" >&2; exit 1; }
 if [[ -e ".branch-name" ]]; then
   echo "FAIL: blank .branch-name must be consumed" >&2
@@ -69,7 +69,7 @@ echo "resolve_agent_branch_name (blank .branch-name) -> fallback: passed"
 
 # 4. Invalid branch name: warns and keeps the current branch.
 printf 'bad name with spaces\n' > .branch-name
-out="$(resolve_agent_branch_name "nahcnuj" "conahcnuj" "${DEFAULT_OID}" "feature/agent-choice")"
+out="$(resolve_agent_branch_name "conahcnuj" "conahcnuj" "${DEFAULT_OID}" "feature/agent-choice")"
 [[ "${out}" == "feature/agent-choice" ]] || { echo "FAIL: invalid name must fall back, got ${out}" >&2; exit 1; }
 if [[ "$(git -C "${WORK}" branch --show-current)" != "feature/agent-choice" ]]; then
   echo "FAIL: branch changed on an invalid .branch-name" >&2

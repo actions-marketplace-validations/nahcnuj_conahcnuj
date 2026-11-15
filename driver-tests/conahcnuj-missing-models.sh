@@ -52,7 +52,7 @@ printf '# known dead\npre/one\n' > "${MISSING}"
 export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 export CONAHCNUJ_MISSING_MODELS_FILE="${MISSING}"
 
 LOG1="${ROOT}/run1.log"

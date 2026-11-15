@@ -97,7 +97,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -108,7 +108,7 @@ export MOCK_OPENCODE_MODELS="opencode/a"
 # the next; the driver then removes the empty file before the hand-off.
 export MOCK_OPENCODE_TODO="opencode/a"
 export MOCK_OPENCODE_STATE_DIR="${ROOT}/state"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
 
@@ -134,7 +134,7 @@ grep -q "Removing the empty TODO.jsonl so it never reaches main." "${LOG}" || { 
 # precede the ready transition.
 DRAFT_LINE="$(grep -n "Created draft PR #123" "${LOG}" | head -1 | cut -d: -f1)"
 READY_LINE="$(grep -n "TODO.jsonl is clean; marking PR #123 ready for review." "${LOG}" | head -1 | cut -d: -f1)"
-ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #123" "${LOG}" | head -1 | cut -d: -f1)"
+ASSIGNED_LINE="$(grep -n "Assigned conahcnuj as reviewer on PR #123" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${DRAFT_LINE}" && -n "${READY_LINE}" && "${DRAFT_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the draft must be created before it is made ready"; exit 1; }
 [[ -n "${ASSIGNED_LINE}" && "${READY_LINE}" -lt "${ASSIGNED_LINE}" ]] || { echo "FAIL: the review request must come after the PR is made ready"; exit 1; }
 # The run keeps going past the hand-off and ends on the owner's approval.

@@ -43,7 +43,9 @@ jobs:
       github.event.pull_request.state == 'open' &&
       github.event.pull_request.draft == false &&
       github.event.review.state == 'approved' &&
-      github.event.review.author_association == 'OWNER'
+      (github.event.review.author_association == 'OWNER' ||
+       github.event.review.author_association == 'MEMBER' ||
+       github.event.review.author_association == 'COLLABORATOR')
     runs-on: ubuntu-latest
     # CI の完了はこのジョブでは待たず、ネイティブ auto-merge（GitHub 側）に任せる
     # （issue #269）。ジョブは 1 〜 2 回の API 呼び出しで終わる。

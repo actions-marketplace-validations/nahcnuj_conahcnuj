@@ -46,7 +46,7 @@ CONAHCNUJ_TEST_MODE=0
 # shellcheck source=bin/conahcnuj.sh
 . "${REPO}/bin/conahcnuj.sh"
 
-out="$(ensure_issue_branch nahcnuj conahcnuj 10 "issue" main "${oid}" 2>"${ROOT}/err.txt")"
+out="$(ensure_issue_branch conahcnuj conahcnuj 10 "issue" main "${oid}" 2>"${ROOT}/err.txt")"
 printf 'OUT=[%s]\n' "${out}"
 
 if ! grep -q "resume" "${ROOT}/err.txt"; then

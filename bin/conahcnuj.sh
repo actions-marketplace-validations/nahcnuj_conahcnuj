@@ -37,6 +37,9 @@
 #
 # Environment overrides (all optional):
 #   CONAHCNUJ_REPO           owner/repo when no origin remote is available
+#   CONAHCNUJ_DRIVER_REPO    owner/repo where abnormal-exit bug reports are
+#                            filed (default: conahcnuj/conahcnuj). Override
+#                            only when the driver itself has moved.
 #   CONAHCNUJ_MAX_SECONDS    overall time budget (default: 259200 = 72 h)
 #   CONAHCNUJ_HANDOFF_RETRY_SECONDS  pause before the single review-request
 #                            retry (default: 15 s; 0 disables the pause)
@@ -753,7 +756,8 @@ report_bug_on_exit() {
   # issue or PR in another repository (BUG_REPORT_TARGET), so the label has to
   # come from there and not from where the report lands. Fall back to the
   # report's repository when the target was never resolved.
-  local owner="nahcnuj" repo="conahcnuj" input="${BUG_REPORT_INPUT:-}"
+  local driver_repo="${CONAHCNUJ_DRIVER_REPO:-conahcnuj/conahcnuj}"
+  local owner="${driver_repo%%/*}" repo="${driver_repo#*/}" input="${BUG_REPORT_INPUT:-}"
   local label_owner="${owner}" label_repo="${repo}"
   local branch oid title body num
   if [[ -n "${BUG_REPORT_TARGET:-}" ]]; then
