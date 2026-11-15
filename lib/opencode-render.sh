@@ -836,8 +836,19 @@ render_block_tool() {
   local prev_out="" prev_err="" prev_verdict="false" prev_fed="false" fed="false"
   [[ -z "${tool:-}" ]] && tool="tool"
   # opencode v1 names this tool "bash"; v2 renamed it to "shell". Treat both
-  # (and any call carrying a command) as command execution.
-  [[ "${tool}" == "bash" || "${tool}" == "shell" || -n "${F[command]}" ]] && is_cmd="true"
+  # (and any call carrying a command) as command execution. A "shell" tool
+  # call with no command line is not a command execution, so it must not
+  # masquerade as one under the tool's generic title "shell" (#905).
+  is_cmd="false"
+  if [[ "${tool}" == "bash" ]]; then
+    is_cmd="true"
+  elif [[ "${tool}" == "shell" ]]; then
+    if [[ -n "${F[command]}" || ( -n "${F[title]}" && "${F[title]}" != "shell" && "${F[title]}" != "bash" && "${F[title]}" != "${tool}" ) ]]; then
+      is_cmd="true"
+    fi
+  elif [[ -n "${F[command]}" ]]; then
+    is_cmd="true"
+  fi
   local status="${F[status]}"
   code="${F[exit]}"
   case "${code}" in
@@ -948,6 +959,16 @@ render_block_tool() {
     label="${tool^}"
     local arg="${F[filepath]}"
     [[ -n "${arg}" ]] || arg="${F[title]}"
+    # A shell/bash tool that carries no command line reports under its own
+    # generic name; do not echo that name twice ("Shell shell") (#905).
+    if [[ -n "${arg}" && ( "${tool}" == "shell" || "${tool}" == "bash" ) ]]; then
+      local _arg_lc _tool_lc
+      _arg_lc="$(printf '%s' "${arg}" | tr '[:upper:]' '[:lower:]')"
+      _tool_lc="$(printf '%s' "${tool}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "${_arg_lc}" == "${_tool_lc}" || "${_arg_lc}" == "shell" || "${_arg_lc}" == "bash" ]]; then
+        arg=""
+      fi
+    fi
     if [[ -n "${arg}" ]]; then
       label="${label} ${arg}"
     fi
