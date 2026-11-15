@@ -120,9 +120,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj TODO.jsonl run log -----"
-cat "${LOG}"
-echo "----------------------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj TODO.jsonl run log -----"
+  cat "${LOG}"
+  echo "----------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 # The PR was opened as a draft because TODO.jsonl had a task, and the run never
