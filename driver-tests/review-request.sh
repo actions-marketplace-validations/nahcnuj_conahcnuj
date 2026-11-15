@@ -139,4 +139,20 @@ grep -q "ERROR: could not request review" <<<"${out}" && fail "an unverifiable h
 log_review_handoff "conahcnuj" "conahcnuj" 15 "conahcnuj" 2>&1 | grep -q "PR #15 is ready for a human reviewer" || fail "the final line must not claim an unconfirmed request"
 echo "request_review_from_owner reports an unverifiable hand-off without failing the run: passed"
 
+
+# When the reviewer was resolved up front (an admin collaborator rather than the
+# repository owner), request_review_from_owner names that reviewer instead of the
+# owner. This is what keeps the hand-off working for repositories whose owner
+# is not a usable reviewer ("Reviews may only be requested from collaborators").
+REVIEWER="alice"
+: > "${CALLS}"
+FAIL_NAMED=0
+FAIL_UNNAMED=0
+REQUESTED=""
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" || fail "naming the resolved reviewer must succeed"
+[[ "${out}" == *"Assigned alice as reviewer on PR #15."* ]] || fail "the resolved reviewer was not reported as assigned: ${out}"
+[[ "$(cat "${CALLS}")" == "REQUEST|15|alice" ]] || fail "the resolved reviewer was not the requested reviewer: $(cat "${CALLS}")"
+unset REVIEWER
+echo "request_review_from_owner honors a resolved reviewer: passed"
+
 echo "All review-request tests passed"

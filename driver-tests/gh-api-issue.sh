@@ -560,6 +560,26 @@ test_create_issue_control_chars() {
   echo "gh_api_create_issue (control-character body) passed"
 }
 
+
+test_repo_admins() {
+  local out
+  # Compact JSON: one login per collaborator, in order.
+  out="$(printf '%s\n' '[{"login":"nahcnuj","permissions":{"admin":true}},{"login":"second"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: compact repo admins: '${out}'" >&2; exit 1; }
+  # Pretty-printed JSON (the shape GitHub really sends) must parse too.
+  out="$(printf '%s\n' '[ { "login" : "nahcnuj" } , { "login" : "second" } ]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: pretty repo admins: '${out}'" >&2; exit 1; }
+  # No admins: empty output, not an error (the caller falls back to the owner).
+  out="$(printf '%s\n' '[]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ -z "${out}" ]] || { echo "FAIL: empty repo admins: '${out}'" >&2; exit 1; }
+  # A single collaborator comes back on one line.
+  out="$(printf '%s\n' '[{"login":"only-one"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "only-one" ]] || { echo "FAIL: single repo admin: '${out}'" >&2; exit 1; }
+  echo "gh_api_repo_admins passed"
+}
+
 test_merge_pr() {
   gh_api_merge_pr "conahcnuj" "conahcnuj" 15 < <(printf '%s\n' '{}' '{}')
   echo "gh_api_merge_pr passed"
@@ -585,6 +605,7 @@ test_post_comment
 test_create_issue
 test_escape_control_chars
 test_create_issue_control_chars
+test_repo_admins
 test_merge_pr
 
 echo "All gh-api tests passed"
