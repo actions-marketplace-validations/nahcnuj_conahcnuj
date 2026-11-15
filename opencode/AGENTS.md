@@ -68,3 +68,19 @@
   `The token '&&' is not a valid statement separator in this version.` になります）。** コマンドを
   連結するときは `;` を使うか、コマンドを別々に実行すること。`&&` を
   PowerShell で使わないこと。
+
+## 進捗管理 (`TODO.jsonl`)
+
+作業中の issue の進捗はリポジトリルートの `TODO.jsonl` で管理する (1 行 1
+タスクの JSONL。書式は問わない)。
+
+- 着手時に `TODO.jsonl` を作成し、未完了タスクを 1 行ずつ書く。
+- `TODO.jsonl` が空になるまで次を繰り返す:
+  1. 先頭のエントリを取り上げる。
+  2. そのエントリを解決する。必要なら `TODO.jsonl` に新しいタスクを追加する。
+  3. 解決できたらそのエントリを削除する。
+- `TODO.jsonl` が最終的に空になったら、`TODO.jsonl` を削除してコミットする。
+  レビュー依頼はドライバが行う。
+- `TODO.jsonl` に 1 行でも残っている間は PR は draft のままなので、自分で
+  draft を解除しない。
+- `TODO.jsonl` は main に持ち込まない (作業中の PR ブランチにのみ存在する)。

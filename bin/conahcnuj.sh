@@ -396,8 +396,17 @@ workdir_changed() {
 # the file has any line the PR is a draft and is never handed to the reviewer,
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
+# True when TODO.jsonl carries at least one unfinished task line. Blank lines
+# (and a file that does not exist) do not count as outstanding work: an empty
+# or whitespace-only progress file is "done" and is removed before hand-off.
+todo_task_count() {
+  [[ -f "TODO.jsonl" ]] || { printf '0'; return 0; }
+  grep -c '[^[:space:]]' "TODO.jsonl" 2>/dev/null || printf '0'
+}
+
 todo_present() {
-  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]] || return 1
+  [[ -f "TODO.jsonl" ]] || return 1
+  [[ "$(todo_task_count)" -gt 0 ]] || return 1
   # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
   # work has landed; once the branch carries a real change it is stale and no
   # longer blocks the hand-off (the agent may replace it with its own progress).
@@ -570,9 +579,10 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  if [[ -s "TODO.jsonl" ]]; then
-    # Only the initial placeholder may be removed here; an agent-managed
-    # (non-empty) progress file is left for the agent to empty.
+  # An empty / whitespace-only progress file (or the initial placeholder) is
+  # WIP-only metadata: remove it so it never reaches main. An agent-managed
+  # file that still carries unfinished task lines is left for the agent.
+  if [[ "$(todo_task_count)" -gt 0 ]]; then
     if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then
       return 0
     fi
