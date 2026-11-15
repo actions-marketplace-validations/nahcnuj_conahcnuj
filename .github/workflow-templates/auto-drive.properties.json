@@ -1,0 +1,6 @@
+{
+  "name": "Auto-drive (conahcnuj)",
+  "description": "Drive issues to pull requests with the conahcnuj GitHub App.",
+  "iconName": "octicon git-pull-request",
+  "categories": ["Automation", "Continuous Integration"]
+}

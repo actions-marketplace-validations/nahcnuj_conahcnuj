@@ -1,0 +1,6 @@
+{
+  "name": "Owner-approved auto-merge (conahcnuj)",
+  "description": "Merge pull requests after owner approval using the conahcnuj GitHub App.",
+  "iconName": "octicon git-merge",
+  "categories": ["Automation", "Continuous Integration"]
+}
