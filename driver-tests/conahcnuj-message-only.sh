@@ -40,6 +40,7 @@ git -C "${WORK}" commit -qm init
 #   keeps polling and ends on the approval.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 21, "title": "agent answers with a message only", "body": "The change itself is the deliverable", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -51,7 +52,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -61,7 +62,7 @@ export MOCK_OPENCODE_MODELS="opencode/talker
 opencode/second"
 # The talker writes .commit-msg and touches nothing else.
 export MOCK_OPENCODE_MESSAGE_ONLY="opencode/talker"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -70,9 +71,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 21 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
@@ -81,7 +84,7 @@ grep -q "produced no complete work" "${LOG}" && { echo "FAIL: the message-only r
 grep -q "Handing off session ses_mock from opencode/talker to opencode/second" "${LOG}" || { echo "FAIL: the session was not handed to the next model"; exit 1; }
 grep -q "Model opencode/second completed the work" "${LOG}" || { echo "FAIL: the second model was not adopted"; exit 1; }
 grep -q "Created draft PR #126" "${LOG}" || { echo "FAIL: PR #126 was not created"; exit 1; }
-grep -q "Review requested on PR #126 (reviewer: nahcnuj)" "${LOG}" || { echo "FAIL: the PR was not handed to the owner as reviewer"; exit 1; }
+grep -q "Review requested on PR #126 (reviewer: conahcnuj)" "${LOG}" || { echo "FAIL: the PR was not handed to the owner as reviewer"; exit 1; }
 grep -q "Ready to merge" "${LOG}" || { echo "FAIL: the run did not keep polling to the approval"; exit 1; }
 grep -q "filing a bug report issue" "${LOG}" && { echo "FAIL: a message-only round must not file a bug report when a later model finishes"; exit 1; }
 

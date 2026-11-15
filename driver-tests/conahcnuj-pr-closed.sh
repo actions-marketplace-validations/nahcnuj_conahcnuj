@@ -21,6 +21,7 @@ git -C "${WORK}" commit -qm init
 
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'TAPEEOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"CLOSED","title":"Fix something","body":"","isDraft":false,"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","reviewDecision":null,"headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}}
 TAPEEOF
@@ -29,7 +30,7 @@ export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -38,9 +39,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 15 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 

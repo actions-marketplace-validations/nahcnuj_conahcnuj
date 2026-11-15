@@ -32,9 +32,9 @@ CONAHCNUJ_TEST_MODE=0
 . "${REPO}/bin/conahcnuj.sh"
 
 # 1. A GitHub origin that agrees with the target: the guard passes.
-git -C "${WORK}" remote add origin "https://github.com/nahcnuj/conahcnuj.git"
+git -C "${WORK}" remote add origin "https://github.com/conahcnuj/conahcnuj.git"
 (
-  verify_repo_alignment "nahcnuj/conahcnuj"
+  verify_repo_alignment "conahcnuj/conahcnuj"
 ) >"${ROOT}/ok.log" 2>&1 || {
   echo "FAIL: an aligned origin/target pair was rejected: $(cat "${ROOT}/ok.log")" >&2
   exit 1
@@ -42,40 +42,40 @@ git -C "${WORK}" remote add origin "https://github.com/nahcnuj/conahcnuj.git"
 
 # 2. A GitHub origin that disagrees with the target (the #309 scenario): the
 #    guard stops the run and names both repositories.
-git -C "${WORK}" remote set-url origin "https://github.com/nahcnuj/conahcnuj.git"
+git -C "${WORK}" remote set-url origin "https://github.com/conahcnuj/conahcnuj.git"
 rc=0
 (
-  verify_repo_alignment "nahcnuj/makamujo"
+  verify_repo_alignment "conahcnuj/makamujo"
 ) >"${ROOT}/mismatch.log" 2>&1 || rc=$?
 [[ ${rc} -ne 0 ]] || { echo "FAIL: a mismatched origin/target pair was accepted" >&2; exit 1; }
-grep -q "origin points at nahcnuj/conahcnuj" "${ROOT}/mismatch.log" || {
+grep -q "origin points at conahcnuj/conahcnuj" "${ROOT}/mismatch.log" || {
   echo "FAIL: the error does not name origin's repository: $(cat "${ROOT}/mismatch.log")" >&2
   exit 1
 }
-grep -q "targets nahcnuj/makamujo" "${ROOT}/mismatch.log" || {
+grep -q "targets conahcnuj/makamujo" "${ROOT}/mismatch.log" || {
   echo "FAIL: the error does not name the target repository: $(cat "${ROOT}/mismatch.log")" >&2
   exit 1
 }
 
 # 3. An SSH GitHub origin that disagrees as well: the guard is URL-shape agnostic.
-git -C "${WORK}" remote set-url origin "git@github.com:nahcnuj/conahcnuj.git"
+git -C "${WORK}" remote set-url origin "git@github.com:conahcnuj/conahcnuj.git"
 rc=0
 (
-  verify_repo_alignment "nahcnuj/makamujo"
+  verify_repo_alignment "conahcnuj/makamujo"
 ) >"${ROOT}/ssh.log" 2>&1 || rc=$?
 [[ ${rc} -ne 0 ]] || { echo "FAIL: an SSH mismatched origin/target pair was accepted" >&2; exit 1; }
 
 # 4. A non-GitHub origin (offline tests use local paths): the guard skips.
 git -C "${WORK}" remote set-url origin "${ROOT}/local-origin.git"
 (
-  verify_repo_alignment "nahcnuj/makamujo"
+  verify_repo_alignment "conahcnuj/makamujo"
 ) >"${ROOT}/local.log" 2>&1 || {
   echo "FAIL: a non-GitHub origin was rejected: $(cat "${ROOT}/local.log")" >&2
   exit 1
 }
 
 # 5. No target at all: the guard passes (repo_detect falls back to origin).
-git -C "${WORK}" remote set-url origin "https://github.com/nahcnuj/conahcnuj.git"
+git -C "${WORK}" remote set-url origin "https://github.com/conahcnuj/conahcnuj.git"
 (
   verify_repo_alignment ""
 ) >"${ROOT}/empty.log" 2>&1 || {

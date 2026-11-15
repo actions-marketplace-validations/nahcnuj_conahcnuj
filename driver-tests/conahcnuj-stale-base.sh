@@ -49,6 +49,7 @@ git -C "${WORK}" update-ref "refs/remotes/origin/main" "${STALE_OID}"
 # would misclassify the empty branch as done and skip implementation.
 TAPE="${ROOT}/tape.txt"
 sed "s/REAL_OID_PLACEHOLDER/${REAL_OID}/" > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 17, "title": "shellcheck disable", "body": "stale base ref test", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"REAL_OID_PLACEHOLDER"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -65,7 +66,7 @@ export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -74,9 +75,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 17 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 

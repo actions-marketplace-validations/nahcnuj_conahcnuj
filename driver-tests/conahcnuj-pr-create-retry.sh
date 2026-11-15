@@ -42,6 +42,7 @@ OID="$(git -C "${WORK}" rev-parse HEAD)"
 #   The APPROVED read exits as ready to merge before any constraints poll (#219).
 TAPE="${ROOT}/tape.txt"
 sed "s/OID_PLACEHOLDER/${OID}/" > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 18, "title": "fix racing driver", "body": "PR creation must be retried, not fatal", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"OID_PLACEHOLDER"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -61,7 +62,7 @@ export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -70,9 +71,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 18 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 

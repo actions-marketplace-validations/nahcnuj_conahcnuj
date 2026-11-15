@@ -69,6 +69,7 @@ git -C "${ROOT}/other" push -q origin main
 # runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"A written description","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"OPEN","title":"Fix something","body":"A written description","isDraft":false,"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","reviewDecision":"REVIEW_REQUIRED","headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
@@ -78,14 +79,14 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
@@ -97,9 +98,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 15 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
@@ -123,7 +126,7 @@ grep -q "remove all conflict markers" "${LOG}" || { echo "FAIL: the prompt does 
 grep -q "Fix whatever breaks them" "${LOG}" && { echo "FAIL: the conflict round used the generic CI instruction"; exit 1; }
 
 # The run still drives to the owner's approval after the conflict is fixed.
-grep -q "Review requested on PR #15 (reviewer: nahcnuj)" "${LOG}" || { echo "FAIL: the PR was not handed to the owner"; exit 1; }
+grep -q "Review requested on PR #15 (reviewer: conahcnuj)" "${LOG}" || { echo "FAIL: the PR was not handed to the owner"; exit 1; }
 grep -q "Ready to merge" "${LOG}" || { echo "FAIL: no ready-to-merge line"; exit 1; }
 
 ONELINE="$(git -C "${WORK}" log --oneline)"

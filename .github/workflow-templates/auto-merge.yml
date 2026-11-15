@@ -1,0 +1,24 @@
+name: Owner-approved auto-merge
+
+# Template for wiring a repository up to conahcnuj's reusable
+# owner-approved-auto-merge workflow. Copy this file into your repository as
+# .github/workflows/auto-merge.yml. No App secrets are needed (merging uses
+# the repository's GITHUB_TOKEN); "Allow auto-merge" must be enabled in
+# Settings -> General -> Pull Requests.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  enable:
+    uses: conahcnuj/conahcnuj/.github/workflows/owner-approved-auto-merge.yml@main
+    with:
+      repository: ${{ github.repository }}
+      pr-number: ${{ github.event.pull_request.number }}
+      head-sha: ${{ github.event.pull_request.head.sha }}

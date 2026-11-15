@@ -105,7 +105,7 @@ grep -q "refusing to work on a stale branch head" "${LOG}" || { echo "FAIL: no e
 rc=0
 (
   cd "${WORK}"
-  ensure_pr_branch_head "nahcnuj" "conahcnuj" "${BRANCH}"
+  ensure_pr_branch_head "conahcnuj" "conahcnuj" "${BRANCH}"
 ) >"${LOG}" 2>&1 || rc=$?
 [[ ${rc} -ne 0 ]] || { echo "FAIL: ensure_pr_branch_head carried on with a stale head" >&2; exit 1; }
 
@@ -113,7 +113,7 @@ rc=0
 rc=0
 out="$(
   cd "${WORK}"
-  ensure_issue_branch "nahcnuj" "conahcnuj" 115 "request changes" "main" "$(git -C "${WORK}" rev-parse origin/main)" "${BRANCH}" 2>"${LOG}"
+  ensure_issue_branch "conahcnuj" "conahcnuj" 115 "request changes" "main" "$(git -C "${WORK}" rev-parse origin/main)" "${BRANCH}" 2>"${LOG}"
 )" || rc=$?
 [[ ${rc} -ne 0 ]] || { echo "FAIL: ensure_issue_branch carried on with a stale head" >&2; exit 1; }
 [[ -z "${out}" ]] || { echo "FAIL: ensure_issue_branch returned a branch name on failure: ${out}" >&2; exit 1; }
@@ -135,7 +135,7 @@ CREATE_BRANCH_RC=0
 rc=0
 out="$(
   cd "${WORK}"
-  ensure_issue_branch "nahcnuj" "conahcnuj" 115 "brand new" "main" "${BASE_HEAD}" "${NEW_BRANCH}" 2>"${ROOT}/new.log"
+  ensure_issue_branch "conahcnuj" "conahcnuj" 115 "brand new" "main" "${BASE_HEAD}" "${NEW_BRANCH}" 2>"${ROOT}/new.log"
 )" || rc=$?
 [[ ${rc} -eq 0 ]] || { echo "FAIL: a brand-new branch with a transient fetch failure aborted (rc=${rc})" >&2; exit 1; }
 [[ "${out}" == "${NEW_BRANCH}" ]] || { echo "FAIL: ensure_issue_branch did not return the new branch name: ${out}" >&2; exit 1; }
@@ -164,7 +164,7 @@ CREATE_BRANCH_RC=0
 rc=0
 out="$(
   cd "${WORK}"
-  ensure_issue_branch "nahcnuj" "conahcnuj" 115 "deleted remotely" "main" "${BASE_HEAD}" "${STALE_BRANCH}" 2>"${ROOT}/stale.log"
+  ensure_issue_branch "conahcnuj" "conahcnuj" 115 "deleted remotely" "main" "${BASE_HEAD}" "${STALE_BRANCH}" 2>"${ROOT}/stale.log"
 )" || rc=$?
 [[ ${rc} -eq 0 ]] || { echo "FAIL: a stale remote-tracking ref with no remote branch aborted (rc=${rc})" >&2; exit 1; }
 [[ "${out}" == "${STALE_BRANCH}" ]] || { echo "FAIL: ensure_issue_branch did not return the branch name: ${out}" >&2; exit 1; }

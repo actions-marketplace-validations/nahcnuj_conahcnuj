@@ -17,6 +17,9 @@ set -a
 . "${ENV_FILE}"
 set +a
 
+# App slug: app.env value wins, otherwise auto-resolved from the API.
+APP_SLUG="$(bash "${HERE}/app-slug.sh")"
+export APP_SLUG
 # Bot user ID: app.env value wins, otherwise auto-resolved from the API.
 BOT_USER_ID="$(bash "${HERE}/bot-user-id.sh")"
 BOT_NAME="${APP_SLUG}[bot]"

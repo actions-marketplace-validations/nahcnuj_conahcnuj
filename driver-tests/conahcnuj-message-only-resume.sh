@@ -51,6 +51,7 @@ git -C "${WORK}" commit -qm "mock commit from opencode/original"
 #   request_review, conditions.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"stub","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"OPEN","title":"Fix something","body":"Closes #10","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"CHANGES_REQUESTED","headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}
 {"number": 10, "title": "Fix something", "body": "# 背景\nPR を引き継いで再開できるようにする。", "labels": [{"name": "enhancement"}], "state": "open"}
@@ -67,7 +68,7 @@ export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/talker"
 # The talker answers with only a .commit-msg; the branch is already implemented.
 export MOCK_OPENCODE_MESSAGE_ONLY="opencode/talker"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
@@ -79,9 +80,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 15 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
@@ -95,7 +98,7 @@ grep -q "Handing off session" "${LOG}" && { echo "FAIL: the session was handed t
 grep -q "produced no complete work" "${LOG}" && { echo "FAIL: the round was reported as an ordinary empty round"; exit 1; }
 
 # The PR is still handed back to the reviewer.
-grep -q "Review requested on PR #15 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the PR was not handed back to the owner as reviewer"; exit 1; }
+grep -q "Review requested on PR #15 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the PR was not handed back to the owner as reviewer"; exit 1; }
 grep -q "filing a bug report issue" "${LOG}" && { echo "FAIL: an accepted message-only round must not file a bug report"; exit 1; }
 
 # The implemented branch is left as it was: init + implementation, no new

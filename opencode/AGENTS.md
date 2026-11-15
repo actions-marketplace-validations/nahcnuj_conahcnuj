@@ -3,7 +3,7 @@
 このファイルは `install.ps1` によって **opencode のグローバル設定
 `~/.config/opencode/AGENTS.md`** へ配置される（conahcnuj の管理ブロックとして、
 既存のファイルがあればその他の内容を保ったまま追記・更新される）。opencode は
-グローバル AGENTS.md を全セッションへ読み込むため、nahcnuj のどのリポジトリでも
+グローバル AGENTS.md を全セッションへ読み込むため、conahcnuj のどのリポジトリでも
 同じ指示が効く。個別リポジトリに同じことを書く必要はない。
 
 ## コミットは `git vc`
