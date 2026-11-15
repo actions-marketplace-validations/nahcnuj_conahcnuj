@@ -5,12 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 permissions:
   contents: read
 
 jobs:
   lint-bash:
+    if: github.event.pull_request.draft == false
     name: Lint shell scripts
     runs-on: ${{ matrix.os }}
     defaults:
@@ -58,6 +64,7 @@ jobs:
         run: shellcheck -x gh-app/*.sh gh-app/tests/*.sh bin/*.sh lib/*.sh driver-tests/*.sh
 
   lint-ps:
+    if: github.event.pull_request.draft == false
     name: Check install.ps1 syntax
     runs-on: windows-latest
     steps:
@@ -79,6 +86,7 @@ jobs:
           Write-Host "install.ps1 parsed OK"
 
   install-test:
+    if: github.event.pull_request.draft == false
     name: install.ps1 deployment test
     runs-on: windows-latest
     steps:
@@ -181,6 +189,7 @@ jobs:
           Write-Host "all files deployed OK"
 
   mock-test:
+    if: github.event.pull_request.draft == false
     name: Mock tests v1 (no secrets / no network)
     runs-on: ${{ matrix.os }}
     strategy:
@@ -202,6 +211,7 @@ jobs:
         run: bash driver-tests/run.sh
 
   mock-test-v2:
+    if: github.event.pull_request.draft == false
     name: Mock tests v2 (no secrets / no network)
     runs-on: ${{ matrix.os }}
     strategy:
@@ -223,6 +233,7 @@ jobs:
         run: bash driver-tests/run.sh
 
   lint-ts:
+    if: github.event.pull_request.draft == false
     name: Typecheck opencode plugin
     runs-on: ubuntu-26.04
     defaults:
@@ -246,6 +257,7 @@ jobs:
           ./node_modules/.bin/tsc -p ../plugins --noEmit
 
   plugin-unit:
+    if: github.event.pull_request.draft == false
     name: Plugin unit tests
     runs-on: ${{ matrix.os }}
     strategy:
@@ -270,6 +282,7 @@ jobs:
         run: bash plugin-tests/unit.sh
 
   plugin-smoke:
+    if: github.event.pull_request.draft == false
     name: Plugin runtime smoke test
     runs-on: ${{ matrix.os }}
     strategy:
@@ -297,6 +310,7 @@ jobs:
         run: bash plugin-tests/smoke.sh
 
   e2e-opencode:
+    if: github.event.pull_request.draft == false
     name: E2E opencode run (opencode free model)
     runs-on: windows-latest
     defaults:
