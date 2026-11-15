@@ -392,16 +392,29 @@ workdir_changed() {
 }
 
 # Whether the per-issue progress file TODO.jsonl still has outstanding tasks.
-# The coding agent creates it (one task per line) when it starts an issue,
-# removes lines as tasks are completed and leaves it empty (no line) once the
-# issue is resolved and ready to hand over (AGENTS.md tells it so). Its
+# The driver owns the file's lifecycle: it creates the initial placeholder
+# (as the commit anchor for the early draft PR), keys the PR's draft state on
+# it, removes the empty file before hand-off and requests review. The coding
+# agent only keeps the task lines current -- it adds/removes entries and
+# empties the file (removes every line) once the issue is resolved, but does
+# not create or delete the file itself. Its
 # lifetime is the issue's, so the driver keys the PR's draft state on it: while
 # the file has any line the PR is a draft and is never handed to the reviewer,
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
+# True when TODO.jsonl carries at least one unfinished task line. Blank lines
+# (and a file that does not exist) do not count as outstanding work: an empty
+# or whitespace-only progress file is "done" and is removed before hand-off.
+todo_task_count() {
+  [[ -f "TODO.jsonl" ]] || { printf '0'; return 0; }
+  local count
+  count="$(grep -c '[^[:space:]]' "TODO.jsonl" 2>/dev/null)" || count=0
+  printf '%s' "${count}"
+}
+
 todo_present() {
   [[ -f "TODO.jsonl" ]] || return 1
-  grep -q '[^[:space:]]' "TODO.jsonl" 2>/dev/null || return 1
+  [[ "$(todo_task_count)" -gt 0 ]] || return 1
   # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
   # work has landed; once the branch carries a real change it is stale and no
   # longer blocks the hand-off (the agent may replace it with its own progress).
@@ -574,9 +587,10 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  if grep -q '[^[:space:]]' "TODO.jsonl" 2>/dev/null; then
-    # Only the initial placeholder may be removed here; an agent-managed
-    # (non-empty) progress file is left for the agent to empty.
+  # An empty / whitespace-only progress file (or the initial placeholder) is
+  # WIP-only metadata: remove it so it never reaches main. An agent-managed
+  # file that still carries unfinished task lines is left for the agent.
+  if [[ "$(todo_task_count)" -gt 0 ]]; then
     if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then
       return 0
     fi
@@ -1704,7 +1718,7 @@ drive() {
       fi
       echo "TODO.jsonl still has unfinished tasks; keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line, but do not delete the file; the driver removes the empty file) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
