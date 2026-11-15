@@ -86,6 +86,7 @@ runs:
       run: |
         set -euo pipefail
         BOT_ID="$(bash "${ACTION_PATH}/gh-app/bot-user-id.sh")"
+        printf 'BOT_USER_ID="%s"\n' "${BOT_ID}" >> "${ACTION_PATH}/gh-app/app.env"
         echo "Bot user id resolved: ${BOT_ID}"
         echo "- Bot user id: ${BOT_ID}" >> "${GITHUB_STEP_SUMMARY}"
 

@@ -48,8 +48,17 @@ if [[ -z "${APP_SLUG:-}" || "${APP_SLUG}" == "<"* ]]; then
   exit 1
 fi
 
-LOOKUP="$(curl -fsSL "${API_BASE}/users/${APP_SLUG}%5Bbot%5D" 2>/dev/null || true)"
-ID="$(printf '%s' "${LOOKUP}" | tr -d '\n \t' | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')"
+_AUTH_HEADER=()
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  _AUTH_HEADER=(-H "Authorization: Bearer ${GH_TOKEN}")
+elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  _AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+fi
+LOOKUP="$(curl -fsSL ${_AUTH_HEADER[@]+"${_AUTH_HEADER[@]}"} -H "Accept: application/vnd.github+json" "${API_BASE}/users/${APP_SLUG}%5Bbot%5D" 2>/dev/null || true)"
+# REST answers pretty-printed (a space after the colon), so read the separator
+# the way REST actually emits it instead of assuming compact JSON. Take the
+# first "id" (the top-level one) so a later field cannot shadow it.
+ID="$(printf '%s' "${LOOKUP}" | grep -oE '"id"[[:space:]]*:[[:space:]]*[0-9]+' | head -n 1 | grep -oE '[0-9]+$' || true)"
 if [[ -z "${ID}" ]]; then
   echo "ERROR: cannot resolve bot user ID for ${APP_SLUG}[bot] (offline?)." >&2
   echo "Set BOT_USER_ID to the bot account user ID" >&2
