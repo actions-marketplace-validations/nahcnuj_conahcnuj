@@ -34,6 +34,7 @@ git -C "${WORK}" commit -qm init
 # request_review call (the `{}` after the successful conditions poll).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "CI mode", "body": "End at the review request.", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -65,9 +66,11 @@ RC=0
   GITHUB_ACTIONS=true CONAHCNUJ_MAX_SECONDS=10 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj CI-mode run log -----"
-cat "${LOG}"
-echo "-------------------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj CI-mode run log -----"
+  cat "${LOG}"
+  echo "-------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 

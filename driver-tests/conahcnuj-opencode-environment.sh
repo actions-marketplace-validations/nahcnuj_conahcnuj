@@ -120,7 +120,7 @@ git -C "${WORK2}" add -A
 git -C "${WORK2}" commit -qm init >/dev/null
 
 TAPE="${TMPROOT}/tape.txt"
-printf '{"number": 14, "title": "test issue", "body": "dummy body", "labels": [], "state": "open"}\n' > "${TAPE}"
+printf '[{"login":"conahcnuj"}]\n{"number": 14, "title": "test issue", "body": "dummy body", "labels": [], "state": "open"}\n' > "${TAPE}"
 
 LOG="${TMPROOT}/run.log"
 RC=0

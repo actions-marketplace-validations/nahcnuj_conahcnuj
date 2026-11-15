@@ -1290,18 +1290,18 @@ implement() {
       if workdir_changed "${workdir}"; then
         tree_changed="true"
       fi
-      if [[ "${committed}" == "true" && "${run_failed}" != "true" ]]; then
+      if [[ "${committed}" == "true" ]]; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} completed the work and committed it." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" && "${run_failed}" != "true" ]]; then
+      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
         echo "Model ${model} completed the work." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${wrote_message}" == "true" && "${run_failed}" != "true" ]] && branch_has_commits "" "${base_branch}"; then
+      if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
         OPENCODE_LAST_MODEL="${model}"
@@ -1541,13 +1541,15 @@ constraint_fix_context() {
 # driver failure. Args: owner repo pr
 request_review_from_owner() {
   local owner="${1}" repo="${2}" pr="${3}" requested="" read_state="answered"
+  local reviewer="${REVIEWER:-${owner}}"
   REVIEW_HANDOFF_CONFIRMED="true"
-  if request_review_with_retry "${owner}" "${repo}" "${pr}" "${owner}"; then
-    echo "Assigned ${owner} as reviewer on PR #${pr}." >&2
+  if request_review_with_retry "${owner}" "${repo}" "${pr}" "${reviewer}"; then
+    echo "Assigned ${reviewer} as reviewer on PR #${pr}." >&2
     return 0
   fi
   if request_review_with_retry "${owner}" "${repo}" "${pr}"; then
-    echo "Review requested on PR #${pr} (${owner} is not assignable; asked for review instead)." >&2
+    echo "Review requested on PR #${pr} (${reviewer} is not assignable; asked for review instead)." >&2
+    REVIEW_HANDOFF_CONFIRMED="false"
     return 0
   fi
   # Reading the PR back is the only remaining evidence. Its answer has to be
@@ -1611,6 +1613,33 @@ log_review_handoff() {
   else
     echo "PR #${pr} is ready for a human reviewer: https://github.com/${owner}/${repo}/pull/${pr}" >&2
   fi
+}
+
+# Resolve the human reviewer a run hands a PR to. An organisation cannot be
+# assigned as a reviewer ("Reviews may only be requested from collaborators"),
+# so when the repository owner is not itself an admin collaborator we pick the
+# first human (non-bot) admin instead, falling back to the owner when no admin
+# can be resolved. CONAHCNUJ_REVIEWER overrides the choice outright.
+# Args: owner repo  (prints the chosen login on stdout)
+resolve_reviewer() {
+  local owner="${1}" repo="${2}" admins candidate
+  if [[ -n "${CONAHCNUJ_REVIEWER:-}" ]]; then
+    printf '%s' "${CONAHCNUJ_REVIEWER}"
+    return 0
+  fi
+  admins="$(gh_api_repo_admins "${owner}" "${repo}" 2>/dev/null || true)"
+  if printf '%s\n' "${admins}" | grep -Fxq "${owner}"; then
+    printf '%s' "${owner}"
+    return 0
+  fi
+  candidate="$(printf '%s\n' "${admins}" | grep -v '\[bot\]$' | sed '/^$/d' | head -n 1 || true)"
+  if [[ -z "${candidate}" ]]; then
+    candidate="$(printf '%s\n' "${admins}" | sed '/^$/d' | head -n 1 || true)"
+  fi
+  if [[ -z "${candidate}" ]]; then
+    candidate="${owner}"
+  fi
+  printf '%s' "${candidate}"
 }
 
 # --- review fingerprint -----------------------------------------------------
@@ -1817,7 +1846,7 @@ ${summary}"
         continue
       fi
       request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-      log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+      log_review_handoff "${owner}" "${repo}" "${pr}" "${REVIEWER:-${owner}}"
       if [[ "${CI_MODE}" == "true" ]]; then
         echo "CI mode: review requested; ending the run." >&2
         exit 0
@@ -1881,7 +1910,7 @@ ${summary}"
     # The constraints pass, so the PR is ready for a human: hand it over. The
     # run does not end here; the next loop iteration waits for the verdict.
     request_review_from_owner "${owner}" "${repo}" "${pr}" || exit 1
-    log_review_handoff "${owner}" "${repo}" "${pr}" "${owner}"
+    log_review_handoff "${owner}" "${repo}" "${pr}" "${REVIEWER:-${owner}}"
     if [[ "${CI_MODE}" == "true" ]]; then
       echo "CI mode: review requested; ending the run." >&2
       exit 0
@@ -2098,6 +2127,21 @@ main() {
   repo="${repo_info#*/}"
   BUG_REPORT_TARGET="${repo_info}"
   echo "Repository: ${owner}/${repo}" >&2
+
+  # The reviewer a run hands the PR to is not always the repository owner: an
+  # organisation cannot be assigned as a reviewer ("Reviews may only be requested
+  # from collaborators"), and the human who owns the work is one of its admins.
+  # Resolve an admin collaborator when the owner itself is not usable, falling
+  # back to the owner for ordinary user-owned repositories. CONAHCNUJ_REVIEWER
+  # overrides the choice outright.
+  REVIEWER="${CONAHCNUJ_REVIEWER:-}"
+  if [[ -z "${REVIEWER}" ]]; then
+    REVIEWER="$(resolve_reviewer "${owner}" "${repo}")"
+  fi
+  if [[ -z "${REVIEWER}" ]]; then
+    REVIEWER="${owner}"
+  fi
+  export REVIEWER
 
   # A target/origin mismatch (a stale workflow pin or a hand-rolled
   # CONAHCNUJ_REPO override) and a target the App installation cannot reach are
