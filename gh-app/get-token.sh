@@ -49,7 +49,7 @@ fi
 # Return cached token if still valid (installation tokens live ~1h).
 # --print-jwt never takes this path: the cache holds installation tokens,
 # not App JWTs.
-if [[ "${1:-}" != "--print-jwt" && -f "${CACHE_FILE}" ]]; then
+if [[ "${1:-}" != "--print-jwt" && "${1:-}" != "--refresh" && -f "${CACHE_FILE}" ]]; then
   CACHE_EXPIRES="$(sed -n '1{s/^\([0-9][0-9]*\)|.*$/\1/p}' "${CACHE_FILE}")"
   CACHE_TOKEN="$(sed -n '1{s/^[0-9][0-9]*|//p}' "${CACHE_FILE}")"
   if [[ -n "${CACHE_EXPIRES}" && -n "${CACHE_TOKEN}" && "$(date +%s)" -lt "${CACHE_EXPIRES}" ]]; then

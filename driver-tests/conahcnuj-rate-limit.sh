@@ -107,7 +107,7 @@ grep -q "filing a bug report issue" "${LOG1}" && { echo "FAIL: a rate limit must
 # No bug report in scenario 1, so only init + implement commits.
 ONELINE="$(git -C "${WORK}" log --oneline)"
 grep -q "mock commit from rlx/b" <<<"${ONELINE}" || { echo "FAIL: the second model's .commit-msg was not used"; exit 1; }
-[[ "$(printf '%s\n' "${ONELINE}" | wc -l)" == "3" ]] || { echo "FAIL: expected init + implement commits"; exit 1; }
+[[ "$(printf '%s\n' "${ONELINE}" | wc -l)" == "4" ]] || { echo "FAIL: expected init + initial + implement + cleanup commits"; exit 1; }
 
 LOG2="${ROOT}/run2.log"
 RC2=0

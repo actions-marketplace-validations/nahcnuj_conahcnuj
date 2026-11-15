@@ -131,7 +131,7 @@ grep -q "Created draft PR #123" "${LOG}" || { echo "FAIL: PR #123 was not create
 # number must be stable for the whole run (the template's concurrency group and
 # review/resume triggers key on it). The empty initial commit is what lets
 # GitHub open the PR before any real change exists.
-grep -q "Creating an empty initial commit" "${LOG}" || { echo "FAIL: no empty initial commit was created before the early PR"; exit 1; }
+grep -q "Creating an initial commit with TODO.jsonl" "${LOG}" || { echo "FAIL: no initial commit with TODO.jsonl was created before the early PR"; exit 1; }
 EARLY_PR_LINE="$(grep -n 'Early draft PR: #123' "${LOG}" | head -1 | cut -d: -f1)"
 IMPLEMENT_LINE="$(grep -n 'Implementing with available models' "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${EARLY_PR_LINE}" && -n "${IMPLEMENT_LINE}" && "${EARLY_PR_LINE}" -lt "${IMPLEMENT_LINE}" ]] || { echo "FAIL: the draft PR must be opened before implementation"; exit 1; }
@@ -157,7 +157,7 @@ grep -q "conahcnuj: implement issue #10" <<<"${ONELINE}" && { echo "FAIL: driver
 grep -q "mock commit from opencode/second" <<<"${ONELINE}" || { echo "FAIL: the handoff model's .commit-msg was not used"; exit 1; }
 FULL_LOG="$(git -C "${WORK}" log --format=%B)"
 grep -q "Co-Authored-By: opencode (second)" <<<"${FULL_LOG}" || { echo "FAIL: handoff model trailer missing"; exit 1; }
-# init + empty initial + implement = 3 commits from the branch tip (no feedback round here).
-[[ "$(printf '%s\n' "${ONELINE}" | wc -l)" == "3" ]] || { echo "FAIL: expected init + empty + implement commits"; exit 1; }
+# init + initial (TODO.jsonl) + implement + cleanup (remove placeholder) = 4 commits.
+[[ "$(printf '%s\n' "${ONELINE}" | wc -l)" == "4" ]] || { echo "FAIL: expected init + initial + implement + cleanup commits"; exit 1; }
 
 echo "conahcnuj flow passed"

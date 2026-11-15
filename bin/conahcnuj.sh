@@ -389,15 +389,36 @@ workdir_changed() {
 }
 
 # Whether the per-issue progress file TODO.jsonl still has outstanding tasks.
-# The coding agent creates it (one task per line) when it starts an issue,
-# removes lines as tasks are completed and leaves it empty (no line) once the
-# issue is resolved and ready to hand over (AGENTS.md tells it so). Its
+# The driver owns the file's lifecycle: it creates the initial placeholder
+# (as the commit anchor for the early draft PR), keys the PR's draft state on
+# it, removes the empty file before hand-off and requests review. The coding
+# agent only keeps the task lines current -- it adds/removes entries and
+# empties the file (removes every line) once the issue is resolved, but does
+# not create or delete the file itself. Its
 # lifetime is the issue's, so the driver keys the PR's draft state on it: while
 # the file has any line the PR is a draft and is never handed to the reviewer,
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
+# True when TODO.jsonl carries at least one unfinished task line. Blank lines
+# (and a file that does not exist) do not count as outstanding work: an empty
+# or whitespace-only progress file is "done" and is removed before hand-off.
+todo_task_count() {
+  [[ -f "TODO.jsonl" ]] || { printf '0'; return 0; }
+  local count
+  count="$(grep -c '[^[:space:]]' "TODO.jsonl" 2>/dev/null)" || count=0
+  printf '%s' "${count}"
+}
+
 todo_present() {
-  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]]
+  [[ -f "TODO.jsonl" ]] || return 1
+  [[ "$(todo_task_count)" -gt 0 ]] || return 1
+  # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
+  # work has landed; once the branch carries a real change it is stale and no
+  # longer blocks the hand-off (the agent may replace it with its own progress).
+  if [[ -n "${INITIAL_COMMIT_OID:-}" ]] && [[ "$(git rev-parse HEAD 2>/dev/null)" != "${INITIAL_COMMIT_OID}" ]] && [[ -n "${INITIAL_TODO_CONTENT:-}" ]] && [[ "$(cat TODO.jsonl 2>/dev/null)" == "${INITIAL_TODO_CONTENT}" ]]; then
+    return 1
+  fi
+  return 0
 }
 
 # Resolve the base ref to compare the feature branch against. Shared by the
@@ -438,11 +459,12 @@ branch_has_commits() {
     return 1
   fi
   count="$(git rev-list --count "${ref}..HEAD" 2>/dev/null || printf '0')"
-  # An empty initial commit (no tree change) does not count as "implemented":
-  # it exists only to let a draft PR be opened early, and must not make the
-  # driver skip the implementation round.
+  # An initial commit that only adds the TODO.jsonl progress file (no real
+  # implementation) does not count as "implemented": it exists only to let a
+  # draft PR be opened early, and must not make the driver skip the
+  # implementation round.
   if [[ "${count}" -gt 0 ]]; then
-    if git diff --quiet "${ref}" HEAD 2>/dev/null; then
+    if ! git diff --name-only "${ref}" HEAD 2>/dev/null | grep -vE '^TODO(\..*)?$' | grep -q .; then
       return 1
     fi
     return 0
@@ -562,7 +584,14 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  [[ -s "TODO.jsonl" ]] && return 0
+  # An empty / whitespace-only progress file (or the initial placeholder) is
+  # WIP-only metadata: remove it so it never reaches main. An agent-managed
+  # file that still carries unfinished task lines is left for the agent.
+  if [[ "$(todo_task_count)" -gt 0 ]]; then
+    if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then
+      return 0
+    fi
+  fi
   echo "Removing the empty TODO.jsonl so it never reaches main." >&2
   rm -f TODO.jsonl
   git add -A -- TODO.jsonl >/dev/null 2>&1 || true
@@ -1685,7 +1714,7 @@ drive() {
       fi
       echo "TODO.jsonl still has unfinished tasks; keeping PR #${pr} a draft and continuing the work." >&2
       local todo_change="false"
-      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
+      if implement "${title}" "${body}" "The per-issue progress file TODO.jsonl is still in the working tree, so the issue is not finished and the pull request is still a draft. Continue the work, keep TODO.jsonl current, and empty it (remove every line, but do not delete the file; the driver removes the empty file) once the issue is fully resolved and the pull request is ready for review." "${base}"; then
         todo_change="true"
       fi
       # Same rule as the other rounds: only a dirty tree WITH a .commit-msg is
@@ -1887,17 +1916,22 @@ start_issue() {
   # Open a draft PR early so its number is stable for the whole run (the
   # concurrency group and review/resume triggers can key on it instead of the
   # issue number). That requires at least one commit on the branch, so create
-  # an empty initial commit first: it carries no file changes and only exists
-  # to let the PR be opened before the real implementation lands. Any commit on
-  # top of the base counts here (even an empty one left by an interrupted
-  # earlier run), so a second empty commit is never stacked on top of one.
+  # an initial commit carrying a TODO.jsonl progress file (instead of an empty
+  # commit, which is disallowed) first: it carries the task and only exists to
+  # let the PR be opened before the real implementation lands. Any commit on
+  # top of the base counts here (even an initial one left by an interrupted
+  # earlier run), so a second initial commit is never stacked on top of one.
   if [[ "$(branch_commit_count "${default_oid}" "${default_branch}")" == "0" ]]; then
-    echo "Creating an empty initial commit so a draft PR can be opened early." >&2
+    echo "Creating an initial commit with TODO.jsonl so a draft PR can be opened early." >&2
+    printf '{"task":"Implement issue #%s: %s"}\\n' "${num}" "${title}" > TODO.jsonl
+    INITIAL_TODO_CONTENT="$(cat TODO.jsonl)"
+    git add -A -- TODO.jsonl >/dev/null 2>&1 || true
     if [[ "${TEST_MODE}" == "1" ]]; then
-      git commit --allow-empty -q -m "Initial commit" 2>/dev/null || true
+      git commit -q -m "Initial commit" 2>/dev/null || true
     else
-      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" --allow-empty >/dev/null 2>&1 || echo "WARNING: could not create the empty initial commit; continuing." >&2
+      bash "${HERE}/../gh-app/api-commit.sh" -m "Initial commit" >/dev/null 2>&1 || echo "WARNING: could not create the initial commit; continuing." >&2
     fi
+    INITIAL_COMMIT_OID="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
 
   # Open the draft PR now, before implementation, so its number is available

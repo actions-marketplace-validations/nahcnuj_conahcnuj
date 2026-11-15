@@ -436,7 +436,7 @@ gh_api_rollup_state() {
         fi
         conclusion="$(gh_api_json_str "${node}" "conclusion")"
         case "${conclusion}" in
-          SUCCESS|NEUTRAL|SKIPPED) ;;
+          SUCCESS|NEUTRAL) ;;
           "") pending="true" ;;
           null) pending="true" ;;
           *) result="FAILURE" ;;
@@ -520,6 +520,9 @@ gh_api_fetch_reviews() {
 }
 
 # Turn a raw reviews GraphQL payload (stdin) into readable feedback text.
+# Only unresolved review threads are passed: resolved conversations and stale
+# review/comment bodies are noise that confuse the agent, so they are dropped
+# here. The fingerprint still uses the full payload to detect new feedback.
 gh_api_review_summary() {
   local json decision
   json="$(gh_api_read_line)"
@@ -527,39 +530,7 @@ gh_api_review_summary() {
   decision="$(gh_api_json_str "${json}" "reviewDecision")"
   printf 'reviewDecision: %s\n' "${decision:-NONE}"
 
-  # Reviews (nodes look like {"state":"...","body":"...","author":{"login":"..."}}).
-  local reviews_part
-  reviews_part="$(printf '%s' "${json}" | sed 's/"reviewThreads":.*//' | sed 's/"comments":.*//')"
-  local rn
-  if printf '%s' "${reviews_part}" | grep -qE '\{"state":"[^"]*","body":"[^"]*"'; then
-    echo "REVIEWS:"
-  fi
-  while IFS= read -r rn; do
-    [[ -z "${rn}" ]] && continue
-    local st bd au
-    st="$(gh_api_json_str "${rn}" "state")"
-    bd="$(gh_api_json_str "${rn}" "body")"
-    au="$(gh_api_json_str "${rn}" "login")"
-    [[ -z "${bd}" ]] && bd="(no body)"
-    printf -- '- [review %s] %s: %s\n' "${st}" "${au}" "${bd}"
-  done < <(printf '%s' "${reviews_part}" | grep -oE '\{"state":"[^"]*","body":"[^"]*","author":\{"login":"[^"]*"\}' || true)
-
-  # Issue-level comments.
-  local comments_part comment_matches bn
-  comments_part="$(printf '%s' "${json}" | sed 's/"reviewThreads":.*//' | sed -n 's/.*"comments":{"nodes":\(\[[^]]*\]\).*/\1/p')"
-  comment_matches="$(printf '%s' "${comments_part}" | grep -oE '"body":"[^"]*"' || true)"
-  if [[ -n "${comment_matches}" ]]; then
-    echo "COMMENTS:"
-  fi
-  while IFS= read -r bn; do
-    [[ -z "${bn}" ]] && continue
-    local bd
-    bd="$(gh_api_json_str "${bn}" "body")"
-    [[ -n "${bd}" ]] || bd="(no body)"
-    printf -- '- %s\n' "${bd}"
-  done < <(printf '%s\n' "${comment_matches}")
-
-  # Inline review threads: skip resolved ones, quote unresolved feedback.
+  # Inline review threads: pass only the unresolved ones.
   local threads_part
   threads_part="$(printf '%s' "${json}" | sed -n 's/.*"reviewThreads":{"nodes":\(.*\)/\1/p')"
   if echo "${threads_part}" | grep -q '"isResolved":false'; then
@@ -623,7 +594,11 @@ gh_api_format_unresolved_threads() {
 # like fresh reviewer feedback (the driver would answer its own answer forever).
 gh_api_review_fingerprint() {
   local raw="${1}" matches="" decision=""
-  matches="$(printf '%s' "${raw}" | grep -oE '\{"state":"[^"]*","body":"[^"]*","author":\{"login":"[^"]*"\}|\{"databaseId":[0-9]+,"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*"|"isResolved":(true|false)' | grep -v '\[bot\]' || true)"
+  # Resolution state itself is not feedback: a thread being marked resolved
+  # must not look like new reviewer input, so drop the isResolved tokens. The
+  # thread's comments still hash, which keeps a later resolution from
+  # changing the fingerprint (no spurious round).
+  matches="$(printf '%s' "${raw}" | grep -oE '\{"state":"[^"]*","body":"[^"]*","author":\{"login":"[^"]*"\}|\{"databaseId":[0-9]+,"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*","author":\{"login":"[^"]*"\}|\{"body":"[^"]*"' | grep -v '\[bot\]' || true)"
   if [[ -z "${matches}" ]]; then
     # Only a decision that means "do work now" counts as feedback on its own;
     # REVIEW_REQUIRED / empty just mean "waiting for reviewers".
