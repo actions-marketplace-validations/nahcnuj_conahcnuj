@@ -22,5 +22,3 @@ jobs:
       repository: ${{ github.repository }}
       pr-number: ${{ github.event.pull_request.number }}
       head-sha: ${{ github.event.pull_request.head.sha }}
-      # merge-method: squash
-      # post-merge-dispatch: cd.yml

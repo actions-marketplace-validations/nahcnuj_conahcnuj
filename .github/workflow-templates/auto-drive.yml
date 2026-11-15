@@ -1,12 +1,5 @@
 name: Auto-drive
 
-# Template for wiring a repository up to conahcnuj's reusable issue-driver
-# workflow. Copy this file into your repository as
-# .github/workflows/auto-drive.yml, then set the APP_ID / INSTALLATION_ID /
-# PRIVATE_KEY repository secrets (and optionally the conahcnuj environment).
-# Secrets are passed individually: `secrets: inherit` is unreliable across
-# organizations / forks, so name each secret explicitly.
-
 on:
   issues:
     types: [opened, reopened]
