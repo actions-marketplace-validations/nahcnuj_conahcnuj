@@ -46,6 +46,7 @@ git -C "${WORK}" commit -qm init
 #   review request; it keeps polling and ends on the approval.
 TAPE_OK="${ROOT}/tape-ok.txt"
 cat > "${TAPE_OK}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 15, "title": "rate limited model gives way to the next one", "body": "Cut the wait out", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -64,6 +65,7 @@ EOF
 # fetch_issue, get_repo, find_pr_by_head_any (empty), create_issue.
 TAPE_BUG="${ROOT}/tape-bug.txt"
 cat > "${TAPE_BUG}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 15, "title": "rate limited model gives way to the next one", "body": "Cut the wait out", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}

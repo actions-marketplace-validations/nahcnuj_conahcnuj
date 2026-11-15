@@ -1,8 +1,10 @@
 name: Issue auto-drive
 
 on:
-#  issues:
-#    types: [opened, reopened]
+  issues:
+    types:
+    # - opened
+      - reopened
   pull_request_review:
     types: [submitted, edited, dismissed]
   workflow_run:

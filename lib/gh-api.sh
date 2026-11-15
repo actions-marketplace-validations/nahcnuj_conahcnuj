@@ -839,6 +839,22 @@ gh_api_requested_reviewers() {
   return 0
 }
 
+# Administrators (collaborators with admin permission) of a repository, one login
+# per line. Used to pick a human reviewer for repositories whose owner is not a
+# user (e.g. an organisation), where requesting review from the owner itself
+# fails with "Reviews may only be requested from collaborators". Args: owner repo
+gh_api_repo_admins() {
+  local owner="${1}" repo="${2}" json
+  if [[ "${GH_API_TEST_MODE:-0}" == "1" ]]; then
+    json="$(gh_api_read_line)"
+  else
+    json="$(gh_api_call GET "https://api.github.com/repos/${owner}/${repo}/collaborators?permission=admin")" || return 1
+  fi
+  printf '%s' "${json}" |
+    grep -oE '"login"[[:space:]]*:[[:space:]]*"[^"]*"' |
+    sed 's/^"login"[[:space:]]*:[[:space:]]*"//; s/"$//' || true
+}
+
 # Post a PR/issue comment. Args: owner repo number body  (output: comment id)
 gh_api_post_comment() {
   local owner="${1}" repo="${2}" number="${3}" body="${4}"

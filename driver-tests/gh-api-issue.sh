@@ -106,7 +106,6 @@ test_fetch_issue() {
   [[ "${labels}" == *"enhancement"* ]]
   [[ "${labels}" == *"automation"* ]]
   [[ "${is_pr}" == "false" ]]
-  echo "gh_api_fetch_issue passed"
 }
 
 test_fetch_issue_is_pr() {
@@ -114,7 +113,6 @@ test_fetch_issue_is_pr() {
   out="$(printf '%s\n' "${MOCK_PR_AS_ISSUE}" | gh_api_fetch_issue "conahcnuj" "conahcnuj" 15)"
   is_pr="$(printf '%s' "${out}" | cut -d'|' -f4)"
   [[ "${is_pr}" == "true" ]]
-  echo "gh_api_fetch_issue (PR detection) passed"
 }
 
 test_get_repo() {
@@ -124,7 +122,6 @@ test_get_repo() {
   oid="$(printf '%s' "${out}" | cut -d'|' -f2)"
   [[ "${branch}" == "main" ]]
   [[ "${oid}" == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ]]
-  echo "gh_api_get_repo passed"
 }
 
 test_fetch_pr_state() {
@@ -144,7 +141,6 @@ test_fetch_pr_state() {
   [[ "${head}" == "feature/fix-10" ]]
   [[ "${base}" == "main" ]]
   [[ "${closes}" == "10" ]]
-  echo "gh_api_fetch_pr_state passed"
 }
 
 test_fetch_pr_conditions() {
@@ -278,7 +274,6 @@ test_fetch_pr_conditions() {
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
-  echo "gh_api_fetch_pr_conditions passed"
 }
 
 test_fetch_reviews() {
@@ -289,7 +284,6 @@ test_fetch_reviews() {
   [[ "${decision}" == "CHANGES_REQUESTED" ]]
   # Payload survives the base64 round trip unchanged.
   [[ "${payload}" == "${MOCK_REVIEWS}" ]]
-  echo "gh_api_fetch_reviews passed"
 }
 
 test_review_summary() {
@@ -302,7 +296,6 @@ test_review_summary() {
   [[ "${summary}" != *"Resolved thread"* ]]
   [[ "${summary}" != *"Please fix the typo"* ]]
   [[ "${summary}" != *"Nice work so far!"* ]]
-  echo "gh_api_review_summary passed"
 }
 
 test_find_pr_by_head() {
@@ -311,14 +304,12 @@ test_find_pr_by_head() {
   [[ -z "${out}" ]]
   out="$(printf '%s\n' "${MOCK_PR_BY_HEAD_FOUND}" | gh_api_find_pr_by_head "conahcnuj" "conahcnuj" "feature/fix-10")"
   [[ "${out}" == "42" ]]
-  echo "gh_api_find_pr_by_head passed"
 }
 
 test_create_pr() {
   local out
   out="$(printf '%s\n' "${MOCK_REPO_ID}" "${MOCK_CREATE_PR}" | gh_api_create_pr "conahcnuj" "conahcnuj" "New PR" "Body" "branch" "main")"
   [[ "${out}" == "123" ]]
-  echo "gh_api_create_pr passed"
 }
 
 test_update_pr() {
@@ -330,7 +321,6 @@ test_update_pr() {
 書き換え済みの本文です。")"
   # gh_api_update_pr discards the response (must not leak into stdout).
   [[ -z "${out}" ]]
-  echo "gh_api_update_pr passed"
 }
 
 test_request_review() {
@@ -350,7 +340,6 @@ test_request_review() {
     gh_api_request_review "conahcnuj" "conahcnuj" 15
   )"
   [[ "${body}" == '{"reviewers":[]}' ]]
-  echo "gh_api_request_review passed"
 }
 
 test_http_status() {
@@ -376,7 +365,6 @@ test_http_status() {
   : > "${dump}"
   [[ -z "$(gh_api_http_status "${dump}")" ]]
   rm -f "${dump}"
-  echo "gh_api_http_status passed"
 }
 
 # A GraphQL response that came back 201 (Created) is a successful POST, not a
@@ -398,7 +386,6 @@ test_graphql_http_status() {
     gh_api_graphql "query { viewer { login } }" 2>/dev/null || printf 'failed'
   )"
   [[ "${out}" == "failed" ]] || { echo "FAIL: a 500 GraphQL response was accepted"; exit 1; }
-  echo "gh_api_graphql (HTTP status) passed"
 }
 
 # A conditions read that fails must be reported as a failure, never as an empty
@@ -414,7 +401,6 @@ test_fetch_pr_conditions_read_failure() {
     GH_API_TEST_MODE=0 gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15 2>/dev/null || printf 'failed'
   )"
   [[ "${out}" == "failed" ]] || { echo "FAIL: a failed conditions read was not propagated"; exit 1; }
-  echo "gh_api_fetch_pr_conditions (read failure) passed"
 }
 
 test_requested_reviewers() {
@@ -441,7 +427,6 @@ test_requested_reviewers() {
 team:reviewers" ]]
   out="$(printf '%s\n' '{"users":[],"teams":[{"slug":"reviewers","id":3}]}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
   [[ "${out}" == "team:reviewers" ]]
-  echo "gh_api_requested_reviewers passed"
 }
 
 # The same read-back against a response spread over several lines, which is what
@@ -477,21 +462,18 @@ test_requested_reviewers_pretty() {
   )"
   [[ "${out}" == "conahcnuj
 unreadable" ]]
-  echo "gh_api_requested_reviewers (pretty-printed payload) passed"
 }
 
 test_post_comment() {
   local out
   out="$(printf '%s\n' "${MOCK_COMMENT}" | gh_api_post_comment "conahcnuj" "conahcnuj" 15 "Addressed feedback")"
   [[ "${out}" == "777" ]]
-  echo "gh_api_post_comment passed"
 }
 
 test_create_issue() {
   local out
   out="$(printf '%s\n' '{"number":25}' | gh_api_create_issue "conahcnuj" "conahcnuj" "Bug report" "details")"
   [[ "${out}" == "25" ]]
-  echo "gh_api_create_issue passed"
 }
 
 # A JSON string may not carry a raw control byte, so gh_api_escape turns every
@@ -507,10 +489,10 @@ test_escape_control_chars() {
     echo "FAIL: gh_api_escape control characters: '${out}'" >&2
     exit 1
   }
-  printf '%s' "${out}" | grep -q '[[:cntrl:]]' && {
+  if printf '%s' "${out}" | grep -q '[[:cntrl:]]'; then
     echo "FAIL: a raw control byte survived gh_api_escape" >&2
     exit 1
-  }
+  fi
   # The escapes that were already there must not change: line breaks join into
   # \n, quotes and backslashes stay escaped, and text passes through byte for
   # byte (multibyte included).
@@ -529,7 +511,6 @@ second")"
     echo "FAIL: gh_api_escape of an empty string is not empty" >&2
     exit 1
   }
-  echo "gh_api_escape passed"
 }
 
 # The same rule end to end through the real gh_api_create_issue: gh_api_call is
@@ -553,16 +534,45 @@ test_create_issue_control_chars() {
     echo "FAIL: create-issue payload: '${payload}'" >&2
     exit 1
   }
-  printf '%s' "${payload}" | grep -q '[[:cntrl:]]' && {
+  if printf '%s' "${payload}" | grep -q '[[:cntrl:]]'; then
     echo "FAIL: a raw control byte reached the create-issue payload" >&2
     exit 1
-  }
-  echo "gh_api_create_issue (control-character body) passed"
+  fi
+}
+
+
+test_repo_admins_compact() {
+  local out
+  # Compact JSON: one login per collaborator, in order.
+  out="$(printf '%s\n' '[{"login":"nahcnuj","permissions":{"admin":true}},{"login":"second"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: compact repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_pretty() {
+  local out
+  # Pretty-printed JSON (the shape GitHub really sends) must parse too.
+  out="$(printf '%s\n' '[ { "login" : "nahcnuj" } , { "login" : "second" } ]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: pretty repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_empty() {
+  local out
+  # No admins: empty output, not an error (the caller falls back to the owner).
+  out="$(printf '%s\n' '[]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ -z "${out}" ]] || { echo "FAIL: empty repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_single() {
+  local out
+  # A single collaborator comes back on one line.
+  out="$(printf '%s\n' '[{"login":"only-one"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "only-one" ]] || { echo "FAIL: single repo admin: '${out}'" >&2; exit 1; }
 }
 
 test_merge_pr() {
   gh_api_merge_pr "conahcnuj" "conahcnuj" 15 < <(printf '%s\n' '{}' '{}')
-  echo "gh_api_merge_pr passed"
 }
 
 test_fetch_issue
@@ -585,6 +595,10 @@ test_post_comment
 test_create_issue
 test_escape_control_chars
 test_create_issue_control_chars
+test_repo_admins_compact
+test_repo_admins_pretty
+test_repo_admins_empty
+test_repo_admins_single
 test_merge_pr
 
 echo "All gh-api tests passed"

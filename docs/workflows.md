@@ -89,7 +89,10 @@ jobs:
     uses: conahcnuj/conahcnuj/.github/workflows/issue-driver.yml@main
     with:
       number: 123
-    secrets: inherit
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
 ```
 
 振る舞い:
@@ -176,6 +179,23 @@ jobs:
   （実際にマージされたと確認できたときだけ起動。auto-merge を有効化しただけの
   場合はまだマージされていないため起動しない）
 
+## ワークフローテンプレート（利用側リポジトリ向け）
+
+利用側リポジトリへコピーして使うテンプレートを
+`.github/workflow-templates/` に用意しています（`auto-drive.yml` /
+`auto-merge.yml`）。コピー先は `.github/workflows/` です。GitHub の
+「New workflow」画面から選んで配置することもできます。
+
+- `auto-drive.yml`: `issue-driver.yml` を呼び出し、issue を PR まで駆動する
+- `auto-merge.yml`: `owner-approved-auto-merge.yml` を呼び出し、owner の approve を
+  受けてマージする
+
+`secrets: inherit` は caller と同じ organization / enterprise 内の reusable
+workflow でしか使えないため、テンプレートでは secret を**個別に**渡します
+（`APP_ID` / `INSTALLATION_ID` / `PRIVATE_KEY`）。`APP_SLUG` は secret にせず、
+`issue-driver.yml` 側で解決します。
+
+
 ## GitHub Pages（`docs/` の配信）
 
 `pages.yml` は `docs/` をビルドして GitHub Pages へデプロイします。
@@ -217,7 +237,10 @@ jobs:
     uses: conahcnuj/conahcnuj/.github/workflows/setup.yml@main
     with:
       environment: conahcnuj
-    secrets: inherit
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
 ```
 
 `setup.yml` の `environment` 入力（必須）で secrets を持つ environment を指定します。

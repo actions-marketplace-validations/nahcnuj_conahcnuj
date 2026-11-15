@@ -85,6 +85,7 @@ git -C "${WORK}" commit -qm init
 #   fetch_reviews (APPROVED -> the run ends on the approval, not the request).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "TODO.jsonl progress", "body": "# x\n", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -119,9 +120,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj TODO.jsonl run log -----"
-cat "${LOG}"
-echo "----------------------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj TODO.jsonl run log -----"
+  cat "${LOG}"
+  echo "----------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 # The PR was opened as a draft because TODO.jsonl had a task, and the run never
