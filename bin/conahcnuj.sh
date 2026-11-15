@@ -1290,18 +1290,18 @@ implement() {
       if workdir_changed "${workdir}"; then
         tree_changed="true"
       fi
-      if [[ "${committed}" == "true" ]]; then
+      if [[ "${committed}" == "true" && "${run_failed}" != "true" ]]; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} completed the work and committed it." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" ]]; then
+      if [[ "${tree_changed}" == "true" && "${wrote_message}" == "true" && "${run_failed}" != "true" ]]; then
         echo "Model ${model} completed the work." >&2
         OPENCODE_LAST_MODEL="${model}"
         return 0
       fi
-      if [[ "${wrote_message}" == "true" ]] && branch_has_commits "" "${base_branch}"; then
+      if [[ "${wrote_message}" == "true" && "${run_failed}" != "true" ]] && branch_has_commits "" "${base_branch}"; then
         rm -f "${workdir}/.commit-msg"
         echo "Model ${model} wrote .commit-msg and left the tree as it was; the branch already carries the implementation, so the round is complete." >&2
         OPENCODE_LAST_MODEL="${model}"
