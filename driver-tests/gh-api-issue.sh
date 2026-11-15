@@ -296,14 +296,12 @@ test_review_summary() {
   local summary
   summary="$(printf '%s\n' "${MOCK_REVIEWS}" | gh_api_review_summary)"
   [[ "${summary}" == *"reviewDecision: CHANGES_REQUESTED"* ]]
-  [[ "${summary}" == *"REVIEWS:"* ]]
-  [[ "${summary}" == *"Please fix the typo"* ]]
-  [[ "${summary}" == *"COMMENTS:"* ]]
-  [[ "${summary}" == *"Nice work so far!"* ]]
   [[ "${summary}" == *"REVIEW THREADS (unresolved):"* ]]
   [[ "${summary}" == *"Inline note on line 10"* ]]
-  # Resolved threads are excluded.
+  # Resolved threads and stale review/comment bodies are excluded.
   [[ "${summary}" != *"Resolved thread"* ]]
+  [[ "${summary}" != *"Please fix the typo"* ]]
+  [[ "${summary}" != *"Nice work so far!"* ]]
   echo "gh_api_review_summary passed"
 }
 
