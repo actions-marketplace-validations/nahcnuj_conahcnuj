@@ -738,7 +738,7 @@ report_bug_on_exit() {
   # issue or PR in another repository (BUG_REPORT_TARGET), so the label has to
   # come from there and not from where the report lands. Fall back to the
   # report's repository when the target was never resolved.
-  local owner="nahcnuj" repo="conahcnuj" input="${BUG_REPORT_INPUT:-}"
+  local owner="conahcnuj" repo="conahcnuj" input="${BUG_REPORT_INPUT:-}"
   local label_owner="${owner}" label_repo="${repo}"
   local branch oid title body num
   if [[ -n "${BUG_REPORT_TARGET:-}" ]]; then

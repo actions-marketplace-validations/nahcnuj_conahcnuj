@@ -73,9 +73,9 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # The happy path: the owner is named as the reviewer and the hand-off succeeds.
 : > "${CALLS}"
-out="$(request_review_from_owner "nahcnuj" "conahcnuj" 15 2>&1)" || fail "naming the owner as reviewer must succeed"
-[[ "${out}" == *"Assigned nahcnuj as reviewer on PR #15."* ]] || fail "the owner was not reported as assigned: ${out}"
-[[ "$(cat "${CALLS}")" == "REQUEST|15|nahcnuj" ]] || fail "the owner was not the requested reviewer: $(cat "${CALLS}")"
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" || fail "naming the owner as reviewer must succeed"
+[[ "${out}" == *"Assigned conahcnuj as reviewer on PR #15."* ]] || fail "the owner was not reported as assigned: ${out}"
+[[ "$(cat "${CALLS}")" == "REQUEST|15|conahcnuj" ]] || fail "the owner was not the requested reviewer: $(cat "${CALLS}")"
 echo "request_review_from_owner assigns the owner: passed"
 
 # A lone failure is a transport error, not a refusal: the retry is idempotent, so
@@ -83,19 +83,19 @@ echo "request_review_from_owner assigns the owner: passed"
 # (issue #139).
 FAIL_NAMED=1
 : > "${CALLS}"
-out="$(request_review_from_owner "nahcnuj" "conahcnuj" 15 2>&1)" || fail "a transient failure must not fail the hand-off"
-[[ "${out}" == *"Assigned nahcnuj as reviewer on PR #15."* ]] || fail "the retry did not recover the assignment: ${out}"
-[[ "$(cat "${CALLS}")" == "REQUEST|15|nahcnuj
-REQUEST|15|nahcnuj" ]] || fail "the failed attempt was not retried once: $(cat "${CALLS}")"
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" || fail "a transient failure must not fail the hand-off"
+[[ "${out}" == *"Assigned conahcnuj as reviewer on PR #15."* ]] || fail "the retry did not recover the assignment: ${out}"
+[[ "$(cat "${CALLS}")" == "REQUEST|15|conahcnuj
+REQUEST|15|conahcnuj" ]] || fail "the failed attempt was not retried once: $(cat "${CALLS}")"
 echo "request_review_from_owner retries a failed request once: passed"
 
 # A reviewer that cannot be assigned falls back to the unnamed ask-for-review.
 FAIL_NAMED=2
 : > "${CALLS}"
-out="$(request_review_from_owner "nahcnuj" "conahcnuj" 15 2>&1)" || fail "an unassignable owner must not fail the hand-off"
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" || fail "an unassignable owner must not fail the hand-off"
 [[ "${out}" == *"not assignable; asked for review instead"* ]] || fail "the fallback was not reported: ${out}"
-[[ "$(cat "${CALLS}")" == "REQUEST|15|nahcnuj
-REQUEST|15|nahcnuj
+[[ "$(cat "${CALLS}")" == "REQUEST|15|conahcnuj
+REQUEST|15|conahcnuj
 REQUEST|15|" ]] || fail "the fallback must retry without a reviewer: $(cat "${CALLS}")"
 echo "request_review_from_owner falls back to ask-for-review: passed"
 
@@ -104,7 +104,7 @@ echo "request_review_from_owner falls back to ask-for-review: passed"
 FAIL_NAMED=2
 FAIL_UNNAMED=2
 : > "${CALLS}"
-out="$(request_review_from_owner "nahcnuj" "conahcnuj" 15 2>&1)" && fail "a failed hand-off must report an error"
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" && fail "a failed hand-off must report an error"
 [[ "${out}" == *"ERROR: could not request review on PR #15."* ]] || fail "the failed hand-off was not reported: ${out}"
 [[ "$(grep -c '^REQUEST|15|' "${CALLS}")" == "4" ]] || fail "both forms must be retried once: $(cat "${CALLS}")"
 echo "request_review_from_owner reports a failed hand-off: passed"
@@ -115,10 +115,10 @@ echo "request_review_from_owner reports a failed hand-off: passed"
 # was asked for, and the driver exited 1 and filed a bug report.
 FAIL_NAMED=2
 FAIL_UNNAMED=2
-REQUESTED="nahcnuj"
+REQUESTED="conahcnuj"
 : > "${CALLS}"
-out="$(request_review_from_owner "nahcnuj" "conahcnuj" 15 2>&1)" || fail "a review request the PR already holds must count as done"
-[[ "${out}" == *"Review already requested on PR #15 (nahcnuj)"* ]] || fail "the confirmed hand-off was not reported: ${out}"
+out="$(request_review_from_owner "conahcnuj" "conahcnuj" 15 2>&1)" || fail "a review request the PR already holds must count as done"
+[[ "${out}" == *"Review already requested on PR #15 (conahcnuj)"* ]] || fail "the confirmed hand-off was not reported: ${out}"
 grep -q "ERROR: could not request review" <<<"${out}" && fail "a confirmed hand-off must not be reported as an error: ${out}"
 echo "request_review_from_owner confirms a hand-off GitHub already recorded: passed"
 
@@ -130,13 +130,13 @@ echo "request_review_from_owner confirms a hand-off GitHub already recorded: pas
 UNREADABLE="true"
 : > "${CALLS}"
 OUT_FILE="$(mktemp)"
-request_review_from_owner "nahcnuj" "conahcnuj" 15 > "${OUT_FILE}" 2>&1 || fail "an unreadable PR must not fail the run"
+request_review_from_owner "conahcnuj" "conahcnuj" 15 > "${OUT_FILE}" 2>&1 || fail "an unreadable PR must not fail the run"
 out="$(cat "${OUT_FILE}")"
 rm -f "${OUT_FILE}"
 [[ "${out}" == *"WARNING: no review request on PR #15 was accepted"* ]] || fail "the unverifiable hand-off was not reported: ${out}"
 grep -q "ERROR: could not request review" <<<"${out}" && fail "an unverifiable hand-off must not be called lost: ${out}"
 [[ "${REVIEW_HANDOFF_CONFIRMED}" == "false" ]] || fail "the unconfirmed hand-off must be recorded as such"
-log_review_handoff "nahcnuj" "conahcnuj" 15 "nahcnuj" 2>&1 | grep -q "PR #15 is ready for a human reviewer" || fail "the final line must not claim an unconfirmed request"
+log_review_handoff "conahcnuj" "conahcnuj" 15 "conahcnuj" 2>&1 | grep -q "PR #15 is ready for a human reviewer" || fail "the final line must not claim an unconfirmed request"
 echo "request_review_from_owner reports an unverifiable hand-off without failing the run: passed"
 
 echo "All review-request tests passed"

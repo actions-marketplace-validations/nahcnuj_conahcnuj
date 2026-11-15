@@ -49,7 +49,7 @@ export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
 export MOCK_OPENCODE_NOOP="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -66,9 +66,9 @@ echo "----------------------------------------"
 [[ ${RC} -eq 1 ]] || { echo "FAIL: driver exit code ${RC} (expected 1)"; exit 1; }
 
 grep -q "could not implement issue #14" "${LOG}" || { echo "FAIL: implementation failure was not logged"; exit 1; }
-grep -q "filing a bug report issue in nahcnuj/conahcnuj" "${LOG}" || { echo "FAIL: no bug report filing message"; exit 1; }
+grep -q "filing a bug report issue in conahcnuj/conahcnuj" "${LOG}" || { echo "FAIL: no bug report filing message"; exit 1; }
 grep -q "Bug report issue #25 created" "${LOG}" || { echo "FAIL: bug report issue #25 was not created"; exit 1; }
-grep -q "https://github.com/nahcnuj/conahcnuj/issues/25" "${LOG}" || { echo "FAIL: bug report URL is missing"; exit 1; }
+grep -q "https://github.com/conahcnuj/conahcnuj/issues/25" "${LOG}" || { echo "FAIL: bug report URL is missing"; exit 1; }
 
 # Set once for the whole file: the unit blocks below source the driver, which
 # would otherwise run main() on source.
@@ -104,7 +104,7 @@ grep -q "ERROR: could not implement issue #14 with any available model." "${ROOT
 grep -q "Exit code: 1" "${ROOT}/captured-body.txt" || { echo "FAIL: exit code is missing from the report"; exit 1; }
 grep -q "Repository:" "${ROOT}/captured-body.txt" && { echo "FAIL: self-evident repository line is still in the report"; exit 1; }
 # When the target is the driver's own repository the label names it.
-grep -q "nahcnuj/conahcnuj#14" "${ROOT}/captured-body.txt" || { echo "FAIL: same-repo report does not label the item with the target repository"; exit 1; }
+grep -q "conahcnuj/conahcnuj#14" "${ROOT}/captured-body.txt" || { echo "FAIL: same-repo report does not label the item with the target repository"; exit 1; }
 
 # --- unit: a cross-repository run labels the target item --------------------
 # Bug reports are always filed in the driver's own repository, but a reusable
@@ -120,17 +120,17 @@ grep -q "nahcnuj/conahcnuj#14" "${ROOT}/captured-body.txt" || { echo "FAIL: same
   }
   RUN_LOG_FILE="$(mktemp)"
   printf '%s\n' \
-    "Repository: nahcnuj/makamujo" \
+    "Repository: conahcnuj/makamujo" \
     "ERROR: could not implement issue #753 with any available model." \
     > "${RUN_LOG_FILE}"
   BUG_REPORT_INPUT="753"
-  BUG_REPORT_TARGET="nahcnuj/makamujo"
+  BUG_REPORT_TARGET="conahcnuj/makamujo"
   BUG_REPORTED="0"
   report_bug_on_exit "1"
 )
 
-grep -q "nahcnuj/makamujo#753" "${ROOT}/captured-body-cross.txt" || { echo "FAIL: cross-repo report does not label the target item"; exit 1; }
-grep -q "nahcnuj/conahcnuj#753" "${ROOT}/captured-body-cross.txt" && { echo "FAIL: cross-repo report labels the report repository, not the target"; exit 1; }
+grep -q "conahcnuj/makamujo#753" "${ROOT}/captured-body-cross.txt" || { echo "FAIL: cross-repo report does not label the target item"; exit 1; }
+grep -q "conahcnuj/conahcnuj#753" "${ROOT}/captured-body-cross.txt" && { echo "FAIL: cross-repo report labels the report repository, not the target"; exit 1; }
 
 # --- unit: control bytes in the run log cannot break the report payload ------
 # The report body is the tail of the run log, and that log holds the decoded

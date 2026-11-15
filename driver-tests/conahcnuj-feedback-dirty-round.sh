@@ -54,7 +54,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -63,7 +63,7 @@ export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
 # The only model dies mid-round: it leaves conahcnuj.mock and no .commit-msg.
 export MOCK_OPENCODE_ERROR="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
@@ -89,8 +89,8 @@ grep -q "left no .commit-msg" "${LOG}" && { echo "FAIL: the driver tried to comm
 grep -q "filing a bug report issue" "${LOG}" && { echo "FAIL: the driver filed a bug report"; exit 1; }
 grep -q "Driver exited abnormally" "${LOG}" && { echo "FAIL: the driver exited abnormally"; exit 1; }
 # The run still hands the PR back to the owner and finishes cleanly.
-grep -q "Assigned nahcnuj as reviewer on PR #15" "${LOG}" || { echo "FAIL: review was not re-requested from the owner"; exit 1; }
-grep -q "Review requested on PR #15 (reviewer: nahcnuj)" "${LOG}" || { echo "FAIL: the driver did not hand the PR back to the owner as reviewer"; exit 1; }
+grep -q "Assigned conahcnuj as reviewer on PR #15" "${LOG}" || { echo "FAIL: review was not re-requested from the owner"; exit 1; }
+grep -q "Review requested on PR #15 (reviewer: conahcnuj)" "${LOG}" || { echo "FAIL: the driver did not hand the PR back to the owner as reviewer"; exit 1; }
 
 # The partial change survives, uncommitted: no branch commit was made for it.
 [[ -f "${WORK}/conahcnuj.mock" ]] || { echo "FAIL: the partial change disappeared"; exit 1; }

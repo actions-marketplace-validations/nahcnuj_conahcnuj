@@ -52,18 +52,18 @@ gh_api_call() {
 
 page_with() {
   local total="${1}" full="${2}"
-  printf '{"total_count":%s,"repositories":[{"full_name":"nahcnuj/other"},{"full_name":"%s"}]}' "${total}" "${full}"
+  printf '{"total_count":%s,"repositories":[{"full_name":"conahcnuj/other"},{"full_name":"%s"}]}' "${total}" "${full}"
 }
 
 page_without() {
   local total="${1}"
-  printf '{"total_count":%s,"repositories":[{"full_name":"nahcnuj/other"},{"full_name":"nahcnuj/another"}]}' "${total}"
+  printf '{"total_count":%s,"repositories":[{"full_name":"conahcnuj/other"},{"full_name":"conahcnuj/another"}]}' "${total}"
 }
 
 # 1. The target is on the (only) page: accessible.
-MOCK_RESPONSES=("$(page_with 2 "nahcnuj/vigilant-fiesta")")
+MOCK_RESPONSES=("$(page_with 2 "conahcnuj/vigilant-fiesta")")
 mock_reset
-[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant-fiesta")" == "yes" ]] || {
+[[ "$(gh_api_installation_repo_access "conahcnuj" "vigilant-fiesta")" == "yes" ]] || {
   echo "FAIL: a repository in the installation was reported as missing" >&2
   exit 1
 }
@@ -71,7 +71,7 @@ mock_reset
 # 2. The target is absent from a single page: not accessible.
 MOCK_RESPONSES=("$(page_without 2)")
 mock_reset
-[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant-fiesta")" == "no" ]] || {
+[[ "$(gh_api_installation_repo_access "conahcnuj" "vigilant-fiesta")" == "no" ]] || {
   echo "FAIL: a repository outside the installation was not reported as missing" >&2
   exit 1
 }
@@ -79,18 +79,18 @@ mock_reset
 # 2b. A near-miss name must not match: dots in a repository name are literal,
 #     not "any character" (a regex match would let a run proceed only to fail
 #     with FORBIDDEN again).
-MOCK_RESPONSES=("$(page_with 2 "nahcnuj/vigilantXfiesta")")
+MOCK_RESPONSES=("$(page_with 2 "conahcnuj/vigilantXfiesta")")
 mock_reset
-[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant.fiesta")" == "no" ]] || {
+[[ "$(gh_api_installation_repo_access "conahcnuj" "vigilant.fiesta")" == "no" ]] || {
   echo "FAIL: a similar repository name was taken for the target" >&2
   exit 1
 }
 
 # 3. Pagination: the target is on the second page, so the first page's absence
 #    must not be taken as the answer.
-MOCK_RESPONSES=("$(page_without 150)" "$(page_with 150 "nahcnuj/vigilant-fiesta")")
+MOCK_RESPONSES=("$(page_without 150)" "$(page_with 150 "conahcnuj/vigilant-fiesta")")
 mock_reset
-[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant-fiesta")" == "yes" ]] || {
+[[ "$(gh_api_installation_repo_access "conahcnuj" "vigilant-fiesta")" == "yes" ]] || {
   echo "FAIL: the installation list was not paginated" >&2
   exit 1
 }
@@ -100,17 +100,17 @@ mock_reset
 MOCK_RESPONSES=("")
 mock_reset
 MOCK_FAIL_AT=1
-[[ "$(gh_api_installation_repo_access "nahcnuj" "vigilant-fiesta")" == "unknown" ]] || {
+[[ "$(gh_api_installation_repo_access "conahcnuj" "vigilant-fiesta")" == "unknown" ]] || {
   echo "FAIL: a failed API call was reported as a definite answer" >&2
   exit 1
 }
 MOCK_FAIL_AT=0
 
 # 5. An accessible target passes the guard silently.
-MOCK_RESPONSES=("$(page_with 2 "nahcnuj/vigilant-fiesta")")
+MOCK_RESPONSES=("$(page_with 2 "conahcnuj/vigilant-fiesta")")
 mock_reset
 (
-  verify_app_repo_access "nahcnuj/vigilant-fiesta"
+  verify_app_repo_access "conahcnuj/vigilant-fiesta"
 ) >"${ROOT}/ok.log" 2>&1 || {
   echo "FAIL: an accessible repository was rejected: $(cat "${ROOT}/ok.log")" >&2
   exit 1
@@ -122,14 +122,14 @@ MOCK_RESPONSES=("$(page_without 2)")
 mock_reset
 rc=0
 (
-  verify_app_repo_access "nahcnuj/vigilant-fiesta"
+  verify_app_repo_access "conahcnuj/vigilant-fiesta"
 ) >"${ROOT}/missing.log" 2>&1 || rc=$?
 [[ ${rc} -ne 0 ]] || { echo "FAIL: an inaccessible repository was accepted" >&2; exit 1; }
-grep -q "cannot access nahcnuj/vigilant-fiesta" "${ROOT}/missing.log" || {
+grep -q "cannot access conahcnuj/vigilant-fiesta" "${ROOT}/missing.log" || {
   echo "FAIL: the error does not name the target: $(cat "${ROOT}/missing.log")" >&2
   exit 1
 }
-grep -q "Install the App on nahcnuj/vigilant-fiesta" "${ROOT}/missing.log" || {
+grep -q "Install the App on conahcnuj/vigilant-fiesta" "${ROOT}/missing.log" || {
   echo "FAIL: the error does not tell the maintainer what to do: $(cat "${ROOT}/missing.log")" >&2
   exit 1
 }
@@ -140,12 +140,12 @@ MOCK_RESPONSES=("")
 mock_reset
 MOCK_FAIL_AT=1
 (
-  verify_app_repo_access "nahcnuj/vigilant-fiesta"
+  verify_app_repo_access "conahcnuj/vigilant-fiesta"
 ) >"${ROOT}/unknown.log" 2>&1 || {
   echo "FAIL: an unreadable answer blocked the run: $(cat "${ROOT}/unknown.log")" >&2
   exit 1
 }
-grep -q "could not confirm the App installation can access nahcnuj/vigilant-fiesta" "${ROOT}/unknown.log" || {
+grep -q "could not confirm the App installation can access conahcnuj/vigilant-fiesta" "${ROOT}/unknown.log" || {
   echo "FAIL: the unreadable case did not warn: $(cat "${ROOT}/unknown.log")" >&2
   exit 1
 }

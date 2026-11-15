@@ -36,7 +36,7 @@ export GH_API_TEST_MODE=1
 
 # A resumed PR: open threads first, then the checkout's orientation files.
 ERR="${ROOT}/err.txt"
-out="$(collect_initial_context "nahcnuj" "conahcnuj" "15" < "${TAPE}" 2>"${ERR}")"
+out="$(collect_initial_context "conahcnuj" "conahcnuj" "15" < "${TAPE}" 2>"${ERR}")"
 [[ "${out}" == *"Unresolved review threads on PR #15:"* ]] || { echo "FAIL: the open threads have no heading"; exit 1; }
 [[ "${out}" == *"- [comment 101 by reviewer] Please document the flag"* ]] || { echo "FAIL: the first open thread was not collected"; exit 1; }
 [[ "${out}" == *"- [comment 102 by reviewer] And add a test"* ]] || { echo "FAIL: the second open thread was not collected"; exit 1; }
@@ -49,27 +49,27 @@ grep -q "Collected context up front: unresolved review threads of PR #15, README
 
 # A fresh issue has no PR to read threads from: the same payload would have
 # produced them above, so its absence proves no API call was made.
-out="$(collect_initial_context "nahcnuj" "conahcnuj" "" < "${TAPE}" 2>/dev/null)"
+out="$(collect_initial_context "conahcnuj" "conahcnuj" "" < "${TAPE}" 2>/dev/null)"
 [[ "${out}" != *"Unresolved review threads"* ]] || { echo "FAIL: an issue was treated as a PR"; exit 1; }
 [[ "${out}" == *"Orientation fixture README"* ]] || { echo "FAIL: the files were not collected for a fresh issue"; exit 1; }
 
 # CONAHCNUJ_CONTEXT_FILES narrows the list to what the run actually wants.
 printf 'Notes fixture\n' > NOTES.md
 export CONAHCNUJ_CONTEXT_FILES="NOTES.md"
-out="$(collect_initial_context "nahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
+out="$(collect_initial_context "conahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
 [[ "${out}" == *"Notes fixture"* ]] || { echo "FAIL: the configured file was not collected"; exit 1; }
 [[ "${out}" != *"README.md:"* ]] || { echo "FAIL: the default files were collected despite the override"; exit 1; }
 
 # An explicitly empty value sends no files at all (an unset one keeps the
 # default list, which the assertions above already exercised).
 export CONAHCNUJ_CONTEXT_FILES=""
-out="$(collect_initial_context "nahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
+out="$(collect_initial_context "conahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
 [[ -z "${out}" ]] || { echo "FAIL: empty CONAHCNUJ_CONTEXT_FILES still collected files"; exit 1; }
 unset CONAHCNUJ_CONTEXT_FILES
 
 # Nothing to collect: no PR, no files. The prompt then carries the issue alone.
 rm -f README.md AGENTS.md NOTES.md
-out="$(collect_initial_context "nahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
+out="$(collect_initial_context "conahcnuj" "conahcnuj" "" < /dev/null 2>/dev/null)"
 [[ -z "${out}" ]] || { echo "FAIL: expected nothing to collect, got: ${out}"; exit 1; }
 
 echo "collect_initial_context passed"

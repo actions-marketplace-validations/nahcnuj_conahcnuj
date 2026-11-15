@@ -241,7 +241,7 @@ touch "${ROOT}/state/events" "${ROOT}/state/issues" "${ROOT}/state/bodies"
 echo 1000 > "${ROOT}/state/next"
 
 run_workflow() {
-  bash "${WF}" --repo nahcnuj/conahcnuj \
+  bash "${WF}" --repo conahcnuj/conahcnuj \
     --runs-url-prefix https://example.com/runs \
     --lookback-days 7 --ref main \
     > "${ROOT}/report.md" 2> "${ROOT}/progress.txt"
@@ -251,7 +251,7 @@ cat > "${ROOT}/mock-logs/run-101.log" <<'EOF'
 opencode: trying model opencode/alpha
 Model opencode/alpha completed the work.
 Created PR #126 (feature/x -> main).
-Review requested on PR #126 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/126
+Review requested on PR #126 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/126
 EOF
 
 # --- clean week: added to a fresh tracking issue, driver untouched ----------
@@ -285,15 +285,15 @@ cat > "${ROOT}/mock-logs/run-202.log" <<'EOF'
 opencode: trying model opencode/alpha
 Model opencode/alpha failed before completing the work: environment error (x)
 ERROR: every model round died on an environment error (provider unreachable or credentials rejected)
-Driver exited abnormally (code 1); filing a bug report issue in nahcnuj/conahcnuj.
-Bug report issue #130 created: https://github.com/nahcnuj/conahcnuj/issues/130
+Driver exited abnormally (code 1); filing a bug report issue in conahcnuj/conahcnuj.
+Bug report issue #130 created: https://github.com/conahcnuj/conahcnuj/issues/130
 EOF
 cat > "${ROOT}/mock-logs/run-203.log" <<'EOF'
 opencode: trying model opencode/alpha
 Model opencode/alpha produced no complete work; handing off to the next model.
 ERROR: no available model completed the work (tried: opencode/alpha; handoffs: none).
-Driver exited abnormally (code 1); filing a bug report issue in nahcnuj/conahcnuj.
-Bug report issue #131 created: https://github.com/nahcnuj/conahcnuj/issues/131
+Driver exited abnormally (code 1); filing a bug report issue in conahcnuj/conahcnuj.
+Bug report issue #131 created: https://github.com/conahcnuj/conahcnuj/issues/131
 EOF
 run_workflow
 grep -q '<!-- auto-drive-report runs=2 findings=3 actionable=1 -->' "${ROOT}/report.md" \
@@ -330,13 +330,13 @@ cat > "${ROOT}/mock-logs/run-401.log" <<'EOF'
 opencode: trying model opencode/alpha
 Model opencode/alpha failed before completing the work: environment error (x)
 ERROR: no available model completed the work (tried: opencode/alpha; handoffs: none).
-Driver exited abnormally (code 1); filing a bug report issue in nahcnuj/conahcnuj.
-Bug report issue #140 created: https://github.com/nahcnuj/conahcnuj/issues/140
+Driver exited abnormally (code 1); filing a bug report issue in conahcnuj/conahcnuj.
+Bug report issue #140 created: https://github.com/conahcnuj/conahcnuj/issues/140
 EOF
 export GH_APP_TOKEN=test-app-token
 export PROJECT_NUMBER=7
 run_workflow
-grep -q '^project item-add 7 --owner nahcnuj --url ' "${ROOT}/state/events" \
+grep -q '^project item-add 7 --owner conahcnuj --url ' "${ROOT}/state/events" \
   || { echo "FAIL: the classic Project must be created when missing"; cat "${ROOT}/state/events"; exit 1; }
 [[ "$(grep -c '^project item-add ' "${ROOT}/state/events" || true)" == "2" ]] \
   || { echo "FAIL: the tracking and findings issues must both become cards"; cat "${ROOT}/state/events"; exit 1; }
@@ -368,8 +368,8 @@ cat > "${ROOT}/mock-logs/run-402.log" <<'EOF'
 opencode: trying model opencode/alpha
 Model opencode/alpha failed before completing the work: environment error (x)
 ERROR: no available model completed the work (tried: opencode/alpha; handoffs: none).
-Driver exited abnormally (code 1); filing a bug report issue in nahcnuj/conahcnuj.
-Bug report issue #141 created: https://github.com/nahcnuj/conahcnuj/issues/141
+Driver exited abnormally (code 1); filing a bug report issue in conahcnuj/conahcnuj.
+Bug report issue #141 created: https://github.com/conahcnuj/conahcnuj/issues/141
 EOF
 run_workflow
 grep -qE '^(project|column) ' "${ROOT}/state/events" \

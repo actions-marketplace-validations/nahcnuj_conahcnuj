@@ -13,10 +13,16 @@ if [[ ! -f "${ENV_FILE}" && -f "${DIR}/app.env.example" ]]; then
   ENV_FILE="${DIR}/app.env.example"
 fi
 
+# Preserve an APP_SLUG already resolved by the caller (e.g. setup-git.sh) so a
+# placeholder in app.env cannot clobber it.
+_APP_SLUG_ENV="${APP_SLUG:-}"
 set -a
 # shellcheck source=gh-app/app.env.example
 . "${ENV_FILE}"
 set +a
+if [[ ( -z "${APP_SLUG:-}" || "${APP_SLUG}" == "<"* ) && -n "${_APP_SLUG_ENV}" && "${_APP_SLUG_ENV}" != "<"* ]]; then
+  APP_SLUG="${_APP_SLUG_ENV}"
+fi
 
 API_BASE="${GH_APP_API_BASE:-https://api.github.com}"
 CACHE_FILE="${DIR}/bot-id.cache"
