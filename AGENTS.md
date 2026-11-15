@@ -19,10 +19,16 @@ GitHub App「conahcnuj」のインストールトークンを発行し、`gh` CL
 ## 進捗の管理・共有（TODO.jsonl）
 
 - リポジトリルートの **`TODO.jsonl`** で、いま取り組んでいる issue の進捗を管理・共有する。1 行 1 タスクの JSONL。**書式は問わない**。
+- `TODO.jsonl` のライフサイクルは**ドライバが管理する**（初期プレースホルダの作成・draft 判定・空ファイルの削除・レビュー依頼）。コーディングエージェントはタスク行の更新のみを担う（エントリの追加・削除、完了時の空行化）。ファイルの作成・削除はエージェントが行わない。
+- `TODO.jsonl` が空になるまで次を繰り返す:
+  1. 先頭のエントリを取り上げる。
+  2. そのエントリを解決する。必要なら `TODO.jsonl` に新しいタスクを追加する。
+  3. 解決できたらそのエントリを削除する。
+- `TODO.jsonl` が最終的に空になったら、`TODO.jsonl` を削除してコミットし、レビュアーにレビューを依頼する（削除・コミット・レビュー依頼はドライバが行う）。
 - 生存期間は **issue 毎**:
-  - issue の着手で `TODO.jsonl` を作成する（未完了タスクを 1 行ずつ書く）。
+  - issue の着手で `TODO.jsonl` を作成する（未完了タスクを 1 行ずつ書く）。ドライバ駆動の実行ではドライバが初期プレースホルダを作成し、エージェントはタスク行を更新する。
   - 作業中は随時、完了したタスクの行を削除して `TODO.jsonl` を更新する。
-  - 対応が完了し PR を ready to merge するときには `TODO.jsonl` を**削除する**（空（行が 1 行も無い状態）でもドライバは完了とみなし、main へ入らないよう空ファイルを削除するが、エージェント自身も削除する）。
+  - 対応が完了し PR を ready to merge するときには `TODO.jsonl` を**削除する**（空（行が 1 行も無い状態）でもドライバは完了とみなし、main へ入らないよう空ファイルを削除する）。エージェントは行を空にするだけで、ファイルの削除はドライバが行う。
 - `TODO.jsonl` に 1 行でも残っている間は、ドライバは PR を **draft** として作成し、レビュー依頼をしない。`TODO.jsonl` が空（行が無い）になるとドライバが draft を解除してレビュー依頼する。つまり **`TODO.jsonl` に未完了タスクが残る限り、エージェント自身で draft を解除できない（draft でない PR を作成できない）**。逆に、空にし忘れると PR が draft のままレビュアーへ渡らず、ドライバはラウンドを重ねて空にするよう促す（時間予算まで）。
 - ドライバは `TODO.jsonl` の行数で判定する（1 行以上 → 未完了、0 行 → 完了）。0 行でもファイルが残っていれば、main へ持ち込まないようドライバが削除コミットを作る。コミットに乗るので、更新も他の変更と同じくエージェントの作業ツリー変更として扱われる。
 - `TODO.jsonl` は main ブランチに存在してはならない（work-in-progress の PR にのみ存在する）。
@@ -42,7 +48,7 @@ GitHub App「conahcnuj」のインストールトークンを発行し、`gh` CL
 | `gh-app/missing-models` | 永久に使えない（deprecated / 削除済み / 利用不可）モデルの記録（`provider/model` を 1 行ずつ、`#` コメント可）。ドライバがラウンド前に読み、モデル自体の消失で落ちたラウンドのモデルを追記する（`CONAHCNUJ_MISSING_MODELS_FILE` で変更可）。記録は実行のコミットに乗って次回へ持続する | 丸ごと消せばそのモデルを再び試す。`install.ps1` の `Deploy-GhApp` が gh-app と一緒に配備する（`*.sh` だけでは運ばれない） |
 | `gh-app/tests/` | 観点別テスト（`get-token-cache` / `git-credential-helper` / `api-commit-args` / `api-commit-dryrun` / `api-commit-trailer` / `api-commit-merge` / `api-commit-creates-branch` / `bot-user-id`） | いずれも秘密鍵・ネットワーク不要（`api-commit-merge` / `api-commit-creates-branch` は token/curl をスタブしローカル bare リポジトリで実走）。`run.sh` から実行 |
 | `plugins/gh-app-token.ts` | opencode プラグイン。`shell.env` で `GH_TOKEN` と `GIT_CONFIG_*`（bot 名義 + `alias.vc`。配列生成）注入、`experimental.chat.system.transform` でコミット規則（`git vc` を使う）と GitHub 認証規則（`GH_TOKEN` はシェルへ注入済みなので自分で export しない）をシステムプロンプトへ常時注入、`tool.execute.before` で `git commit` と `api-commit.sh` の直接実行をブロックして `git vc` へ誘導（`&&` や `bash -c` 越しも検知。sudo / env / nohup などのランチャー越しの実行も検知。引用符・前方代入・シェルラッパを鑑みたうえでコマンドワードだけで判定するため、`cat gh-app/api-commit.sh` は通す）。セッションの provider / model / effort を `provider (model/effort)` 形（例: `xai (grok-4.7/medium)`）にして `CONAHCNUJ_COMMIT_MODEL` へ入れる | `BASH_EXE` で get-token.sh を実行。`loadAppEnv()` で app.env をパース。`BOT_USER_ID` 未設定時は `bot-user-id.sh` で自動解決。`CONAHCNUJ_SESSION_MODEL`（`provider/model`）が設定されているときはそのモデルだけを記録する |
-| `opencode/AGENTS.md` | opencode のグローバルルール（`git commit` ではなく `git vc` でコミット、`gh` は `GH_TOKEN` で認証済みなので自分で export しない）。`install.ps1` が `<!-- conahcnuj:begin -->` / `end` の管理ブロックとして `~/.config/opencode/AGENTS.md` へ配置し、既存ファイルは他の内容を保ったまま追記・更新する | グローバル AGENTS.md は全リポジトリへ効くため、nahcnuj の各リポジトリに同じ指示を個別に書かなくてよい。管理ブロックの外は保持される |
+| `opencode/AGENTS.md` | opencode のグローバルルール（`git commit` ではなく `git vc` でコミット、`gh` は `GH_TOKEN` で認証済みなので自分で export しない）。`install.ps1` が `<!-- conahcnuj:begin -->` / `end` の管理ブロックとして `~/.config/opencode/AGENTS.md` へ配置し、既存ファイルは他の内容を保ったまま追記・更新する | グローバル AGENTS.md は全リポジトリへ効くため、conahcnuj の各リポジトリに同じ指示を個別に書かなくてよい。管理ブロックの外は保持される |
 | `plugin-tests/smoke.sh`・`smoke-run.js` | プラグインの runtime smoke テスト（`install.ps1`→読込→env 契約・システムプロンプト規則・commit/api-commit.sh 誘導を検証。`plugins/` 外に置くのは opencode の自動ロード対象外にするため） | node/npm と pwsh が必要。CI の `plugin-smoke` で実行 |
 | `plugin-tests/e2e-opencode.sh` | 実 opencode run で `git vc` が表面化することを検証（`plugins/` 外に置くのは opencode の自動ロード対象外にするため） | opencode 本体が必要。CI の `e2e-opencode` で実行 |
 | `plugin-tests/unit.sh`・`unit-run.js` | プラグイン内部のユニットテスト（`git vc` 誘導のコマンド判定・`app.env` / token cache の解析・モデルラベル・フック配線）。`unit.sh` は本物の `plugins/gh-app-token.ts` を `plugins/tsconfig.unit.json` で `plugin-tests/.unit/` へコンパイルして使う | node/npm のみ（pwsh 不要）。CI の `plugin-unit` で実行。**プラグインの export は `GhAppTokenPlugin` だけ**（opencode のローダは全 export をプラグイン扱いする） |
