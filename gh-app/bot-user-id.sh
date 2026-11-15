@@ -54,7 +54,9 @@ if [[ -n "${GH_TOKEN:-}" ]]; then
 elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
   _AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 fi
-LOOKUP="$(curl -fsSL ${_AUTH_HEADER[@]+"${_AUTH_HEADER[@]}"} -H "Accept: application/vnd.github+json" "${API_BASE}/users/${APP_SLUG}%5Bbot%5D" 2>/dev/null || true)"
+# -g keeps the encoded [bot] out of curl's URL globbing, and lets the offline
+# tests serve the same URL from a file:// fixture.
+LOOKUP="$(curl -g -fsSL ${_AUTH_HEADER[@]+"${_AUTH_HEADER[@]}"} -H "Accept: application/vnd.github+json" "${API_BASE}/users/${APP_SLUG}%5Bbot%5D" 2>/dev/null || true)"
 # REST answers pretty-printed (a space after the colon), so read the separator
 # the way REST actually emits it instead of assuming compact JSON. Take the
 # first "id" (the top-level one) so a later field cannot shadow it.

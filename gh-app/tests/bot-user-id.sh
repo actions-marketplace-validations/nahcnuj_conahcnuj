@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# bot-user-id.sh: app.env value wins (no network); unset ID with fake API
-# base is not tested here (needs network) — lookup path is exercised live.
+# bot-user-id.sh: app.env value wins (no network), then the cache, then the
+# public lookup. The lookup is exercised offline from a file:// fixture that
+# carries GitHub's pretty-printed REST spacing.
 # Usage: bash bot-user-id.sh <staged gh-app dir>
 set -euo pipefail
 
@@ -33,3 +34,25 @@ if [[ "${OUT}" != "777" ]]; then
   exit 1
 fi
 echo "PASS bot-user-id.sh prefers cache (no network)"
+
+# The lookup path itself, offline: GitHub REST answers pretty-printed (a space
+# after the colon), which a compact-only parser finds nothing in. Serve the
+# same URL from a file:// fixture and require the top-level "id".
+WORK="$(dirname "${STAGE}")/bot-user-id-work"
+mkdir -p "${WORK}/users"
+cp "${STAGE}/bot-user-id.sh" "${WORK}/"
+cat > "${WORK}/app.env" <<'EOF'
+APP_SLUG="conahcnuj"
+EOF
+printf '{\n  "login": "conahcnuj[bot]",\n  "id": 331119074\n}\n' > "${WORK}/users/conahcnuj[bot]"
+# curl must support file:// and --globoff (the URL carries %5B / %5D).
+if curl -g -fsSL "file://${WORK}/users/conahcnuj%5Bbot%5D" >/dev/null 2>&1; then
+  OUT="$(GH_APP_API_BASE="file://${WORK}" GH_TOKEN='' GITHUB_TOKEN='' bash "${WORK}/bot-user-id.sh")"
+  if [[ "${OUT}" != "331119074" ]]; then
+    echo "FAIL: pretty-printed REST lookup returned '${OUT}', expected 331119074" >&2
+    exit 1
+  fi
+  echo "PASS bot-user-id.sh parses a pretty-printed REST lookup (no network)"
+else
+  echo "SKIP bot-user-id.sh lookup (curl has no file:// support)"
+fi
