@@ -181,9 +181,10 @@ jobs:
 
 ## ワークフローテンプレート（利用側リポジトリ向け）
 
-利用側リポジトリへコピーして使うテンプレートを `templates/` および
+利用側リポジトリへコピーして使うテンプレートを
 `.github/workflow-templates/` に用意しています（`auto-drive.yml` /
-`auto-merge.yml`）。コピー先は `.github/workflows/` です。
+`auto-merge.yml`）。コピー先は `.github/workflows/` です。GitHub の
+「New workflow」画面から選んで配置することもできます。
 
 - `auto-drive.yml`: `issue-driver.yml` を呼び出し、issue を PR まで駆動する
 - `auto-merge.yml`: `owner-approved-auto-merge.yml` を呼び出し、owner の approve を
