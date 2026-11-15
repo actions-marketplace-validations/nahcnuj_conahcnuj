@@ -105,8 +105,8 @@ bash <このリポジトリ>/docker-run.sh <issue-or-PR番号>
 
 ## ドキュメント
 
-- サイト: <https://nahcnuj.github.io/conahcnuj/>
-- 機械可読な索引: <https://nahcnuj.github.io/conahcnuj/llms.txt>
+- サイト: <https://conahcnuj.github.io/conahcnuj/>
+- 機械可読な索引: <https://conahcnuj.github.io/conahcnuj/llms.txt>
 - AI エージェント向け: [AGENTS.md](AGENTS.md)
 
 ## リポジトリ構成

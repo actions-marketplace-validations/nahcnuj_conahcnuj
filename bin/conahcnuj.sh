@@ -400,7 +400,8 @@ workdir_changed() {
 # which is what keeps an unfinished issue from being presented as a non-draft
 # (ready) pull request.
 todo_present() {
-  [[ -f "TODO.jsonl" ]] && [[ -s "TODO.jsonl" ]] || return 1
+  [[ -f "TODO.jsonl" ]] || return 1
+  grep -q '[^[:space:]]' "TODO.jsonl" 2>/dev/null || return 1
   # The initial placeholder TODO.jsonl only keeps the PR a draft while no real
   # work has landed; once the branch carries a real change it is stale and no
   # longer blocks the hand-off (the agent may replace it with its own progress).
@@ -573,7 +574,7 @@ commit_changes() {
 # metadata cleanup, not implementation work, and it may use a fixed message.
 remove_empty_todo() {
   [[ -f "TODO.jsonl" ]] || return 0
-  if [[ -s "TODO.jsonl" ]]; then
+  if grep -q '[^[:space:]]' "TODO.jsonl" 2>/dev/null; then
     # Only the initial placeholder may be removed here; an agent-managed
     # (non-empty) progress file is left for the agent to empty.
     if [[ -z "${INITIAL_TODO_CONTENT:-}" ]] || [[ "$(cat TODO.jsonl 2>/dev/null)" != "${INITIAL_TODO_CONTENT}" ]]; then

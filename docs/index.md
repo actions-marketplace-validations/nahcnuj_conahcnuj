@@ -5,7 +5,7 @@ GitHub App「conahcnuj」の設定・CLI・ドライバ・プラグイン・GitH
 ホスト上にアプリをインストール済みであることやリポジトリの存在を前提にしない記述で
 書いています。
 
-- 配信先: <https://nahcnuj.github.io/conahcnuj/>（GitHub Pages。**常に最新版のみ**で、
+- 配信先: <https://conahcnuj.github.io/conahcnuj/>（GitHub Pages。**常に最新版のみ**で、
   バージョン切り替えはありません）
 - 各ページは HTML と Markdown 原文（同じパスの `.md`）の両方が開けます。
 - 機械可読な索引は [llms.txt](llms.txt) にあります。
