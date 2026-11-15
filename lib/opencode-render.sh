@@ -297,18 +297,47 @@ function emit(tag, raw,  v, n, a, i, ends_nl) {
   # The file-oriented arguments the tool-specific captions name (✅ Read
   # <path>); the field() start argument keeps state.output / state.title /
   # state.metadata from being shadowed by the tool's own argument object.
-  emit("filepath", field(i, "filePath"))
+  # opencode v1 uses filePath; v2 renamed it to path. Read both so the
+  # caption (✅ Read <path>) lands on either shape.
+  _filepath = field(i, "filePath")
+  if (_filepath == "") _filepath = field(i, "path")
+  emit("filepath", _filepath)
   emit("pattern", field(i, "pattern"))
   emit("oldstr", field(i, "oldString"))
   emit("newstr", field(i, "newString"))
   emit("output", field(s, "output", after))
-  emit("exit", field(field(s, "metadata", after), "exit"))
+  # opencode v1 stores the exit code at metadata.exit; v2 (the shipping
+  # CLI) nests it at metadata.metadata.exit. Read both so the verdict lands
+  # on either shape.
+  _meta = field(s, "metadata", after)
+  _exit = field(_meta, "exit")
+  if (_exit == "") _exit = field(field(_meta, "metadata"), "exit")
+  emit("exit", _exit)
   # The diff an edit tool reports in its metadata, so a successful edit can
   # show what it rewrote.
   emit("diff", field(field(s, "metadata", after), "diff"))
   emit("toolerror", field(s, "error", after))
-  emit("errmsg", field(field(e, "data"), "message"))
-  emit("errname", field(e, "name"))
+  # opencode's real (v2.x) error shape is {"type":"...","message":"..."}
+  # rather than the {"name":...,"data":{"message":...}} shape older versions
+  # (and the test fixtures) use. Fall back through both so a session-level
+  # error never collapses to "unknown error" and hides its actual cause.
+  _e_is_obj = (substr(e, 1, 1) == "{")
+  _msg = ""
+  if (_e_is_obj) {
+    _msg = field(field(e, "data"), "message")
+    if (_msg == "") _msg = field(e, "message")
+  } else {
+    _msg = e
+  }
+  if (_msg == "") _msg = field($0, "message")
+  emit("errmsg", _msg)
+  _name = ""
+  if (_e_is_obj) {
+    _name = field(e, "name")
+    if (_name == "") _name = field(e, "type")
+  }
+  if (_name == "") _name = field($0, "name")
+  emit("errname", _name)
   emit("text", field(p, "text"))
   # opencode puts the part id at the top level for tool_use events and
   # inside part for text/reasoning events, so read both.
@@ -825,7 +854,20 @@ render_block_tool() {
   local pid="${F[id]}" tool="${F[tool]}" code is_cmd=false label
   local prev_out="" prev_err="" prev_verdict="false" prev_fed="false" fed="false"
   [[ -z "${tool:-}" ]] && tool="tool"
-  [[ "${tool}" == "bash" || -n "${F[command]}" ]] && is_cmd="true"
+  # opencode v1 names this tool "bash"; v2 renamed it to "shell". Treat both
+  # (and any call carrying a command) as command execution. A "shell" tool
+  # call with no command line is not a command execution, so it must not
+  # masquerade as one under the tool's generic title "shell" (#905).
+  is_cmd="false"
+  if [[ "${tool}" == "bash" ]]; then
+    is_cmd="true"
+  elif [[ "${tool}" == "shell" ]]; then
+    if [[ -n "${F[command]}" || ( -n "${F[title]}" && "${F[title]}" != "shell" && "${F[title]}" != "bash" && "${F[title]}" != "${tool}" ) ]]; then
+      is_cmd="true"
+    fi
+  elif [[ -n "${F[command]}" ]]; then
+    is_cmd="true"
+  fi
   local status="${F[status]}"
   code="${F[exit]}"
   case "${code}" in
@@ -910,8 +952,10 @@ render_block_tool() {
     [[ -n "${pid}" ]] && PART_MODE[${pid}]="${is_cmd}"
     render_header
     if [[ "${is_cmd}" == "true" ]]; then
-      label="${F[title]}"
-      [[ -n "${label}" ]] || label="${F[command]}"
+      # opencode v2's shell tool reports title="shell", so the command line
+      # itself is the useful caption; prefer it over the (often generic) title.
+      label="${F[command]}"
+      [[ -n "${label}" ]] || label="${F[title]}"
       [[ -n "${label}" ]] || label="${tool}"
       # GitHub Actions collapses a run's log by `::group::`/`::endgroup::`
       # markers, so wrap each command block in one there and keep the plain
@@ -934,6 +978,16 @@ render_block_tool() {
     label="${tool^}"
     local arg="${F[filepath]}"
     [[ -n "${arg}" ]] || arg="${F[title]}"
+    # A shell/bash tool that carries no command line reports under its own
+    # generic name; do not echo that name twice ("Shell shell") (#905).
+    if [[ -n "${arg}" && ( "${tool}" == "shell" || "${tool}" == "bash" ) ]]; then
+      local _arg_lc _tool_lc
+      _arg_lc="$(printf '%s' "${arg}" | tr '[:upper:]' '[:lower:]')"
+      _tool_lc="$(printf '%s' "${tool}" | tr '[:upper:]' '[:lower:]')"
+      if [[ "${_arg_lc}" == "${_tool_lc}" || "${_arg_lc}" == "shell" || "${_arg_lc}" == "bash" ]]; then
+        arg=""
+      fi
+    fi
     if [[ -n "${arg}" ]]; then
       label="${label} ${arg}"
     fi

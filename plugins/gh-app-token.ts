@@ -22,6 +22,8 @@ const REQUIRED_KEYS = ["APP_SLUG"] as const
 // Read from app.env when present, but never required up front: they are
 // only validated inside fetchInstallationToken.
 const TOKEN_KEYS = ["APP_ID", "INSTALLATION_ID", "PRIVATE_KEY_PATH"] as const
+// Optional keys that are consumed outside of fetchInstallationToken.
+const OPTIONAL_KEYS = ["BOT_USER_ID"] as const
 
 type Config = {
   BASH_EXE: string
@@ -29,6 +31,8 @@ type Config = {
   [K in (typeof REQUIRED_KEYS)[number]]: string
 } & {
   [K in (typeof TOKEN_KEYS)[number]]?: string
+} & {
+  [K in (typeof OPTIONAL_KEYS)[number]]?: string
 }
 
 /**
@@ -75,6 +79,11 @@ function loadAppEnv(): Config {
     APP_SLUG: parsed["APP_SLUG"] ?? "",
   }
   for (const key of TOKEN_KEYS) {
+    if (parsed[key]) {
+      config[key] = parsed[key]
+    }
+  }
+  for (const key of OPTIONAL_KEYS) {
     if (parsed[key]) {
       config[key] = parsed[key]
     }
@@ -129,6 +138,18 @@ function readBotIdCache(cacheFile: string): string | null {
  * attributes commits to the bot account.
  */
 async function resolveBotUserId(slug: string): Promise<string> {
+  // A manually pinned BOT_USER_ID (digits only) wins over any network
+  // lookup, matching gh-app/bot-user-id.sh. This keeps the plugin working
+  // offline when the operator has recorded the bot account's user ID.
+  const pinned = (config as { BOT_USER_ID?: string }).BOT_USER_ID
+  if (pinned && /^\d+$/.test(pinned)) {
+    try {
+      fs.writeFileSync(BOT_ID_CACHE_FILE, pinned, "utf8")
+    } catch {
+      // Cache is best-effort only.
+    }
+    return pinned
+  }
   const cached = readBotIdCache(BOT_ID_CACHE_FILE)
   if (cached) {
     return cached
@@ -136,8 +157,18 @@ async function resolveBotUserId(slug: string): Promise<string> {
   if (!/^[A-Za-z0-9-]+$/.test(slug)) {
     throw new Error(`Invalid APP_SLUG for bot lookup: ${slug}`)
   }
+  // Authenticate the lookup when an installation token is available so the
+  // public user endpoint is not subject to the unauthenticated rate limit.
+  // Best-effort: a missing key or no network leaves the request unauthenticated.
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
+  try {
+    const token = await getInstallationToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+  } catch {
+    // Fall through to an unauthenticated lookup.
+  }
   const res = await fetch(`https://api.github.com/users/${slug}%5Bbot%5D`, {
-    headers: { Accept: "application/vnd.github+json" },
+    headers,
   })
   if (!res.ok) {
     throw new Error(

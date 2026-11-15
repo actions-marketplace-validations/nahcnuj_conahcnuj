@@ -305,7 +305,7 @@ opencode_round_is_environment() {
     signals+=$'\n'"$(grep -E 'level=ERROR' "${err_file}" 2>/dev/null || true)"
   fi
   printf '%s\n' "${signals}" |
-    grep -Evi 'model .*is unavailable|has been deprecated|model not found|no such model|unknown model|does not exist|not (available|supported)|requires authentication|no endpoints|trailing whitespace|whitespace' |
+    grep -Evi 'model .*is unavailable|has been deprecated|model not found|no such model|unknown model|does not exist|not (available|supported)|requires authentication|no endpoints|trailing whitespace|whitespace|Model unavailable|provider\.no-route|provider no route|no route to (this )?model' |
     grep -Evi 'rate limit|rate_limit|too many requests|please try again later|quota exceeded|usage limit|resource_exhausted|(^|[^0-9])429([^0-9]|$)' |
     grep -Evi 'spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent' |
     grep -Eiq 'token refresh failed|invalid_grant|cannot connect to api|unable to connect|was there a typo in the url|transport error|fetch failed|endpoint is unavailable|upstream request failed|upstream error|service temporarily overloaded|socket connection|providerautherror|authenticationerror|unauthorized|enotfound|econnrefused|econnreset|etimedout|getaddrinfo'
@@ -322,7 +322,7 @@ opencode_round_is_environment() {
 # that merely writes the words is not quota-exhausted.
 opencode_round_is_quota_exhausted() {
   local output_file="${1}" err_file="${2:-}"
-  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent'
+  local pattern='spending.limit|out of credits|exceeded your current quota|insufficient (credits|quota|funds)|payment required|billing|delinquent|insufficient_quota|quota_exceeded|hard_limit|credit_balance'
   if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi
@@ -341,7 +341,7 @@ opencode_round_is_model_gone() {
   local file="${1}"
   [[ -f "${file}" ]] || return 1
   grep -F '"type":"error"' "${file}" 2>/dev/null |
-    grep -Eiq 'model .*is unavailable|has been deprecated|is deprecated|no longer supported|model not found|no such model|unknown model|does not exist'
+    grep -Eiq 'model .*is unavailable|has been deprecated|is deprecated|no longer supported|model not found|no such model|unknown model|does not exist|Model unavailable|provider\.no-route|provider no route|no route to (this )?model'
 }
 
 # True when the round carries a provider rate limit: the exact message opencode
@@ -356,7 +356,7 @@ opencode_round_is_model_gone() {
 # not rate limited (#155).
 opencode_round_is_rate_limited() {
   local output_file="${1}" err_file="${2:-}"
-  local pattern='rate limit|rate_limit|too many requests|please try again later|retry-after|retry after|quota exceeded|usage limit|resource_exhausted|\b429\b'
+  local pattern='rate limit|rate_limit|too many requests|too_many_requests|please try again later|retry-after|retry after|quota exceeded|usage limit|resource_exhausted|rate_limit_exceeded|\b429\b'
   if [[ -f "${output_file}" ]] && grep -F '"type":"error"' "${output_file}" 2>/dev/null | grep -Eiq "${pattern}"; then
     return 0
   fi

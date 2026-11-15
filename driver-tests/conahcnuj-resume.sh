@@ -57,6 +57,7 @@ git -C "${WORK}" commit -qm init
 # path runs `git add -A`).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"title":"Fix something","body":"stub","labels":[],"pull_request":{}}
 {"data":{"repository":{"pullRequest":{"number":15,"state":"OPEN","title":"Fix something","body":"Closes #10","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"CHANGES_REQUESTED","headRefName":"feature/fix-10","baseRefName":"main","headRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","closingIssuesReferences":{"nodes":[{"number":10}]}}}}}
 {"number": 10, "title": "Fix something", "body": "# 背景\nPR を引き継いで再開できるようにする。", "labels": [{"name": "enhancement"}], "state": "open"}
@@ -65,14 +66,14 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","reviews":{"nodes":[{"state":"CHANGES_REQUESTED","body":"Please rename this function","author":{"login":"reviewer"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"databaseId":12345,"body":"What is Input?","author":{"login":"reviewer"}}]}}]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 # A wrapping agent session (the conahcnuj opencode plugin) exports these for
 # the real driver runs; the mock trailer check below must not see them.
@@ -86,20 +87,22 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 15 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
 grep -q "PR #15" "${LOG}" || { echo "FAIL: PR #15 was not processed"; exit 1; }
 grep -q "is a pull request; resuming it in place" "${LOG}" || { echo "FAIL: PR input was not auto-detected"; exit 1; }
-grep -q "Review requested on PR #15 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the driver did not hand the PR back to the owner as reviewer"; exit 1; }
-grep -q "Assigned nahcnuj as reviewer on PR #15" "${LOG}" || { echo "FAIL: review was not re-requested from the owner after the fix"; exit 1; }
+grep -q "Review requested on PR #15 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/15" "${LOG}" || { echo "FAIL: the driver did not hand the PR back to the owner as reviewer"; exit 1; }
+grep -q "Assigned conahcnuj as reviewer on PR #15" "${LOG}" || { echo "FAIL: review was not re-requested from the owner after the fix"; exit 1; }
 # The run does not stop at the request: it keeps polling and ends on the
 # owner's approval.
 APPROVED_LINE="$(grep -n "Ready to merge" "${LOG}" | head -1 | cut -d: -f1)"
-ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #15" "${LOG}" | head -1 | cut -d: -f1)"
+ASSIGNED_LINE="$(grep -n "Assigned conahcnuj as reviewer on PR #15" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${APPROVED_LINE}" && "${ASSIGNED_LINE}" -lt "${APPROVED_LINE}" ]] || { echo "FAIL: the driver did not keep polling to the approval"; exit 1; }
 grep -q "New review feedback detected" "${LOG}" || { echo "FAIL: review feedback was not acted on"; exit 1; }
 # The agent commits the fix with `git vc` in the same round; the driver must
@@ -117,7 +120,7 @@ FIRST_CONSTRAINTS_LINE="$(grep -n 'constraints: checks=' "${LOG}" | head -1 | cu
 # endpoint for the agent to use.
 grep -q "Addressed the review feedback" "${LOG}" && { echo "FAIL: the driver still posts its own review-feedback comment"; exit 1; }
 grep -q "comment 12345 by reviewer" "${LOG}" || { echo "FAIL: the feedback prompt does not name the thread comment to answer"; exit 1; }
-grep -q "POST https://api.github.com/repos/nahcnuj/conahcnuj/pulls/15/comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
+grep -q "POST https://api.github.com/repos/conahcnuj/conahcnuj/pulls/15/comments/<comment_id>/replies" "${LOG}" || { echo "FAIL: the feedback prompt does not tell the agent the reply endpoint"; exit 1; }
 # The reply comes AFTER the fix is committed and pushed (#485): the code round
 # The agent now commits (git vc) and replies in the same round, so the
 # reply instructions and the thread comment ids travel together in one prompt.

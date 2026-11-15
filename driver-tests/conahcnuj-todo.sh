@@ -85,6 +85,7 @@ git -C "${WORK}" commit -qm init
 #   fetch_reviews (APPROVED -> the run ends on the approval, not the request).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "TODO.jsonl progress", "body": "# x\n", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -97,7 +98,7 @@ cat > "${TAPE}" <<'EOF'
 {"data":{"repository":{"pullRequest":{"reviewDecision":"REVIEW_REQUIRED","reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 {"data":{"repository":{"pullRequest":{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}
 {}
-{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"nahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","reviews":{"nodes":[{"state":"APPROVED","body":"LGTM","author":{"login":"conahcnuj"}}]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 
 export CONAHCNUJ_TEST_MODE=1
@@ -108,7 +109,7 @@ export MOCK_OPENCODE_MODELS="opencode/a"
 # the next; the driver then removes the empty file before the hand-off.
 export MOCK_OPENCODE_TODO="opencode/a"
 export MOCK_OPENCODE_STATE_DIR="${ROOT}/state"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
 
@@ -119,9 +120,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj TODO.jsonl run log -----"
-cat "${LOG}"
-echo "----------------------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj TODO.jsonl run log -----"
+  cat "${LOG}"
+  echo "----------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 # The PR was opened as a draft because TODO.jsonl had a task, and the run never
@@ -134,7 +137,7 @@ grep -q "Removing the empty TODO.jsonl so it never reaches main." "${LOG}" || { 
 # precede the ready transition.
 DRAFT_LINE="$(grep -n "Created draft PR #123" "${LOG}" | head -1 | cut -d: -f1)"
 READY_LINE="$(grep -n "TODO.jsonl is clean; marking PR #123 ready for review." "${LOG}" | head -1 | cut -d: -f1)"
-ASSIGNED_LINE="$(grep -n "Assigned nahcnuj as reviewer on PR #123" "${LOG}" | head -1 | cut -d: -f1)"
+ASSIGNED_LINE="$(grep -n "Assigned conahcnuj as reviewer on PR #123" "${LOG}" | head -1 | cut -d: -f1)"
 [[ -n "${DRAFT_LINE}" && -n "${READY_LINE}" && "${DRAFT_LINE}" -lt "${READY_LINE}" ]] || { echo "FAIL: the draft must be created before it is made ready"; exit 1; }
 [[ -n "${ASSIGNED_LINE}" && "${READY_LINE}" -lt "${ASSIGNED_LINE}" ]] || { echo "FAIL: the review request must come after the PR is made ready"; exit 1; }
 # The run keeps going past the hand-off and ends on the owner's approval.

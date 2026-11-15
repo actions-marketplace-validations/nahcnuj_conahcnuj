@@ -30,6 +30,7 @@ conahcnuj が読む環境変数の全量です。値の意味や設定ファイ�
 | 変数 | 既定 | 内容 |
 | --- | --- | --- |
 | `CONAHCNUJ_REPO` | origin から検出 | `owner/repo` |
+| `CONAHCNUJ_REVIEWER` | リポジトリの admin コラボレーター | PR をレビュー依頼する相手（リポジトリ owner がユーザーでない場合に自動解決）。`owner` 形式のログイン |
 | `CONAHCNUJ_MAX_SECONDS` | `259200`（72 h） | 1 実行の時間予算 |
 | `CONAHCNUJ_HANDOFF_RETRY_SECONDS` | `15` | レビュー依頼リトライ前の待機秒（`0` で禁止） |
 | `CONAHCNUJ_POLL_CONDITIONS_MIN` | `15` | 制約ポーリングの最短間隔（秒） |

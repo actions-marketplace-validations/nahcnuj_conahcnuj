@@ -46,6 +46,7 @@ git -C "${WORK}" commit -qm "existing implementation"
 #   as ready to merge before any constraints poll (#219).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "issue駆動自律開発", "body": "# 背景\n動作確認用のダミー issue です。", "labels": [{"name": "enhancement"}], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -62,7 +63,7 @@ export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 LOG="${ROOT}/run.log"
 RC=0
@@ -71,9 +72,11 @@ RC=0
   CONAHCNUJ_MAX_SECONDS=120 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj run log -----"
-cat "${LOG}"
-echo "-----------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj run log -----"
+  cat "${LOG}"
+  echo "-----------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
@@ -81,7 +84,7 @@ grep -q "already has commits; skipping implement" "${LOG}" || { echo "FAIL: impl
 grep -q "Implementing with available models" "${LOG}" && { echo "FAIL: the driver still ran the model fall-through"; exit 1; }
 grep -q "Created draft PR #124" "${LOG}" || { echo "FAIL: PR #124 was not created"; exit 1; }
 grep -q "Ready to merge" "${LOG}" || { echo "FAIL: no ready-to-merge line"; exit 1; }
-grep -q "Assigned nahcnuj as reviewer" "${LOG}" && { echo "FAIL: an approved PR must not be handed to a reviewer again"; exit 1; }
+grep -q "Assigned conahcnuj as reviewer" "${LOG}" && { echo "FAIL: an approved PR must not be handed to a reviewer again"; exit 1; }
 
 [[ "$(git -C "${WORK}" branch --show-current)" == "conahcnuj/10-issue" ]] || { echo "FAIL: wrong current branch"; exit 1; }
 # Here-string, not `git log | grep -q`: under `set -o pipefail` an early

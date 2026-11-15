@@ -34,6 +34,7 @@ git -C "${WORK}" commit -qm init
 # request_review call (the `{}` after the successful conditions poll).
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 10, "title": "CI mode", "body": "End at the review request.", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -51,7 +52,7 @@ export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
 export MOCK_OPENCODE_MODELS="opencode/first"
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 
 unset CONAHCNUJ_COMMIT_MODEL CONAHCNUJ_MODEL_LABEL_FILE CONAHCNUJ_SESSION_MODEL \
   CONAHCNUJ_RUN_TIMEOUT_SECONDS OPENCODE_LAST_MODEL
@@ -65,14 +66,16 @@ RC=0
   GITHUB_ACTIONS=true CONAHCNUJ_MAX_SECONDS=10 bash "${DRIVER}" 10 < "${TAPE}"
 ) > "${LOG}" 2>&1 || RC=$?
 
-echo "----- conahcnuj CI-mode run log -----"
-cat "${LOG}"
-echo "-------------------------------------"
+if [[ ${RC} -ne 0 ]]; then
+  echo "----- conahcnuj CI-mode run log -----"
+  cat "${LOG}"
+  echo "-------------------------------------"
+fi
 
 [[ ${RC} -eq 0 ]] || { echo "FAIL: driver exited ${RC} (expected 0)"; exit 1; }
 
-grep -q "Assigned nahcnuj as reviewer on PR #123" "${LOG}" || { echo "FAIL: the owner was not assigned as reviewer"; exit 1; }
-grep -q "Review requested on PR #123 (reviewer: nahcnuj): https://github.com/nahcnuj/conahcnuj/pull/123" "${LOG}" || { echo "FAIL: the PR was not handed to the owner"; exit 1; }
+grep -q "Assigned conahcnuj as reviewer on PR #123" "${LOG}" || { echo "FAIL: the owner was not assigned as reviewer"; exit 1; }
+grep -q "Review requested on PR #123 (reviewer: conahcnuj): https://github.com/conahcnuj/conahcnuj/pull/123" "${LOG}" || { echo "FAIL: the PR was not handed to the owner"; exit 1; }
 # The review request is the end of a CI run: no polling for an approval, and
 # no claim that a human approved.
 grep -q "waiting for the reviewer's decision" "${LOG}" && { echo "FAIL: the CI run kept waiting for the reviewer"; exit 1; }

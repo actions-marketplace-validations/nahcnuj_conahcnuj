@@ -39,6 +39,7 @@ git -C "${WORK}" commit -qm init
 # each run's subshell.
 TAPE="${ROOT}/tape.txt"
 cat > "${TAPE}" <<'EOF'
+[{"login":"conahcnuj"}]
 {"number": 14, "title": "test issue, model gone", "body": "dummy body", "labels": [], "state": "open"}
 {"data":{"repository":{"defaultBranchRef":{"name":"main","target":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}}
 {"data":{"repository":{"pullRequests":{"nodes":[]}}}}
@@ -52,7 +53,7 @@ printf '# known dead\npre/one\n' > "${MISSING}"
 export CONAHCNUJ_TEST_MODE=1
 export GH_API_TEST_MODE=1
 export OPENCODE_TEST_MODE=1
-export CONAHCNUJ_REPO="nahcnuj/conahcnuj"
+export CONAHCNUJ_REPO="conahcnuj/conahcnuj"
 export CONAHCNUJ_MISSING_MODELS_FILE="${MISSING}"
 
 LOG1="${ROOT}/run1.log"

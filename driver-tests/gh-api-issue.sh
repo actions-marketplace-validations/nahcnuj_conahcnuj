@@ -12,7 +12,7 @@ LIB="${HERE}/../lib/gh-api.sh"
 
 export GH_API_TEST_MODE=1
 
-MOCK_ISSUE='{"number": 10, "title": "issue駆動自律開発", "body": "# 背景\n\nGitHub Appsによってエージェント自身にコミット・PR作成・レビュー対応をさせられるようになった。\nイシューから始めてPRのレビューコメントを通して作業を進められるようにしたい。", "labels": [{"name": "enhancement"}, {"name": "automation"}], "state": "open", "html_url": "https://github.com/nahcnuj/conahcnuj/issues/10"}'
+MOCK_ISSUE='{"number": 10, "title": "issue駆動自律開発", "body": "# 背景\n\nGitHub Appsによってエージェント自身にコミット・PR作成・レビュー対応をさせられるようになった。\nイシューから始めてPRのレビューコメントを通して作業を進められるようにしたい。", "labels": [{"name": "enhancement"}, {"name": "automation"}], "state": "open", "html_url": "https://github.com/conahcnuj/conahcnuj/issues/10"}'
 
 MOCK_PR_AS_ISSUE='{"number": 15, "title": "Fix something", "body": "Closes #10", "pull_request": {}}'
 
@@ -96,7 +96,7 @@ MOCK_COMMENT='{"id":777}'
 
 test_fetch_issue() {
   local out title body labels is_pr
-  out="$(printf '%s\n' "${MOCK_ISSUE}" | gh_api_fetch_issue "nahcnuj" "conahcnuj" 10)"
+  out="$(printf '%s\n' "${MOCK_ISSUE}" | gh_api_fetch_issue "conahcnuj" "conahcnuj" 10)"
   title="$(printf '%s' "${out}" | cut -d'|' -f1 | gh_api_unb64)"
   body="$(printf '%s' "${out}" | cut -d'|' -f2 | gh_api_unb64)"
   labels="$(printf '%s' "${out}" | cut -d'|' -f3 | gh_api_unb64)"
@@ -106,30 +106,27 @@ test_fetch_issue() {
   [[ "${labels}" == *"enhancement"* ]]
   [[ "${labels}" == *"automation"* ]]
   [[ "${is_pr}" == "false" ]]
-  echo "gh_api_fetch_issue passed"
 }
 
 test_fetch_issue_is_pr() {
   local out is_pr
-  out="$(printf '%s\n' "${MOCK_PR_AS_ISSUE}" | gh_api_fetch_issue "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_PR_AS_ISSUE}" | gh_api_fetch_issue "conahcnuj" "conahcnuj" 15)"
   is_pr="$(printf '%s' "${out}" | cut -d'|' -f4)"
   [[ "${is_pr}" == "true" ]]
-  echo "gh_api_fetch_issue (PR detection) passed"
 }
 
 test_get_repo() {
   local out branch oid
-  out="$(printf '%s\n' "${MOCK_REPO}" | gh_api_get_repo "nahcnuj" "conahcnuj")"
+  out="$(printf '%s\n' "${MOCK_REPO}" | gh_api_get_repo "conahcnuj" "conahcnuj")"
   branch="$(printf '%s' "${out}" | cut -d'|' -f1)"
   oid="$(printf '%s' "${out}" | cut -d'|' -f2)"
   [[ "${branch}" == "main" ]]
   [[ "${oid}" == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ]]
-  echo "gh_api_get_repo passed"
 }
 
 test_fetch_pr_state() {
   local out state title head base closes mergeable decision
-  out="$(printf '%s\n' "${MOCK_PR_STATE}" | gh_api_fetch_pr_state "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_PR_STATE}" | gh_api_fetch_pr_state "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f2)"
   title="$(printf '%s' "${out}" | cut -d'|' -f3 | gh_api_unb64)"
   mergeable="$(printf '%s' "${out}" | cut -d'|' -f6)"
@@ -144,41 +141,40 @@ test_fetch_pr_state() {
   [[ "${head}" == "feature/fix-10" ]]
   [[ "${base}" == "main" ]]
   [[ "${closes}" == "10" ]]
-  echo "gh_api_fetch_pr_state passed"
 }
 
 test_fetch_pr_conditions() {
   local out state mergeable pr_state
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_OK}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_OK}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   mergeable="$(printf '%s' "${out}" | cut -d'|' -f2)"
   [[ "${state}" == "SUCCESS" ]]
   [[ "${mergeable}" == "MERGEABLE" ]]
 
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_FAIL}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_FAIL}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
   # No status checks at all => SUCCESS (nothing to wait on).
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_NOCHECKS}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_NOCHECKS}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
   # The driver's own workflow run is excluded from the aggregate:
   # a pending or failed "Issue auto-drive" check must not become a
   # constraint the driver would loop over (issue #115).
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_CONTEXTS}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_CONTEXTS}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_OWN_FAILED}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_OWN_FAILED}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
   # A reusable workflow reports the check under the caller's workflow name and
   # prefixes the job name with the caller's job. The driver's own run must not
   # become a constraint in that case either (issue #492).
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_CROSS_REPO}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_CROSS_REPO}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
@@ -186,40 +182,40 @@ test_fetch_pr_conditions() {
   out="$(
     CONAHCNUJ_OWN_WORKFLOWS=""
     export CONAHCNUJ_OWN_WORKFLOWS
-    printf '%s\n' "${MOCK_CONDITIONS_CROSS_REPO}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15
+    printf '%s\n' "${MOCK_CONDITIONS_CROSS_REPO}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15
   )"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "PENDING" ]]
 
   # The auto-merge job's own check is excluded the same way: it waits for the
   # driver's check run, so the driver waiting for it would deadlock the pair.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_AUTOMERGE_PENDING}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 117)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_AUTOMERGE_PENDING}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 117)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
   pr_state="$(printf '%s' "${out}" | cut -d'|' -f4)"
   [[ "${pr_state}" == "OPEN" ]]
 
   # Real CI still running or failing is still a real constraint.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_CI_PENDING}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_CI_PENDING}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "PENDING" ]]
 
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_CI_FAILED}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_CI_FAILED}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
   # Legacy status contexts and unattributed check runs still count.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_STATUS_PENDING}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_STATUS_PENDING}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "PENDING" ]]
 
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_NO_SUITE}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_NO_SUITE}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
   # A paginated context list cannot be filtered reliably, so the
   # rollup's own aggregate state is trusted instead.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_PAGINATED}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_PAGINATED}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
@@ -228,7 +224,7 @@ test_fetch_pr_conditions() {
   out="$(
     CONAHCNUJ_OWN_WORKFLOWS=""
     export CONAHCNUJ_OWN_WORKFLOWS
-    printf '%s\n' "${MOCK_CONDITIONS_CONTEXTS}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15
+    printf '%s\n' "${MOCK_CONDITIONS_CONTEXTS}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15
   )"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
@@ -236,7 +232,7 @@ test_fetch_pr_conditions() {
   # Replaying the payload the API really returned for PR #113 in the run
   # from issue #115: the cancelled own run must not keep the driver
   # polling, so the aggregate FAILURE has to come out as SUCCESS.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 113)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 113)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
@@ -245,7 +241,7 @@ test_fetch_pr_conditions() {
   out="$(
     CONAHCNUJ_OWN_WORKFLOWS=""
     export CONAHCNUJ_OWN_WORKFLOWS
-    printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 113
+    printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 113
   )"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
@@ -258,7 +254,7 @@ test_fetch_pr_conditions() {
     export CONAHCNUJ_OWN_WORKFLOWS
     # shellcheck source=lib/gh-api.sh
     . "${LIB}"
-    printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 113
+    printf '%s\n' "${MOCK_CONDITIONS_REAL}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 113
   )"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
@@ -266,30 +262,28 @@ test_fetch_pr_conditions() {
   # The same payload PR #117 handed the driver in the run that reported issue
   # #115: with the auto-merge check excluded the aggregate is SUCCESS, without
   # it the driver sees the FAILURE it could never have fixed by changing code.
-  out="$(printf '%s\n' "${MOCK_CONDITIONS_DEADLOCK}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 117)"
+  out="$(printf '%s\n' "${MOCK_CONDITIONS_DEADLOCK}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 117)"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "SUCCESS" ]]
 
   out="$(
     CONAHCNUJ_OWN_WORKFLOWS=""
     export CONAHCNUJ_OWN_WORKFLOWS
-    printf '%s\n' "${MOCK_CONDITIONS_DEADLOCK}" | gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 117
+    printf '%s\n' "${MOCK_CONDITIONS_DEADLOCK}" | gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 117
   )"
   state="$(printf '%s' "${out}" | cut -d'|' -f1)"
   [[ "${state}" == "FAILURE" ]]
 
-  echo "gh_api_fetch_pr_conditions passed"
 }
 
 test_fetch_reviews() {
   local out decision payload
-  out="$(printf '%s\n' "${MOCK_REVIEWS}" | gh_api_fetch_reviews "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' "${MOCK_REVIEWS}" | gh_api_fetch_reviews "conahcnuj" "conahcnuj" 15)"
   decision="$(printf '%s' "${out}" | cut -d'|' -f1)"
   payload="$(printf '%s' "${out}" | cut -d'|' -f2 | gh_api_unb64)"
   [[ "${decision}" == "CHANGES_REQUESTED" ]]
   # Payload survives the base64 round trip unchanged.
   [[ "${payload}" == "${MOCK_REVIEWS}" ]]
-  echo "gh_api_fetch_reviews passed"
 }
 
 test_review_summary() {
@@ -302,55 +296,50 @@ test_review_summary() {
   [[ "${summary}" != *"Resolved thread"* ]]
   [[ "${summary}" != *"Please fix the typo"* ]]
   [[ "${summary}" != *"Nice work so far!"* ]]
-  echo "gh_api_review_summary passed"
 }
 
 test_find_pr_by_head() {
   local out
-  out="$(printf '%s\n' "${MOCK_PR_BY_HEAD_EMPTY}" | gh_api_find_pr_by_head "nahcnuj" "conahcnuj" "conahcnuj/10-x")"
+  out="$(printf '%s\n' "${MOCK_PR_BY_HEAD_EMPTY}" | gh_api_find_pr_by_head "conahcnuj" "conahcnuj" "conahcnuj/10-x")"
   [[ -z "${out}" ]]
-  out="$(printf '%s\n' "${MOCK_PR_BY_HEAD_FOUND}" | gh_api_find_pr_by_head "nahcnuj" "conahcnuj" "feature/fix-10")"
+  out="$(printf '%s\n' "${MOCK_PR_BY_HEAD_FOUND}" | gh_api_find_pr_by_head "conahcnuj" "conahcnuj" "feature/fix-10")"
   [[ "${out}" == "42" ]]
-  echo "gh_api_find_pr_by_head passed"
 }
 
 test_create_pr() {
   local out
-  out="$(printf '%s\n' "${MOCK_REPO_ID}" "${MOCK_CREATE_PR}" | gh_api_create_pr "nahcnuj" "conahcnuj" "New PR" "Body" "branch" "main")"
+  out="$(printf '%s\n' "${MOCK_REPO_ID}" "${MOCK_CREATE_PR}" | gh_api_create_pr "conahcnuj" "conahcnuj" "New PR" "Body" "branch" "main")"
   [[ "${out}" == "123" ]]
-  echo "gh_api_create_pr passed"
 }
 
 test_update_pr() {
   local out
-  out="$(printf '%s\n' '{}' | gh_api_update_pr "nahcnuj" "conahcnuj" 15 "Closes #10
+  out="$(printf '%s\n' '{}' | gh_api_update_pr "conahcnuj" "conahcnuj" 15 "Closes #10
 
 # 背景
 
 書き換え済みの本文です。")"
   # gh_api_update_pr discards the response (must not leak into stdout).
   [[ -z "${out}" ]]
-  echo "gh_api_update_pr passed"
 }
 
 test_request_review() {
   local out
-  out="$(printf '%s\n' '{}' | gh_api_request_review "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' '{}' | gh_api_request_review "conahcnuj" "conahcnuj" 15)"
   [[ "${out}" == '{}' ]]
   # With a reviewer login the request names it; without one it stays a plain
   # ask-for-review. The stubbed gh_api_call reports the request body.
   local body
   body="$(
     gh_api_call() { printf '%s' "${3}"; }
-    gh_api_request_review "nahcnuj" "conahcnuj" 15 "nahcnuj"
+    gh_api_request_review "conahcnuj" "conahcnuj" 15 "conahcnuj"
   )"
-  [[ "${body}" == '{"reviewers":["nahcnuj"]}' ]]
+  [[ "${body}" == '{"reviewers":["conahcnuj"]}' ]]
   body="$(
     gh_api_call() { printf '%s' "${3}"; }
-    gh_api_request_review "nahcnuj" "conahcnuj" 15
+    gh_api_request_review "conahcnuj" "conahcnuj" 15
   )"
   [[ "${body}" == '{"reviewers":[]}' ]]
-  echo "gh_api_request_review passed"
 }
 
 test_http_status() {
@@ -376,7 +365,6 @@ test_http_status() {
   : > "${dump}"
   [[ -z "$(gh_api_http_status "${dump}")" ]]
   rm -f "${dump}"
-  echo "gh_api_http_status passed"
 }
 
 # A GraphQL response that came back 201 (Created) is a successful POST, not a
@@ -398,7 +386,6 @@ test_graphql_http_status() {
     gh_api_graphql "query { viewer { login } }" 2>/dev/null || printf 'failed'
   )"
   [[ "${out}" == "failed" ]] || { echo "FAIL: a 500 GraphQL response was accepted"; exit 1; }
-  echo "gh_api_graphql (HTTP status) passed"
 }
 
 # A conditions read that fails must be reported as a failure, never as an empty
@@ -411,37 +398,35 @@ test_fetch_pr_conditions_read_failure() {
   # subshell assignment that shellcheck would flag as SC2030/SC2031.
   out="$(
     gh_api_graphql() { return 1; }
-    GH_API_TEST_MODE=0 gh_api_fetch_pr_conditions "nahcnuj" "conahcnuj" 15 2>/dev/null || printf 'failed'
+    GH_API_TEST_MODE=0 gh_api_fetch_pr_conditions "conahcnuj" "conahcnuj" 15 2>/dev/null || printf 'failed'
   )"
   [[ "${out}" == "failed" ]] || { echo "FAIL: a failed conditions read was not propagated"; exit 1; }
-  echo "gh_api_fetch_pr_conditions (read failure) passed"
 }
 
 test_requested_reviewers() {
   local out
   # What the read-back reports for a PR somebody was asked to look at.
-  out="$(printf '%s\n' '{"users":[{"login":"nahcnuj","id":1}],"teams":[]}' | gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15)"
-  [[ "${out}" == "nahcnuj" ]]
+  out="$(printf '%s\n' '{"users":[{"login":"conahcnuj","id":1}],"teams":[]}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
+  [[ "${out}" == "conahcnuj" ]]
   # The shape GitHub really sends: the REST API answers pretty-printed, so the
   # login is written "login": "x", with a space after the colon. Matching the
   # compact spelling only made the read-back report nobody as asked on a PR
   # GitHub had already recorded a request on, which killed the run's hand-off
   # with "could not request review" (issue #136).
-  out="$(printf '%s\n' '{"users": [{"login": "nahcnuj", "id": 1}], "teams": []}' | gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15)"
-  [[ "${out}" == "nahcnuj" ]]
+  out="$(printf '%s\n' '{"users": [{"login": "conahcnuj", "id": 1}], "teams": []}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
+  [[ "${out}" == "conahcnuj" ]]
   # Nobody asked: the answer is empty, not an error (the caller reads it as
   # "the hand-off really is lost" only when it is non-empty).
-  out="$(printf '%s\n' '{"users":[],"teams":[]}' | gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' '{"users":[],"teams":[]}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
   [[ -z "${out}" ]]
   # A team is a reviewer too: it carries a slug instead of a login, and a
   # team-only request read as "nobody was asked" would fail a run on a PR
   # GitHub had already asked. Both are reported, the team prefixed.
-  out="$(printf '%s\n' '{"users":[{"login":"conahcnuj[bot]","id":2}],"teams":[{"slug":"reviewers","id":3}]}' | gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' '{"users":[{"login":"conahcnuj[bot]","id":2}],"teams":[{"slug":"reviewers","id":3}]}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
   [[ "${out}" == "conahcnuj[bot]
 team:reviewers" ]]
-  out="$(printf '%s\n' '{"users":[],"teams":[{"slug":"reviewers","id":3}]}' | gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15)"
+  out="$(printf '%s\n' '{"users":[],"teams":[{"slug":"reviewers","id":3}]}' | gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15)"
   [[ "${out}" == "team:reviewers" ]]
-  echo "gh_api_requested_reviewers passed"
 }
 
 # The same read-back against a response spread over several lines, which is what
@@ -463,7 +448,7 @@ test_requested_reviewers_pretty() {
       printf '%s' '{
   "users": [
     {
-      "login": "nahcnuj",
+      "login": "conahcnuj",
       "id": 2093896,
       "type": "User"
     }
@@ -471,27 +456,24 @@ test_requested_reviewers_pretty() {
   "teams": []
 }'
     }
-    gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15
+    gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15
     READ_FAILS=true
-    gh_api_requested_reviewers "nahcnuj" "conahcnuj" 15 || printf 'unreadable\n'
+    gh_api_requested_reviewers "conahcnuj" "conahcnuj" 15 || printf 'unreadable\n'
   )"
-  [[ "${out}" == "nahcnuj
+  [[ "${out}" == "conahcnuj
 unreadable" ]]
-  echo "gh_api_requested_reviewers (pretty-printed payload) passed"
 }
 
 test_post_comment() {
   local out
-  out="$(printf '%s\n' "${MOCK_COMMENT}" | gh_api_post_comment "nahcnuj" "conahcnuj" 15 "Addressed feedback")"
+  out="$(printf '%s\n' "${MOCK_COMMENT}" | gh_api_post_comment "conahcnuj" "conahcnuj" 15 "Addressed feedback")"
   [[ "${out}" == "777" ]]
-  echo "gh_api_post_comment passed"
 }
 
 test_create_issue() {
   local out
-  out="$(printf '%s\n' '{"number":25}' | gh_api_create_issue "nahcnuj" "conahcnuj" "Bug report" "details")"
+  out="$(printf '%s\n' '{"number":25}' | gh_api_create_issue "conahcnuj" "conahcnuj" "Bug report" "details")"
   [[ "${out}" == "25" ]]
-  echo "gh_api_create_issue passed"
 }
 
 # A JSON string may not carry a raw control byte, so gh_api_escape turns every
@@ -507,10 +489,10 @@ test_escape_control_chars() {
     echo "FAIL: gh_api_escape control characters: '${out}'" >&2
     exit 1
   }
-  printf '%s' "${out}" | grep -q '[[:cntrl:]]' && {
+  if printf '%s' "${out}" | grep -q '[[:cntrl:]]'; then
     echo "FAIL: a raw control byte survived gh_api_escape" >&2
     exit 1
-  }
+  fi
   # The escapes that were already there must not change: line breaks join into
   # \n, quotes and backslashes stay escaped, and text passes through byte for
   # byte (multibyte included).
@@ -529,7 +511,6 @@ second")"
     echo "FAIL: gh_api_escape of an empty string is not empty" >&2
     exit 1
   }
-  echo "gh_api_escape passed"
 }
 
 # The same rule end to end through the real gh_api_create_issue: gh_api_call is
@@ -545,7 +526,7 @@ test_create_issue_control_chars() {
       printf '%s' "${3}" > "${payload_file}"
       printf '{"number":25}'
     }
-    gh_api_create_issue "nahcnuj" "conahcnuj" "Bug report" "$(printf 'line1\tline2\rline3\033[31m')"
+    gh_api_create_issue "conahcnuj" "conahcnuj" "Bug report" "$(printf 'line1\tline2\rline3\033[31m')"
   ) >/dev/null
   payload="$(cat "${payload_file}")"
   rm -f "${payload_file}"
@@ -553,16 +534,45 @@ test_create_issue_control_chars() {
     echo "FAIL: create-issue payload: '${payload}'" >&2
     exit 1
   }
-  printf '%s' "${payload}" | grep -q '[[:cntrl:]]' && {
+  if printf '%s' "${payload}" | grep -q '[[:cntrl:]]'; then
     echo "FAIL: a raw control byte reached the create-issue payload" >&2
     exit 1
-  }
-  echo "gh_api_create_issue (control-character body) passed"
+  fi
+}
+
+
+test_repo_admins_compact() {
+  local out
+  # Compact JSON: one login per collaborator, in order.
+  out="$(printf '%s\n' '[{"login":"nahcnuj","permissions":{"admin":true}},{"login":"second"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: compact repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_pretty() {
+  local out
+  # Pretty-printed JSON (the shape GitHub really sends) must parse too.
+  out="$(printf '%s\n' '[ { "login" : "nahcnuj" } , { "login" : "second" } ]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "nahcnuj
+second" ]] || { echo "FAIL: pretty repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_empty() {
+  local out
+  # No admins: empty output, not an error (the caller falls back to the owner).
+  out="$(printf '%s\n' '[]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ -z "${out}" ]] || { echo "FAIL: empty repo admins: '${out}'" >&2; exit 1; }
+}
+
+test_repo_admins_single() {
+  local out
+  # A single collaborator comes back on one line.
+  out="$(printf '%s\n' '[{"login":"only-one"}]' | gh_api_repo_admins "conahcnuj" "conahcnuj")"
+  [[ "${out}" == "only-one" ]] || { echo "FAIL: single repo admin: '${out}'" >&2; exit 1; }
 }
 
 test_merge_pr() {
-  gh_api_merge_pr "nahcnuj" "conahcnuj" 15 < <(printf '%s\n' '{}' '{}')
-  echo "gh_api_merge_pr passed"
+  gh_api_merge_pr "conahcnuj" "conahcnuj" 15 < <(printf '%s\n' '{}' '{}')
 }
 
 test_fetch_issue
@@ -585,6 +595,10 @@ test_post_comment
 test_create_issue
 test_escape_control_chars
 test_create_issue_control_chars
+test_repo_admins_compact
+test_repo_admins_pretty
+test_repo_admins_empty
+test_repo_admins_single
 test_merge_pr
 
 echo "All gh-api tests passed"
