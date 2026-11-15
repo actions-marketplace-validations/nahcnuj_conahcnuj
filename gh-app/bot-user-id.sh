@@ -53,6 +53,15 @@ if [[ -n "${GH_TOKEN:-}" ]]; then
   _AUTH_HEADER=(-H "Authorization: Bearer ${GH_TOKEN}")
 elif [[ -n "${GITHUB_TOKEN:-}" ]]; then
   _AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+elif [[ -n "${APP_ID:-}" && "${APP_ID}" != "<"* && -f "${DIR}/get-token.sh" ]]; then
+  # No ambient token: mint a short-lived installation token from the App's
+  # own credentials so the lookup is authenticated (higher rate limit, and
+  # works on runner IPs that exhaust the unauthenticated quota). Best-effort;
+  # a missing key or no network leaves _AUTH_HEADER empty.
+  _MINTED="$(bash "${DIR}/get-token.sh" 2>/dev/null || true)"
+  if [[ -n "${_MINTED}" && "${_MINTED}" != "ERROR"* ]]; then
+    _AUTH_HEADER=(-H "Authorization: Bearer ${_MINTED}")
+  fi
 fi
 # -g keeps the encoded [bot] out of curl's URL globbing, and lets the offline
 # tests serve the same URL from a file:// fixture.

@@ -119,6 +119,7 @@ jobs:
           APP_ID: ${{ secrets.APP_ID }}
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           pem="$RUNNER_TEMP/conahcnuj-app.pem"
           printf '%s\n' "$PRIVATE_KEY" > "$pem"

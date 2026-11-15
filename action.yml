@@ -83,6 +83,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
         BOT_ID="$(bash "${ACTION_PATH}/gh-app/bot-user-id.sh")"

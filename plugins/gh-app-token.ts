@@ -157,8 +157,18 @@ async function resolveBotUserId(slug: string): Promise<string> {
   if (!/^[A-Za-z0-9-]+$/.test(slug)) {
     throw new Error(`Invalid APP_SLUG for bot lookup: ${slug}`)
   }
+  // Authenticate the lookup when an installation token is available so the
+  // public user endpoint is not subject to the unauthenticated rate limit.
+  // Best-effort: a missing key or no network leaves the request unauthenticated.
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json" }
+  try {
+    const token = await getInstallationToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+  } catch {
+    // Fall through to an unauthenticated lookup.
+  }
   const res = await fetch(`https://api.github.com/users/${slug}%5Bbot%5D`, {
-    headers: { Accept: "application/vnd.github+json" },
+    headers,
   })
   if (!res.ok) {
     throw new Error(
