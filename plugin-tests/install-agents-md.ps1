@@ -3,7 +3,7 @@
 # The global opencode rules (opencode/AGENTS.md) reach every repository through
 # <config dir>/AGENTS.md, so install.ps1 (Install-GlobalAgentsMd) splices them
 # into the user's file as a managed block between marker comments. That merge is
-# what makes `git vc` surface naturally in nahcnuj repos that carry no own docs.
+# what makes `git vc` surface naturally in conahcnuj repos that carry no own docs.
 #
 # This test drives the REAL install.ps1 against temp destinations and asserts
 # the merge contract:
